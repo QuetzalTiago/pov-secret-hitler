@@ -361,6 +361,7 @@ export function reduce(state: GameState, action: Action): ReduceResult {
       if (action.accept) {
         s.discard.push(...s.hand);
         s.hand = [];
+        d.ensureDeck();
         d.failElection();
       } else {
         s.vetoRefused = true;
