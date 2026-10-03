@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Smoke &amp; Ballots</title>
+    <meta name="description" content="A non-commercial 3D first-person adaptation of Secret Hitler (CC BY-NC-SA 4.0)." />
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="flash"></div>
+
+    <!-- Lobby -->
+    <div id="lobby" class="overlay">
+      <div class="panel" id="home">
+        <h1>Smoke <span>&amp;</span> Ballots</h1>
+        <p class="sub">A smoky-bar adaptation of <em>Secret Hitler</em> for 5–10 players</p>
+        <label>Your name<input id="name" maxlength="16" autocomplete="off" placeholder="e.g. Rosa" /></label>
+        <button id="create" class="primary">Open a new table</button>
+        <div class="or">or join a table</div>
+        <div class="row">
+          <input id="code" maxlength="4" autocomplete="off" placeholder="CODE" />
+          <button id="join">Join</button>
+        </div>
+        <button id="home-credits" class="link">Credits &amp; license</button>
+      </div>
+      <div class="panel hidden" id="room">
+        <h2>Table <span id="room-code" class="code"></span> <button id="copy-code" class="mini">copy</button></h2>
+        <p class="sub">Share the code. Everyone sits in turn order.</p>
+        <p id="seat-count" class="sub"></p>
+        <ul id="seats"></ul>
+        <div id="host-controls">
+          <div class="row">
+            <button id="add-bot">+ Bot</button>
+            <button id="remove-bot">− Bot</button>
+          </div>
+          <button id="start" class="primary">Deal the roles</button>
+        </div>
+        <p id="guest-note" class="sub hidden">Waiting for the host to deal…</p>
+        <div id="lobby-chat"></div>
+        <button id="lobby-leave" class="link">Leave table</button>
+      </div>
+      <div id="lobby-error" class="error hidden"></div>
+    </div>
+
+    <!-- In-game HUD -->
+    <div id="hud" class="hidden">
+      <div id="top-left">
+        <div>Table <b id="hud-code"></b></div>
+        <div id="hud-role"></div>
+        <div id="hud-round"></div>
+      </div>
+      <div id="top-right">
+        <div id="timer"></div>
+        <button id="rules-btn" class="mini">Rules</button>
+        <button id="sound" class="mini">Sound: on</button>
+        <button id="credits-btn" class="mini">Credits</button>
+        <button id="leave" class="mini">Leave</button>
+      </div>
+      <div id="toasts"></div>
+      <div id="prompt"></div>
+      <div id="chat">
+        <div id="chat-log"></div>
+        <input id="chat-input" maxlength="200" autocomplete="off" placeholder="Press Enter to talk…" />
+      </div>
+      <div id="gameover" class="panel hidden">
+        <h2 id="gameover-title"></h2>
+        <p id="gameover-reason"></p>
+        <ul id="gameover-roles"></ul>
+        <button id="rematch" class="primary">Back to the lobby</button>
+        <button id="gameover-leave" class="link">Leave table</button>
+      </div>
+      <div id="confirm-leave" class="panel hidden">
+        <p>Leave the game? A bot will take your seat until you come back.</p>
+        <div class="row"><button id="confirm-yes">Leave</button><button id="confirm-no" class="primary">Stay</button></div>
+      </div>
+    </div>
+    <div id="tooltip"></div>
+    <div id="status" class="hidden"></div>
+
+    <div id="rules" class="overlay hidden">
+      <div class="panel wide">
+        <h2>How to play</h2>
+        <p>Liberals are the majority, but they do not know who anyone is. Fascists know each other and know Hitler. Hitler only knows the Fascists in 5–6 player games.</p>
+        <p><b>Each round</b> the President (rotating clockwise) points at a player to nominate them Chancellor. Everyone slams a <b>JA!</b> or <b>NEIN</b> ballot; they flip together. A strict majority elects the government.</p>
+        <p><b>Legislation:</b> the President draws three policies, discards one, and slides two to the Chancellor, who discards one and enacts the other.</p>
+        <p><b>Fascist powers</b> unlock as Fascist policies land: peek, investigate, special election, execution. After five Fascist policies the Chancellor may propose a veto.</p>
+        <p><b>Liberals win</b> with five Liberal policies or by executing Hitler. <b>Fascists win</b> with six Fascist policies, or by electing Hitler Chancellor after three Fascist policies.</p>
+        <p>Three failed elections in a row enact the top policy automatically.</p>
+        <button id="rules-close" class="primary">Got it</button>
+      </div>
+    </div>
+
+    <div id="credits" class="overlay hidden">
+      <div class="panel wide">
+        <h2>Credits &amp; license</h2>
+        <p><b>Secret Hitler</b> was created by <b>Mike Boxleiter</b>, <b>Tommy Maranges</b> and <b>Max Temkin</b>, with illustrations by <b>Mac Schubert</b>, and is published by Goat, Wolf, &amp; Cabbage.</p>
+        <p>The original game is licensed under <b>Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)</b>.</p>
+        <p><b>Smoke &amp; Ballots</b> is an unofficial, non-commercial fan adaptation. It is not affiliated with or endorsed by the original creators. It uses no art from the original game: all geometry, textures and sounds are generated by code. This adaptation is shared under the same license, CC BY-NC-SA 4.0.</p>
+        <p>License text: creativecommons.org/licenses/by-nc-sa/4.0</p>
+        <button id="credits-close" class="primary">Close</button>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
