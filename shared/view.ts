@@ -1,7 +1,7 @@
 // Per-player projection of the game state. This is the ONLY game data a client receives.
 import { eligibleChancellors, pendingActors, vetoUnlocked } from './engine';
 import { hitlerKnowsFascists, trackFor } from './rules';
-import type { GameState, Party, Phase, Policy, Power, Role, WinReason } from './types';
+import type { ActionBody, GameState, Party, Phase, Policy, Power, Role, WinReason } from './types';
 
 export interface PlayerView {
   seat: number;
@@ -103,3 +103,41 @@ export function viewFor(s: GameState, viewer: number | null): GameView {
   };
 }
 
+
+/**
+ * Legal actions for the viewer, derived only from public/own info. The client uses this to decide what is
+ * clickable; the server always re-validates against the authoritative state.
+ */
+export function legalFromView(v: GameView): ActionBody[] {
+  const me = v.you;
+  if (me === null || !v.pending.includes(me)) return [];
+  const targets = (pred: (seat: number) => boolean) =>
+    v.players.filter((p) => p.alive && p.seat !== v.president && pred(p.seat)).map((p) => p.seat);
+  switch (v.phase) {
+    case 'night':
+      return [{ type: 'ack' }];
+    case 'nominate':
+      return v.eligible.map((target) => ({ type: 'nominate', target }));
+    case 'vote':
+      return [{ type: 'vote', ja: true }, { type: 'vote', ja: false }];
+    case 'legPresident':
+      return (v.hand ?? []).map((_, index) => ({ type: 'presDiscard', index }));
+    case 'legChancellor': {
+      const acts: ActionBody[] = (v.hand ?? []).map((_, index) => ({ type: 'chancEnact', index }));
+      if (v.vetoUnlocked && !v.vetoRefused) acts.push({ type: 'proposeVeto' });
+      return acts;
+    }
+    case 'veto':
+      return [{ type: 'vetoResponse', accept: true }, { type: 'vetoResponse', accept: false }];
+    case 'peek':
+      return [{ type: 'peekDone' }];
+    case 'investigate':
+      return targets((s) => !v.investigated.includes(s)).map((target) => ({ type: 'investigate', target }));
+    case 'special':
+      return targets(() => true).map((target) => ({ type: 'specialElect', target }));
+    case 'execute':
+      return targets(() => true).map((target) => ({ type: 'execute', target }));
+    case 'gameOver':
+      return [];
+  }
+}
