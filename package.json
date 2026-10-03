@@ -1,0 +1,35 @@
+{
+  "name": "smoke-and-ballots",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Non-commercial 3D first-person online adaptation of Secret Hitler (CC BY-NC-SA 4.0)",
+  "license": "CC-BY-NC-SA-4.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "start": "tsx server/index.ts",
+    "dev": "tsx watch server/index.ts",
+    "dev:client": "vite",
+    "test": "vitest run",
+    "simulate": "tsx scripts/simulate.ts",
+    "e2e": "playwright test",
+    "host": "tsx scripts/host.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "three": "^0.186.1",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "@types/three": "^0.186.0",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  }
+}
