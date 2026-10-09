@@ -14,6 +14,7 @@
     "test": "vitest run",
     "simulate": "tsx scripts/simulate.ts",
     "e2e": "playwright test",
+    "perf": "tsx scripts/perf.ts",
     "host": "tsx scripts/host.ts",
     "typecheck": "tsc --noEmit"
   },

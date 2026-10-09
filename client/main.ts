@@ -4,6 +4,7 @@ import { initAudio, isMusicOn, setMusicOn, startMusic } from './audio';
 import { Game } from './game';
 import { Interactor } from './interact';
 import { Net } from './net';
+import { createPerfHud } from './perf';
 import { World } from './scene/world';
 import { UI } from './ui';
 
@@ -120,6 +121,9 @@ const unlockAudio = () => {
 window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
 
+// ?perf HUD: read now, the welcome handler's history.replaceState drops the query string later.
+const perf = new URLSearchParams(location.search).has('perf') ? createPerfHud(world.renderer) : null;
+
 let last = performance.now();
 function frame(t: number) {
   const dt = Math.min(0.1, (t - last) / 1000);
@@ -128,6 +132,7 @@ function frame(t: number) {
   world.update(dt);
   interactor.update();
   world.render();
+  perf?.tick(t);
   frames++;
   requestAnimationFrame(frame);
 }
@@ -149,6 +154,7 @@ window.__sh = {
   click: (id: string) => interactor.activate(id),
   prompt: () => document.getElementById('prompt')?.textContent ?? '',
   settled: () => world.settled(),
+  perf: () => perf?.stats() ?? null,
   world,
 };
 
