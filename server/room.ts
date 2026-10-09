@@ -237,6 +237,9 @@ export class Room {
   /** Rebuilds a room after a restart. Humans are treated as just disconnected: they get the usual grace period. */
   static restore(snap: RoomSnapshot, onEmpty: (room: Room) => void): Room {
     if (snap?.v !== 1 || typeof snap.code !== 'string' || !Array.isArray(snap.seats)) throw new Error('bad room snapshot');
+    if (snap.stage !== 'lobby' && snap.stage !== 'game') throw new Error('bad room snapshot');
+    if (snap.game && snap.seats.length !== snap.game.players.length) throw new Error('bad room snapshot');
+    if (!Number.isInteger(snap.host) || snap.host < 0 || snap.host >= snap.seats.length) throw new Error('bad room snapshot');
     const room = new Room(snap.code, onEmpty);
     room.stage = snap.stage;
     room.host = snap.host;
@@ -484,15 +487,23 @@ export class Room {
       for (const e of events) {
         const plan = planTalk(e, view, this.memories[seat], (x) => this.seatName(x), Math.random);
         if (!plan) continue;
+        const prev = this.lastBotChat.get(seat);
         this.lastBotChat.set(seat, now);
-        this.speak(seat, plan).catch((e) => console.error('[bot] speak failed', e));
+        // The throttle holds while speak runs, but only a posted line keeps it.
+        const release = () => (prev === undefined ? this.lastBotChat.delete(seat) : this.lastBotChat.set(seat, prev));
+        this.speak(seat, plan)
+          .then((said) => said || release())
+          .catch((e) => {
+            release();
+            console.error('[bot] speak failed', e);
+          });
         break;
       }
     });
   }
 
-  /** Posts a bot's line: fixed small talk directly; strategic talk after Jev decides what to say. */
-  private async speak(seat: number, plan: TalkPlan) {
+  /** Posts a bot's line: fixed small talk directly; strategic talk after Jev decides what to say. Resolves to whether a line was posted. */
+  private async speak(seat: number, plan: TalkPlan): Promise<boolean> {
     const started = Date.now();
     let line: string | null;
     if (plan.kind === 'line') line = plan.line;
@@ -503,7 +514,7 @@ export class Room {
       this.botStats.talk[answer ? 'jev' : 'heuristic']++;
       line = plan.options[key].line;
     }
-    if (!line) return; // chose to stay quiet
+    if (!line) return false; // chose to stay quiet
     const delay = Math.max(0, 900 + Math.random() * 1800 - (Date.now() - started));
     setTimeout(() => {
       try {
@@ -514,6 +525,7 @@ export class Room {
         console.error('[room] chat failed', e);
       }
     }, delay);
+    return true;
   }
 
   // ---------- chat ----------

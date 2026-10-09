@@ -7,6 +7,7 @@ import { botAction } from '../shared/bot';
 import type { RoomView, ServerMsg } from '../shared/protocol';
 import { legalFromView } from '../shared/view';
 import { config } from '../server/config';
+import { Room, type Conn } from '../server/room';
 import { startServer, type RunningServer } from '../server/index';
 
 const dir = mkdtempSync(join(tmpdir(), 'pov-sh-db-'));
@@ -138,5 +139,36 @@ describe('persistence', () => {
     server = await boot();
     expect(server.rooms.has(code)).toBe(false);
     await server.close();
+  });
+
+  describe('Room.restore validation', () => {
+    function snap() {
+      const conn: Conn = { id: 1, room: null, seat: -1, send: () => {} };
+      const room = new Room('ABCD', () => {});
+      room.join(conn, 'Human');
+      for (let i = 0; i < 4; i++) room.addBot(conn);
+      expect(room.start(conn)).toBeNull();
+      const s = JSON.parse(JSON.stringify(room.snapshot()));
+      room.close();
+      return s;
+    }
+    const restore = (s: unknown) => Room.restore(s as never, () => {});
+
+    it('restores a valid snapshot', () => {
+      const room = restore(snap());
+      expect(room.seats.length).toBe(5);
+      room.close();
+    });
+    it('rejects an unknown stage', () => {
+      expect(() => restore({ ...snap(), stage: 'bogus' })).toThrow('bad room snapshot');
+    });
+    it('rejects a seat count that differs from the game players', () => {
+      const s = snap();
+      s.seats.pop();
+      expect(() => restore(s)).toThrow('bad room snapshot');
+    });
+    it('rejects a host outside the seats', () => {
+      for (const host of [-1, 5, 1.5, '0']) expect(() => restore({ ...snap(), host })).toThrow('bad room snapshot');
+    });
   });
 });
