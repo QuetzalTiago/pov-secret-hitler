@@ -223,3 +223,74 @@ test('leaving a table resets client state and a new table works afterwards', asy
   await expect(page.locator('#home')).toHaveClass(/hidden/);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('a legal action cannot be double-sent while the first is in flight', async ({ page, baseURL }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  // Count outgoing 'act' messages.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __acts: unknown[] };
+    w.__acts = [];
+    const orig = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (this: WebSocket, data: Parameters<WebSocket['send']>[0]) {
+      try {
+        const m = JSON.parse(String(data));
+        if (m && m.t === 'act') w.__acts.push(m);
+      } catch {
+        /* not JSON */
+      }
+      return orig.call(this, data);
+    };
+  });
+  const actCount = () => page.evaluate(() => (window as unknown as { __acts: unknown[] }).__acts.length);
+  const LEGAL = /^(seat-\d+|vote-ja|vote-nein|hand-\d+|veto|peek-\d+)$/;
+
+  await page.goto(baseURL!);
+  await page.fill('#name', 'Ada');
+  await page.click('#create');
+  await expect(page.locator('#room-code')).toHaveText(/^[A-Z]{4}$/);
+  for (let i = 0; i < 4; i++) await page.click('#add-bot');
+  await expect(page.locator('#seats li')).toHaveCount(5);
+  await page.click('#start');
+  await expect(page.locator('#hud')).toBeVisible();
+
+  // Play through the night until the human has a legal action (vote, nomination, ...).
+  let legal: string[] = [];
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    const s = await state(page);
+    legal = s.actions.filter((a) => LEGAL.test(a));
+    if (legal.length) break;
+    if (s.phase === 'night') {
+      const id = s.ids.includes('role-card') ? 'role-card' : s.ids.includes('envelope') ? 'envelope' : null;
+      if (id) await page.evaluate((i) => (window as unknown as { __sh: Hooks }).__sh.click(i), id);
+    }
+    await page.waitForTimeout(300);
+  }
+  expect(legal.length, 'human should reach a legal action').toBeGreaterThan(0);
+  const before = await actCount(); // night acks are 'act' messages too
+
+  const target = legal.includes('vote-ja') ? 'vote-ja' : legal[0];
+  const second = legal.includes('vote-nein') ? 'vote-nein' : target;
+  const result = await page.evaluate(
+    ([a, b]) => {
+      const h = (window as unknown as { __sh: Hooks }).__sh;
+      const first = h.click(a);
+      const idsAfter = h.interactables();
+      const again = h.click(b);
+      const againSame = h.click(a);
+      return { first, again, againSame, idsAfter };
+    },
+    [target, second],
+  );
+  expect(result.first).toBe(true);
+  expect(result.again).toBe(false);
+  expect(result.againSame).toBe(false);
+  expect(result.idsAfter.filter((i) => LEGAL.test(i))).toEqual([]);
+  expect(await actCount()).toBe(before + 1);
+
+  // After the server answers, the guard releasing must not cause any extra send.
+  await page.waitForTimeout(1500);
+  expect(await actCount()).toBe(before + 1);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
