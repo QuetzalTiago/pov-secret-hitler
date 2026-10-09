@@ -80,10 +80,25 @@ Re-measure after each of #90-#94 with `npm run perf -- --gpu --seconds 10` on an
 
 Geometries and textures now stay flat across rematches (they grew by 160 geometries per round before). Programs also dropped from 46 to 33 because disposed materials free their shader programs. The textures.ts cache is an LRU capped at 64 entries.
 
+### After #91 (per-patron PointLight removed)
+
+#91 replaced the per-patron PointLight with an additive glow sprite plus a red emissive tint, and this was re-measured with `npx tsx scripts/perf.ts --players 5,10 --seconds 4` in SwiftShader mode on the same machine (counts only, fps is not meaningful there).
+
+| players | scene | draw calls before | after | programs before | after |
+|---|---|---|---|---|---|
+| 5 | lobby | 444 | 443 | 31 | 8 |
+| 5 | night | 372 | 371 | 32 | 8 |
+| 5 | vote | 424 | 422 | 32 | 8 |
+| 10 | lobby | 598 | 595 | 65 | 8 |
+| 10 | night | 582 | 568 | 65 | 8 |
+| 10 | vote | 691 | 682 | 65 | 8 |
+
+Programs are now a constant 8 for any player count and scene (no light-count recompiles on join/leave), and draw calls barely move, as expected, since the lights didn't add draw calls. Visual check: the night red glow on known teammates is still clearly visible (a bit more orange since nothing lights the patron's front anymore).
+
 ## Risks and open questions
 
 - Rendering numbers above are measured (see Perf baseline); fps in headless Chromium is vsync-capped and sensitive to machine load, so draw calls/programs/geometries are the reliable comparison.
-- Removing the per-patron PointLight changes the look of the night-phase red glow; needs a visual check.
+- The night-phase red glow is now a sprite plus emissive tint (#91); checked visually against before/after screenshots.
 - Unverified: whether finished one-shot WebAudio nodes are garbage-collected in every browser.
 
 ## Follow-up tracking
@@ -95,7 +110,7 @@ Fleet task **LOCAL-bc050340** ("Code review follow-ups: client bugs & rendering 
 3. #88 In-flight action guard (after #87).
 4. #89 Small UI/net fixes (after #87).
 5. #90 Dispose helper + GPU leak fixes + duplicate envelope (after #86).
-6. #91 Replace per-patron PointLight (after #86).
+6. #91 Replace per-patron PointLight (after #86) (done).
 7. #92 Per-frame allocation cleanup (after #86).
 8. #93 Renderer settings: preserveDrawingBuffer, shadows, pixel ratio on resize (after #86, #91).
 9. #94 Draw-call reduction via instancing/shared geometry, re-measured against #86 (after #90, #93).
