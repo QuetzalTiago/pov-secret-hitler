@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { decide } from '../server/brain';
 import { askChoice, jevStats } from '../server/jev';
 import { config } from '../server/config';
@@ -176,6 +176,15 @@ describe('table talk', () => {
   // Imported lazily so the module graph matches the server's.
   const load = () => import('../server/botchat');
 
+  // What a bot types follows SH_BOT_LANG; what Jev reads is always English. These tests pin the English
+  // wording, so set the language explicitly rather than riding on whatever the default happens to be.
+  beforeEach(() => {
+    config.llm.lang = 'en';
+  });
+  afterEach(() => {
+    config.llm.lang = 'es-AR';
+  });
+
   it('a Liberal President betrayed by the Chancellor blames them (built-in fallback)', async () => {
     const { planTalk, heuristicTalk } = await load();
     const m = newMemory(0, 5);
@@ -188,6 +197,12 @@ describe('table talk', () => {
     expect(Object.keys(plan.options).sort()).toEqual(['blame_partner', 'silent', 'three_fascists', 'truth']);
     for (let i = 0; i < 20; i++) expect(heuristicTalk(plan.options, Math.random)).toBe('blame_partner');
     expect(plan.options.blame_partner.line).toBe('I passed P3 a Liberal. They chose Fascist. Remember that.');
+    // The same plan at a Rioplatense table: the player-facing line changes, the strategy does not.
+    config.llm.lang = 'es-AR';
+    const es = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 0), m, name, () => 0.5)!;
+    if (es.kind !== 'choice') throw new Error('expected a choice');
+    expect(es.options.blame_partner.line).toBe('a P3 le pasé una liberal y eligió la facha. Acordate de esto.');
+    expect(es.options.blame_partner.description).toBe(plan.options.blame_partner.description);
     // The request carries no hidden roles for a Liberal speaker.
     expect(JSON.stringify(plan.state)).not.toMatch(/"knownRole":"(fascist|hitler)"/);
   });
@@ -213,6 +228,10 @@ describe('table talk', () => {
     const { planTalk } = await load();
     const s = setup(5, { president: 0 });
     const plan = planTalk({ k: 'executed', by: 2, target: 1 }, viewFor(s, 2), newMemory(2, 5), name, () => 0);
-    expect(plan).toEqual({ kind: 'line', line: 'Sorry, P1.' });
+    expect(plan).toMatchObject({ kind: 'line', line: 'Sorry, P1.' });
+    config.llm.lang = 'es-AR';
+    expect(planTalk({ k: 'executed', by: 2, target: 1 }, viewFor(s, 2), newMemory(2, 5), name, () => 0)).toMatchObject({ line: 'perdón, P1.' });
+    // The situation travels with the plan so bottalk.ts can write the line in character.
+    expect((plan as { situation: string }).situation).toContain('P1');
   });
 });

@@ -54,6 +54,11 @@ These keep the game fair and safe to host on the internet:
    with no I/O, randomness only through the stored RNG state, and tests for every rule.
 4. **Validate all input.** New client messages need a strict validator in `shared/protocol.ts` and a test.
 5. **Bots play fair.** Bot logic may only use the bot's own `GameView` and its memory, never the full state.
+   This covers what they *say* as well as what they do: prompts for bot chat are built from that same seat's
+   view, and generated lines are sanitized so a bot cannot reveal its own hidden role. Anything that reaches
+   a text model goes through `server/bottalk.ts`; keep it that way and extend the tests in
+   `tests/bot-reactions.test.ts`. Bot chat must always degrade to the built-in template lines when no API key
+   is set or the provider fails — a game must never depend on it.
 6. **Assets must be openly licensed and credited.** Prefer procedural geometry, canvas textures and
    synthesized sound. Any added file must be CC0, public domain, or a license compatible with this project's,
    with author, source and license recorded in the matching `CREDITS.md` and the in-game credits.

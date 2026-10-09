@@ -1,13 +1,21 @@
 // One room: lobby, game loop, bots, timers, disconnect takeover, chat.
+// Bots are chat participants, not just actors: they answer when a player talks to them, hold grudges,
+// get angry at being ignored, and start accusations of their own. See bottalk.ts for how a line is written.
 import { randomBytes, randomInt } from 'node:crypto';
 import { RuleError, createGame, legalActions, pendingActors, reduce } from '../shared/engine';
 import type { RoomView, SeatInfo, ServerMsg } from '../shared/protocol';
 import { MAX_PLAYERS, MIN_PLAYERS } from '../shared/rules';
 import type { ActionBody, GameEvent, GameState, Phase } from '../shared/types';
-import { newMemory, observe, type Memory } from '../shared/tracker';
+import { newMemory, observe, profiles, type Memory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
 import { heuristicTalk, planTalk, type TalkPlan } from './botchat';
+import {
+  bump, cool, newMood, readMessage, writeAccusation, writeIgnored, writeIntent, writeReply,
+  type ChatLine, type Mood, type Suspicion, type Trigger,
+} from './bottalk';
 import { askChoice } from './jev';
+import { llmEnabled } from './llm';
+import { BOT_NAMES, personaFor, type Persona } from './persona';
 import { decide, decideNow } from './brain';
 import { config } from './config';
 
@@ -28,10 +36,6 @@ interface Seat {
   /** Pressed Leave during a game (as opposed to a dropped socket). */
   left: boolean;
 }
-
-const BOT_NAMES = [
-  'Vera', 'Otto', 'Mabel', 'Rex', 'Ingrid', 'Silas', 'Dolores', 'Hank', 'Pearl', 'Cyrus', 'Greta', 'Lou',
-];
 
 export const PHASE_SECONDS: Record<Phase, number> = {
   night: 20,
@@ -63,7 +67,16 @@ export class Room {
   private memories: Memory[] = [];
   private thinking = new Set<number>();
   private lastBotChat = new Map<number, number>();
-  botStats = { jev: 0, heuristic: 0, trivial: 0, talk: { jev: 0, heuristic: 0 } };
+  /** What the table has said recently. Bots read it so their replies follow the conversation. */
+  private transcript: ChatLine[] = [];
+  /** Per-seat feelings: anger, grudges, who owes them an answer. Rebuilt on restore (nobody stays angry across a restart). */
+  private moods = new Map<number, Mood>();
+  private personas = new Map<number, Persona>();
+  /** Drives impatience and unprompted accusations while nothing else is happening. */
+  private moodTimer: NodeJS.Timeout | null = null;
+  /** Written lines this game, against config.llm.maxCallsPerGame. */
+  private written = 0;
+  botStats = { jev: 0, heuristic: 0, trivial: 0, talk: { jev: 0, heuristic: 0 }, written: 0 };
 
   constructor(public code: string, private onEmpty: (room: Room) => void) {}
 
@@ -203,6 +216,7 @@ export class Room {
     this.closed = true;
     if (this.timer) clearTimeout(this.timer);
     if (this.botTimer) clearTimeout(this.botTimer);
+    this.stopMoodTimer();
     for (const t of this.disconnectTimers.values()) clearTimeout(t);
     for (const s of this.seats) if (s.conn) s.conn.room = null;
     this.onEmpty(this);
@@ -214,6 +228,7 @@ export class Room {
     this.closed = true;
     if (this.timer) clearTimeout(this.timer);
     if (this.botTimer) clearTimeout(this.botTimer);
+    this.stopMoodTimer();
     for (const t of this.disconnectTimers.values()) clearTimeout(t);
   }
 
@@ -253,6 +268,7 @@ export class Room {
     for (const s of room.seats) if (!s.bot) room.startGrace(s);
     room.lastActivity = now;
     room.resetTimerIfNeeded(); // fresh phase timer
+    if (room.stage === 'game') room.startMoodTimer();
     return room;
   }
 
@@ -267,7 +283,8 @@ export class Room {
     if (this.stage !== 'lobby') return 'The game has started.';
     if (this.seats.length >= MAX_PLAYERS) return 'The table is full.';
     const used = new Set(this.seats.map((s) => s.name));
-    const name = BOT_NAMES.find((n) => !used.has(n)) ?? `Bot ${this.seats.length}`;
+    const pool = BOT_NAMES[config.llm.lang] ?? BOT_NAMES.en;
+    const name = pool.find((n) => !used.has(n)) ?? `Bot ${this.seats.length}`;
     this.seats.push({ name, token: randomBytes(16).toString('hex'), conn: null, bot: true, botControl: true, disconnectedAt: null, left: false });
     this.broadcast();
     return null;
@@ -294,6 +311,8 @@ export class Room {
     this.game = createGame(this.seats.map((s) => s.name), randomInt(0, 2 ** 32));
     this.memories = this.seats.map((_, i) => newMemory(i, this.seats.length));
     this.thinking.clear();
+    this.resetTalk();
+    this.startMoodTimer();
     this.after([{ k: 'nightStart' }]);
     return null;
   }
@@ -310,6 +329,8 @@ export class Room {
       else s.botControl = s.bot;
     }
     this.clearTimer();
+    this.stopMoodTimer();
+    this.resetTalk();
     this.broadcast();
     return null;
   }
@@ -341,6 +362,7 @@ export class Room {
     const g = this.game;
     if (g) {
       this.memories.forEach((m, seat) => observe(m, viewFor(g, seat), events));
+      this.feel(events);
       this.botTalk(events);
     }
     this.resetTimerIfNeeded();
@@ -475,6 +497,73 @@ export class Room {
     return this.seats[seat]?.name ?? `Seat ${seat + 1}`;
   }
 
+  // ---------- table talk ----------
+
+  private resetTalk() {
+    this.transcript = [];
+    this.moods.clear();
+    this.personas.clear();
+    this.lastBotChat.clear();
+    this.written = 0;
+  }
+
+  private personaOf(seat: number): Persona {
+    let p = this.personas.get(seat);
+    if (!p) {
+      p = personaFor(this.seatName(seat), config.llm.lang);
+      this.personas.set(seat, p);
+    }
+    return p;
+  }
+
+  private moodOf(seat: number): Mood {
+    let m = this.moods.get(seat);
+    if (!m) {
+      m = newMood();
+      this.moods.set(seat, m);
+    }
+    return m;
+  }
+
+  /** A bot may write a generated line only while the per-game budget lasts. */
+  private canWrite(): boolean {
+    return llmEnabled() && this.written < config.llm.maxCallsPerGame;
+  }
+
+  private talkContext(seat: number) {
+    return {
+      view: viewFor(this.game!, seat),
+      memory: this.memories[seat],
+      persona: this.personaOf(seat),
+      mood: this.moodOf(seat),
+      name: (x: number) => this.seatName(x),
+      transcript: this.transcript,
+      lang: config.llm.lang,
+    };
+  }
+
+  /** Seats that are permanent bots and still allowed to speak. */
+  private talkingBots(): number[] {
+    const g = this.game;
+    return this.seats
+      .map((_, seat) => seat)
+      .filter((seat) => this.seats[seat].bot && (!g || g.phase === 'gameOver' || g.players[seat]?.alive));
+  }
+
+  /** Posts a line to everyone and records it so bots can follow the conversation. */
+  private postChat(seat: number, text: string) {
+    if (this.closed || !text) return;
+    const name = this.seats[seat]?.name ?? '?';
+    const msg: ServerMsg = { t: 'chat', seat, name, text };
+    for (const x of this.seats) x.conn?.send(msg);
+    this.remember({ seat, name, text, at: Date.now() });
+  }
+
+  private remember(line: ChatLine) {
+    this.transcript.push(line);
+    if (this.transcript.length > 24) this.transcript.shift();
+  }
+
   /** Permanent bots chat about what just happened (from their own point of view). */
   private botTalk(events: GameEvent[]) {
     const g = this.game;
@@ -502,30 +591,62 @@ export class Room {
     });
   }
 
-  /** Posts a bot's line: fixed small talk directly; strategic talk after Jev decides what to say. Resolves to whether a line was posted. */
+  /**
+   * Posts a bot's line. Jev (or the built-in strategy) picks the intent; the text model writes it in the
+   * bot's own voice, falling back to the scripted template line whenever it cannot.
+   * Resolves to whether a line was posted.
+   */
   private async speak(seat: number, plan: TalkPlan): Promise<boolean> {
     const started = Date.now();
     let line: string | null;
-    if (plan.kind === 'line') line = plan.line;
-    else {
+    let intent: string | null = null;
+    if (plan.kind === 'line') {
+      line = plan.line;
+      intent = plan.line;
+    } else {
       const criteria = Object.fromEntries(Object.entries(plan.options).map(([k, o]) => [k, o.description]));
       const answer = await askChoice(plan.state, plan.instructions, criteria, fetch, 2);
       const key = answer && answer.choice in plan.options ? answer.choice : heuristicTalk(plan.options, Math.random);
       this.botStats.talk[answer ? 'jev' : 'heuristic']++;
-      line = plan.options[key].line;
+      const chosen = plan.options[key];
+      line = chosen.line;
+      intent = chosen.description;
     }
     if (!line) return false; // chose to stay quiet
+    if (this.game && this.canWrite()) {
+      this.written++;
+      this.botStats.written++;
+      try {
+        line = await writeIntent(this.talkContext(seat), plan.situation, intent ?? line, line);
+      } catch (e) {
+        console.error('[bot] writeIntent failed', e);
+      }
+    }
     const delay = Math.max(0, 900 + Math.random() * 1800 - (Date.now() - started));
+    this.sayLater(seat, line, delay);
+    return true;
+  }
+
+  /** Types a line after a human-looking pause, re-checking that the room is still alive. */
+  private sayLater(seat: number, text: string, delay: number) {
     setTimeout(() => {
       try {
         if (this.closed) return;
-        const msg: ServerMsg = { t: 'chat', seat, name: this.seats[seat]?.name ?? '?', text: line };
-        for (const x of this.seats) x.conn?.send(msg);
+        this.postChat(seat, text);
+        const mood = this.moodOf(seat);
+        mood.lastSpokeAt = Date.now();
+        cool(mood);
+        this.noteAwaiting(seat, text);
       } catch (e) {
         console.error('[room] chat failed', e);
       }
     }, delay);
-    return true;
+  }
+
+  /** If a bot named someone in its line, it now expects an answer from them. */
+  private noteAwaiting(seat: number, text: string) {
+    const target = this.seats.findIndex((s, i) => i !== seat && new RegExp(`\\b${s.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text));
+    if (target >= 0) this.moodOf(seat).awaiting = { seat: target, at: Date.now() };
   }
 
   // ---------- chat ----------
@@ -538,8 +659,190 @@ export class Room {
     }
     const msg: ServerMsg = { t: 'chat', seat, name: this.seats[seat].name, text };
     for (const s of this.seats) s.conn?.send(msg);
+    this.remember({ seat, name: this.seats[seat].name, text, at: Date.now() });
     this.lastActivity = Date.now();
+    this.botsReactTo(seat, text);
     return null;
+  }
+
+  /**
+   * Bots read what was just said and decide whether to answer. Being named, accused or insulted almost
+   * always gets a reply; general table talk only pulls in the chatty ones. At most two bots answer any one
+   * message, so a table of six does not turn into a wall of text.
+   */
+  private botsReactTo(from: number, text: string) {
+    // Only during a game: a bot writes from its own GameView, and in the lobby there is none to write from.
+    if (this.closed || !this.game || this.stage !== 'game' || this.connectedHumans() === 0) return;
+    const now = Date.now();
+    const candidates: { seat: number; trigger: Trigger; chance: number }[] = [];
+    for (const seat of this.talkingBots()) {
+      if (seat === from) continue;
+      const mood = this.moodOf(seat);
+      // Someone answering clears the "nobody listens to me" clock.
+      if (mood.awaiting?.seat === from) mood.awaiting = null;
+      const r = readMessage(text, this.seatName(seat), this.personaOf(seat), mood);
+      // Taking offence happens either way: with no text model a bot cannot answer, but it still remembers.
+      if (r.trigger === 'insulted') bump(mood, from, 0.2 + this.personaOf(seat).temper * 0.3);
+      else if (r.trigger === 'accused') bump(mood, from, 0.15);
+      if (now - (this.lastBotChat.get(seat) ?? 0) < 4000) continue;
+      candidates.push({ seat, trigger: r.trigger, chance: r.chance });
+    }
+    // Without a model nobody can reply, and claiming the chat throttle here would only mute the
+    // event-driven template lines in botTalk().
+    if (!this.canWrite()) return;
+    const replying = candidates
+      .filter((c) => Math.random() < c.chance)
+      .sort((a, b) => b.chance - a.chance)
+      .slice(0, 2);
+    for (const [i, c] of replying.entries()) {
+      this.lastBotChat.set(c.seat, now);
+      this.reply(c.seat, from, text, c.trigger, i).catch((e) => console.error('[bot] reply failed', e));
+    }
+  }
+
+  private async reply(seat: number, from: number, text: string, trigger: Trigger, order: number) {
+    this.written++;
+    this.botStats.written++;
+    const started = Date.now();
+    const line = await writeReply(this.talkContext(seat), this.seatName(from), text, trigger);
+    if (!line) {
+      this.lastBotChat.delete(seat);
+      return;
+    }
+    // Reading, then typing: the second bot to pile on waits a little longer.
+    const think = 600 + order * 1400 + text.length * 15 + Math.random() * 1200;
+    this.sayLater(seat, line, Math.max(0, think - (Date.now() - started)));
+  }
+
+  // ---------- impatience and unprompted accusations ----------
+
+  /**
+   * While the table is quiet, bots still have an inner life: they get annoyed at whoever ignored them and
+   * they start accusations nobody asked for. This is what makes them feel like players rather than a
+   * commentary track on the game events.
+   */
+  private startMoodTimer() {
+    this.stopMoodTimer();
+    if (this.closed) return;
+    this.moodTimer = setInterval(() => {
+      try {
+        this.moodTick();
+      } catch (e) {
+        console.error('[room] moodTick failed', e);
+      }
+    }, 9000);
+    this.moodTimer.unref?.();
+  }
+
+  private stopMoodTimer() {
+    if (this.moodTimer) clearInterval(this.moodTimer);
+    this.moodTimer = null;
+  }
+
+  private moodTick() {
+    const g = this.game;
+    if (this.closed || !g || g.phase === 'gameOver' || this.connectedHumans() === 0 || !this.canWrite()) return;
+    const now = Date.now();
+    for (const seat of this.talkingBots()) {
+      const mood = this.moodOf(seat);
+      if (now - (this.lastBotChat.get(seat) ?? 0) < 20000) continue;
+      if (this.complainIgnored(seat, mood, now)) continue;
+      this.maybeAccuse(seat, mood, now);
+    }
+  }
+
+  /** Nobody answered a bot that asked a direct question. Real players take that badly. */
+  private complainIgnored(seat: number, mood: Mood, now: number): boolean {
+    const waiting = mood.awaiting;
+    if (!waiting || now - waiting.at < 25000) return false;
+    // Did they say anything at all since?
+    if (this.transcript.some((l) => l.seat === waiting.seat && l.at > waiting.at)) {
+      mood.awaiting = null;
+      return false;
+    }
+    mood.awaiting = null;
+    if (now - mood.complainedAt < 60000) return false;
+    const persona = this.personaOf(seat);
+    if (Math.random() > 0.35 + persona.temper * 0.5) return false;
+    mood.complainedAt = now;
+    bump(mood, waiting.seat, 0.3 + persona.temper * 0.2);
+    this.lastBotChat.set(seat, now);
+    this.written++;
+    this.botStats.written++;
+    writeIgnored(this.talkContext(seat), waiting.seat)
+      .then((line) => (line ? this.sayLater(seat, line, 400 + Math.random() * 900) : this.lastBotChat.delete(seat)))
+      .catch((e) => {
+        this.lastBotChat.delete(seat);
+        console.error('[bot] writeIgnored failed', e);
+      });
+    return true;
+  }
+
+  /**
+   * Says something about another player with nobody having prompted it. Most of what gets said at a real
+   * table is this: a passing read ("ese está raro"), a dig at whoever has gone silent, and now and then a
+   * full accusation when the evidence is actually there.
+   */
+  private maybeAccuse(seat: number, mood: Mood, now: number) {
+    const g = this.game;
+    if (!g) return;
+    const view = viewFor(g, seat);
+    const fascist = view.yourRole !== 'liberal';
+    const prof = profiles(this.memories[seat], view);
+    const speakable = prof
+      .filter((p) => p.seat !== seat && g.players[p.seat].alive)
+      // Never hand your own team in: a Fascist knows who its teammates are.
+      .filter((p) => !(fascist && view.players[p.seat].role && view.players[p.seat].role !== 'liberal'));
+    if (!speakable.length) return;
+    const heatOf = (s: number) => (prof[s].suspicion ?? 0) + (mood.grudge.get(s) ?? 0) * 2;
+    const target = speakable.sort((a, b) => heatOf(b.seat) - heatOf(a.seat))[0];
+    const heat = heatOf(target.seat);
+    const persona = this.personaOf(seat);
+
+    // Who has said nothing for a while? Being the quiet one is suspicious in itself.
+    const silent = speakable
+      .filter((p) => !this.transcript.some((l) => l.seat === p.seat && now - l.at < 120000))
+      .sort((a, b) => heatOf(b.seat) - heatOf(a.seat))[0];
+
+    let kind: Suspicion;
+    let target_ = target.seat;
+    if (heat >= 1.8) kind = 'accusation';
+    else if (silent && this.transcript.length >= 4 && Math.random() < 0.4) {
+      kind = 'quiet';
+      target_ = silent.seat;
+    } else if (heat >= 0.7) kind = 'read';
+    else return;
+
+    const chance = kind === 'accusation' ? 0.12 + persona.paranoia * 0.3 : 0.08 + persona.chattiness * 0.22;
+    if (Math.random() > chance) return;
+    this.lastBotChat.set(seat, now);
+    this.written++;
+    this.botStats.written++;
+    writeAccusation(this.talkContext(seat), target_, prof[target_].proof, kind)
+      .then((line) => (line ? this.sayLater(seat, line, 500 + Math.random() * 1500) : this.lastBotChat.delete(seat)))
+      .catch((e) => {
+        this.lastBotChat.delete(seat);
+        console.error('[bot] writeAccusation failed', e);
+      });
+  }
+
+  /** Game events that put a bot in a bad mood: being voted down, being shot, being investigated. */
+  private feel(events: GameEvent[]) {
+    const g = this.game;
+    if (!g) return;
+    for (const e of events) {
+      if (e.k === 'votes') {
+        const nominee = g.nominee ?? g.chancellor;
+        if (nominee === null || e.passed || !this.seats[nominee]?.bot) continue;
+        // The table rejected this bot. It remembers every NEIN.
+        const mood = this.moodOf(nominee);
+        e.votes.forEach((v, s) => v === false && s !== nominee && bump(mood, s, 0.18));
+      } else if (e.k === 'executed' && this.seats[e.target]?.bot) {
+        bump(this.moodOf(e.target), e.by, 0.9);
+      } else if (e.k === 'investigated' && this.seats[e.target]?.bot) {
+        bump(this.moodOf(e.target), e.by, 0.1);
+      }
+    }
   }
 
   // ---------- views ----------
