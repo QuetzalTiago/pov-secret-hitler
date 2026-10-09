@@ -20,11 +20,13 @@ export class Net {
       for (const m of this.queue.splice(0)) ws.send(m);
     };
     ws.onmessage = (e) => {
+      let msg: ServerMsg;
       try {
-        this.onMessage(JSON.parse(e.data as string) as ServerMsg);
+        msg = JSON.parse(e.data as string) as ServerMsg;
       } catch {
-        /* ignore malformed */
+        return; // ignore malformed
       }
+      this.onMessage(msg);
     };
     ws.onclose = () => {
       this.ws = null;
@@ -37,6 +39,7 @@ export class Net {
   send(m: ClientMsg) {
     const s = JSON.stringify(m);
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(s);
-    else if (this.queue.length < 20) this.queue.push(s);
+    // Acts are stale by reconnect time and replaying them could double-send moves.
+    else if (m.t !== 'act' && this.queue.length < 20) this.queue.push(s);
   }
 }

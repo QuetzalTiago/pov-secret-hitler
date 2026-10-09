@@ -26,6 +26,9 @@ const REASONS: Record<string, string> = {
 export class UI {
   private chatOpen = false;
   private room: RoomView | null = null;
+  private copyLabels = new Map<string, string>();
+  private copyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private errorTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private h: UIHandlers) {
     const nameInput = $<HTMLInputElement>('name');
@@ -123,10 +126,13 @@ export class UI {
   /** Copies text, confirming on the button itself (toasts are hidden in the lobby). */
   private copy(text: string, buttonId: string, done: string) {
     const btn = $(buttonId);
-    const label = btn.textContent;
+    // Remember the original label once so repeat clicks don't capture the confirmation text.
+    if (!this.copyLabels.has(buttonId)) this.copyLabels.set(buttonId, btn.textContent ?? '');
+    const label = this.copyLabels.get(buttonId)!;
     const confirm = (msg: string) => {
       btn.textContent = msg;
-      setTimeout(() => (btn.textContent = label), 1800);
+      clearTimeout(this.copyTimers.get(buttonId));
+      this.copyTimers.set(buttonId, setTimeout(() => (btn.textContent = label), 1800));
     };
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).then(() => confirm(done), () => this.selectInvite(confirm));
@@ -260,7 +266,8 @@ export class UI {
     const el = $('lobby-error');
     el.textContent = text;
     el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('hidden'), 5000);
+    clearTimeout(this.errorTimer);
+    this.errorTimer = setTimeout(() => el.classList.add('hidden'), 5000);
     if (!$('hud').classList.contains('hidden')) this.toast(text, 'bad');
   }
 
