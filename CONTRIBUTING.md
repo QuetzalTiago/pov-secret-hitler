@@ -10,12 +10,40 @@ Thanks for helping! Bug reports, ideas, fixes, art and sound improvements are al
 - **Open a pull request** for anything small. For bigger changes (new mechanics, rule variants, big UI
   reworks), please open an issue first so we can agree on the approach.
 
+## Opening a pull request (no permission needed)
+
+Anyone with a GitHub account can contribute; you don't need to be added to the repository.
+
+1. Click **Fork** at the top of [the repository](https://github.com/QuetzalTiago/pov-secret-hitler) to get your
+   own copy.
+2. Clone your fork and create a branch for your change:
+   ```bash
+   git clone https://github.com/<your-username>/pov-secret-hitler.git
+   cd pov-secret-hitler
+   git checkout -b my-change
+   ```
+3. Make your change, run the checks below, commit, and push the branch to your fork:
+   ```bash
+   git push -u origin my-change
+   ```
+4. On GitHub, click **Compare & pull request** (or **Contribute → Open pull request**) and fill in the template.
+
+CI runs automatically on your pull request (typecheck, tests, simulation, build). A maintainer reviews it and
+may ask for changes; push more commits to the same branch to update the PR. If this is your first contribution,
+a maintainer may need to approve the CI run before it starts.
+
+To keep your fork up to date later:
+```bash
+git remote add upstream https://github.com/QuetzalTiago/pov-secret-hitler.git
+git pull upstream main
+```
+
 ## Setup
 
 Requires Node.js 22.5+.
 
 ```bash
-git clone https://github.com/<you>/pov-secret-hitler.git
+git clone https://github.com/<your-username>/pov-secret-hitler.git
 cd pov-secret-hitler
 npm ci
 npm run dev          # server (port 3000), restarts on change
