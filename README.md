@@ -106,10 +106,13 @@ Bots speak **Rioplatense Spanish by default** (`SH_BOT_LANG=es-AR`, which also g
 and template lines); set `SH_BOT_LANG=en` for English. They swear the way players at a real table do — set
 `SH_LLM_PROFANITY=0` if you would rather they did not.
 
-To hear them without opening five browser windows (and to check your key works):
+To hear them without opening five browser windows (and to check your key works), `npm run talk` plays a
+short game and prints the table arguing through it:
 
-```bash
-npm run talk
+```
+  Tomás: sos un pelotudo, me cagaste la partida
+  Moni: dejate de joder tomás si yo puse libe porque vicky me pasó una y una, a mí no me rompas las pelotas
+  Nacho: tomás me pasó las dos facha hermano, hacete cargo, me tiraste el muerto a mí y ahora llorás
 ```
 
 ## Testing

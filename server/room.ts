@@ -627,16 +627,21 @@ export class Room {
     return true;
   }
 
+  /** Types a line into the chat now, and lets the bot's mood settle a little for having said it. */
+  private say(seat: number, text: string) {
+    if (this.closed) return;
+    this.postChat(seat, text);
+    const mood = this.moodOf(seat);
+    mood.lastSpokeAt = Date.now();
+    cool(mood);
+    this.noteAwaiting(seat, text);
+  }
+
   /** Types a line after a human-looking pause, re-checking that the room is still alive. */
   private sayLater(seat: number, text: string, delay: number) {
     setTimeout(() => {
       try {
-        if (this.closed) return;
-        this.postChat(seat, text);
-        const mood = this.moodOf(seat);
-        mood.lastSpokeAt = Date.now();
-        cool(mood);
-        this.noteAwaiting(seat, text);
+        this.say(seat, text);
       } catch (e) {
         console.error('[room] chat failed', e);
       }
@@ -694,13 +699,24 @@ export class Room {
       .filter((c) => Math.random() < c.chance)
       .sort((a, b) => b.chance - a.chance)
       .slice(0, 2);
-    for (const [i, c] of replying.entries()) {
-      this.lastBotChat.set(c.seat, now);
-      this.reply(c.seat, from, text, c.trigger, i).catch((e) => console.error('[bot] reply failed', e));
+    for (const c of replying) this.lastBotChat.set(c.seat, now);
+    // One at a time, not in parallel: a bot that writes while the other's line is still in flight cannot
+    // see it in the transcript, and the two end up saying the same thing in different words.
+    void this.replyInTurn(replying, from, text);
+  }
+
+  private async replyInTurn(replying: { seat: number; trigger: Trigger }[], from: number, text: string) {
+    for (const c of replying) {
+      try {
+        await this.reply(c.seat, from, text, c.trigger);
+      } catch (e) {
+        console.error('[bot] reply failed', e);
+      }
+      if (this.closed) return;
     }
   }
 
-  private async reply(seat: number, from: number, text: string, trigger: Trigger, order: number) {
+  private async reply(seat: number, from: number, text: string, trigger: Trigger) {
     this.written++;
     this.botStats.written++;
     const started = Date.now();
@@ -709,9 +725,10 @@ export class Room {
       this.lastBotChat.delete(seat);
       return;
     }
-    // Reading, then typing: the second bot to pile on waits a little longer.
-    const think = 600 + order * 1400 + text.length * 15 + Math.random() * 1200;
-    this.sayLater(seat, line, Math.max(0, think - (Date.now() - started)));
+    // Reading the message, then typing the answer.
+    const think = 600 + text.length * 15 + Math.random() * 1200;
+    await new Promise((r) => setTimeout(r, Math.max(0, think - (Date.now() - started))));
+    this.say(seat, line);
   }
 
   // ---------- impatience and unprompted accusations ----------

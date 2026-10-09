@@ -7,10 +7,12 @@
 import { config, llmEndpoint } from '../server/config';
 import { llmEnabled, llmStats } from '../server/llm';
 import { Room, type Conn } from '../server/room';
+import { legalFromView, viewFor } from '../shared/view';
 
 const PROVOCATIONS = [
+  'arranquemos, a ver quién se manda una',
   'che a mí me parece que acá alguien está haciendo la cama',
-  'para mí el facho es el primero, miren el historial',
+  'para mí el facho es el que puso la fascista, miren el historial',
   'contestá algo, hace rato que no decís nada',
   'sos un pelotudo, me cagaste la partida',
   'no te creo nada, mentiroso',
@@ -32,17 +34,37 @@ async function main() {
     },
   };
   const room = new Room('TALK', () => {});
-  room.join(conn, 'Vos');
+  room.join(conn, 'Tomás');
   for (let i = 0; i < 5; i++) room.addBot(conn);
   const err = room.start(conn);
   if (err) throw new Error(err);
   console.log(`mesa: ${room.seats.map((s) => s.name).join(', ')}\n`);
+  const board = setInterval(() => {
+    const g = room.game;
+    if (g && g.phase !== 'gameOver') console.log(`  [ liberales ${g.liberal}/5 · fachas ${g.fascist}/6 · ${g.phase} ]`);
+  }, 9000);
+
+  // Play the human seat automatically so the game actually advances: bots are far more interesting once
+  // there are governments, policies and votes on the record to argue about.
+  const autoplay = setInterval(() => {
+    try {
+      const g = room.game;
+      if (!g || g.phase === 'gameOver') return;
+      const legal = legalFromView(viewFor(g, 0));
+      if (legal.length) room.act(conn, legal[Math.floor(Math.random() * legal.length)]);
+    } catch {
+      /* the phase moved on; next tick */
+    }
+  }, 900);
 
   for (const line of PROVOCATIONS) {
     room.chat(conn, line); // the room echoes it back through conn.send, which prints it
-    await sleep(7000); // let the bots read, think and type
+    await sleep(9000); // let the bots read, think and type
+    if (room.game?.phase === 'gameOver') break;
   }
-  await sleep(3000);
+  await sleep(4000);
+  clearInterval(autoplay);
+  clearInterval(board);
 
   console.log(`\nlines written by the model: ${llmStats.ok}, failed: ${llmStats.failed}, filtered: ${llmStats.blocked}`);
   if (llmStats.lastError) console.log(`last error: ${llmStats.lastError}`);

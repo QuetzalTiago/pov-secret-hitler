@@ -234,6 +234,14 @@ describe('text model client', () => {
       const thresholds = Object.fromEntries((sent.safetySettings as { category: string; threshold: string }[]).map((x) => [x.category, x.threshold]));
       expect(thresholds.HARM_CATEGORY_HARASSMENT).toBe('BLOCK_NONE');
       expect(thresholds.HARM_CATEGORY_HATE_SPEECH).toBe('BLOCK_NONE');
+      // Every category name must be one the REST API actually accepts: a single wrong enum makes the whole
+      // request a 400, which silently costs the table its voice. (HARM_CATEGORY_DANGEROUS is the Python SDK
+      // alias and is rejected over REST; the wire name is HARM_CATEGORY_DANGEROUS_CONTENT.)
+      const VALID = [
+        'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT',
+        'HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_CIVIC_INTEGRITY',
+      ];
+      for (const category of Object.keys(thresholds)) expect(VALID, category).toContain(category);
     } finally {
       config.llm.key = '';
     }
