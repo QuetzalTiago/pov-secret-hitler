@@ -1,7 +1,7 @@
 // Procedural low-poly patrons. Original designs: coats, faces and hats vary by seat.
 import * as THREE from 'three';
 import { disposeObject } from './dispose';
-import { textSprite } from './textures';
+import { glowTexture, textSprite } from './textures';
 import { boxLimb } from './world';
 
 const COATS = [0x6b2f2a, 0x2f4a6b, 0x4a5a2a, 0x5a3a6b, 0x7a5a2a, 0x2a5a55, 0x6b4a3a, 0x3a3a46, 0x803a50, 0x55602f];
@@ -30,7 +30,8 @@ export class Character {
   dead = false;
   highlight = 0;
   private highlightTarget = 0;
-  private glow: THREE.PointLight;
+  private glow: THREE.Sprite;
+  private glowAmt = 0;
   private glowTarget = 0;
   hitMeshes: THREE.Object3D[] = [];
 
@@ -144,8 +145,12 @@ export class Character {
     this.tag.renderOrder = 10;
     this.group.add(this.tag);
 
-    this.glow = new THREE.PointLight(0xff1a0a, 0, 1.6, 1.2);
-    this.glow.position.set(0, 1.5, 0.5);
+    // Fake night team glow: sprite aura plus emissive tint, no real light (lights force shader recompiles).
+    this.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('255,40,20'), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+    this.glow.position.set(0, 1.3, -0.05);
+    this.glow.scale.setScalar(1.4);
+    this.glow.renderOrder = 1;
+    this.glow.visible = false;
     this.group.add(this.glow);
   }
 
@@ -380,11 +385,16 @@ export class Character {
 
     // Highlight / death tint.
     this.highlight += (this.highlightTarget - this.highlight) * (1 - Math.exp(-12 * dt));
+    this.glowAmt += (this.glowTarget - this.glowAmt) * k;
+    const h = this.highlight;
+    const g = this.glowAmt;
     this.mats.forEach((m, i) => {
       m.color.copy(this.baseColors[i]).multiplyScalar(1 - this.slump * 0.55);
-      m.emissive.setRGB(this.highlight * 0.35, this.highlight * 0.25, this.highlight * 0.08);
+      m.emissive.setRGB(h * 0.35 + g * 0.45, h * 0.25 + g * 0.05, h * 0.08 + g * 0.03);
     });
-    this.glow.intensity += (this.glowTarget * 4 - this.glow.intensity) * k;
+    const glowMat = this.glow.material as THREE.SpriteMaterial;
+    glowMat.opacity = g * 0.75;
+    this.glow.visible = glowMat.opacity > 0.01;
     (this.tag.material as THREE.SpriteMaterial).opacity = this.dead ? 0.5 : 1;
 
     if (this.bubble) {
