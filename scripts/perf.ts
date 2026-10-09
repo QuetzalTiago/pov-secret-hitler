@@ -2,7 +2,9 @@
 // The server serves the built client from dist/client, so run `npx vite build` first.
 // Usage: tsx scripts/perf.ts [--players 5,10] [--gpu] [--seconds 5]
 //   default: swiftshader (software GL): counts are deterministic, fps/frame times are NOT meaningful.
-//   --gpu:   launches chromium without the swiftshader flags so it can use the machine's real GPU.
+//   --gpu:   launches chromium with --enable-gpu --ignore-gpu-blocklist and a native ANGLE backend
+//            (d3d11 on Windows, gl elsewhere) so headless uses the machine's real GPU; the GL renderer is printed.
+import os from 'node:os';
 import { chromium, type Page } from '@playwright/test';
 import { config } from '../server/config';
 import { startServer } from '../server/index';
@@ -81,7 +83,9 @@ async function reachVote(page: Page): Promise<boolean> {
 
 config.botDelayMs = 300;
 const server = await startServer(0);
-const browser = await chromium.launch(gpu ? {} : { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const gpuArgs = ['--enable-gpu', '--ignore-gpu-blocklist', process.platform === 'win32' ? '--use-angle=d3d11' : '--use-angle=gl'];
+const browser = await chromium.launch({ args: gpu ? gpuArgs : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+let glRenderer = '';
 const errors: string[] = [];
 const rows: string[] = [];
 
@@ -97,6 +101,13 @@ for (const n of players) {
   await page.fill('#name', 'Perf');
   await page.click('#create');
   await page.waitForSelector('#room:not(.hidden)');
+  if (!glRenderer) {
+    glRenderer = await page.evaluate(() => {
+      const gl = document.createElement('canvas').getContext('webgl2');
+      const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+      return gl && ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : 'unknown';
+    });
+  }
   for (let i = 1; i < n; i++) await page.click('#add-bot');
   await page.waitForFunction((c) => document.querySelectorAll('#seats li').length === c, n);
 
@@ -117,7 +128,8 @@ for (const n of players) {
   await ctx.close();
 }
 
-console.log(`Browser: chromium ${browser.version()}, mode: ${gpu ? 'gpu' : 'swiftshader (fps not meaningful)'}\n`);
+console.log(`Browser: chromium ${browser.version()}, mode: ${gpu ? 'gpu' : 'swiftshader (fps not meaningful)'}, GL: ${glRenderer}`);
+console.log(`CPU: ${os.cpus()[0]?.model ?? 'unknown'}, viewport: 1280x720\n`);
 console.log('| players | scene | fps | frame ms | worst ms | draw calls | triangles | programs | geometries | textures |');
 console.log('|---|---|---|---|---|---|---|---|---|---|');
 console.log(rows.join('\n'));
