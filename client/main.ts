@@ -75,6 +75,7 @@ function resetClient() {
 }
 
 net.onOpen = () => {
+  game.connectionReset();
   const s = loadSession();
   if (s) net.send({ t: 'resume', code: s.code, token: s.token });
 };
@@ -103,7 +104,7 @@ net.onMessage = (m: ServerMsg) => {
       if (m.fatal) {
         leaving = false;
         resetClient();
-      }
+      } else game.actionRejected();
       ui.error(m.msg);
       break;
     case 'left':

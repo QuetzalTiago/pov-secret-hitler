@@ -84,6 +84,8 @@ export class Game {
   private cardsDone = false;
   /** Set when you pick a player, so your pointing arm drops immediately instead of waiting for the server. */
   private pickedPlayer = false;
+  /** The action we sent and are waiting on; blocks re-sends until the view moves on, the server rejects it, or it times out. */
+  private inFlight: { key: string; at: number } | null = null;
   private myVote: boolean | null = null;
   private reveal: { votes: (boolean | null)[]; until: number } | null = null;
   private pendingIndex: number | null = null;
@@ -201,8 +203,6 @@ export class Game {
     const prevRound = this.view?.round;
     this.room = room;
     this.view = room.game;
-    this.cardsDone = false;
-    this.pickedPlayer = false;
     const n = room.game ? room.game.players.length : room.seats.length;
     this.relayout(n, room.you);
     this.syncCharacters();
@@ -224,12 +224,48 @@ export class Game {
       this.clearTable();
     }
     this.deadlineAt = room.deadlineMs === null ? null : performance.now() + room.deadlineMs;
+    // The server has answered once the state our action was for has changed.
+    if (this.inFlight && this.flightKey() !== this.inFlight.key) this.settle();
     this.refreshInteractables();
-    this.ui.setPrompt(this.promptText(), !!v && v.you !== null && v.pending.includes(v.you) && v.phase !== 'gameOver');
+    this.ui.setPrompt(this.promptText(), this.promptActive());
     if (v?.phase === 'gameOver') this.ui.showGameOver(v, room);
     else this.ui.hideGameOver();
     const me = v?.players[room.you];
     this.ui.setChatEnabled(!v || v.phase === 'gameOver' || !!me?.alive);
+  }
+
+  /** The state our in-flight action answers; null with no game. */
+  private flightKey(): string | null {
+    const v = this.view;
+    const me = this.room?.you;
+    if (!v || me === undefined) return null;
+    return `${v.phase}:${v.round}:${v.pending.includes(me)}`;
+  }
+
+  private promptActive(): boolean {
+    const v = this.view;
+    return !!v && v.you !== null && v.pending.includes(v.you) && v.phase !== 'gameOver';
+  }
+
+  private settle() {
+    this.inFlight = null;
+    this.cardsDone = false;
+    this.pickedPlayer = false;
+  }
+
+  /** The server refused our action (non-fatal error): undo the optimistic state and let the player retry. */
+  actionRejected() {
+    if (!this.inFlight) return;
+    this.settle();
+    this.myVote = null;
+    this.pendingIndex = null;
+    this.refreshInteractables();
+    this.ui.setPrompt(this.promptText(), this.promptActive());
+  }
+
+  /** The socket reopened: an in-flight action may have been lost, and the server will resend state. */
+  connectionReset() {
+    this.actionRejected();
   }
 
   private clearTable() {
@@ -252,8 +288,7 @@ export class Game {
     this.room = null;
     this.view = null;
     this.clearTable();
-    this.cardsDone = false;
-    this.pickedPlayer = false;
+    this.settle();
     this.speaker = null;
     this.deadlineAt = null;
     this.lastSecond = -1;
@@ -637,6 +672,7 @@ export class Game {
   }
 
   private act(a: ActionBody, index?: number) {
+    if (this.inFlight) return;
     if (a.type === 'presDiscard' || a.type === 'chancEnact' || a.type === 'peekDone') this.cardsDone = true;
     if (a.type === 'nominate' || a.type === 'investigate' || a.type === 'specialElect') this.pickedPlayer = true;
     if (index !== undefined) this.pendingIndex = index;
@@ -645,7 +681,10 @@ export class Game {
       sfx.slap();
       this.world.addShake(0.3);
     }
+    const key = this.flightKey();
+    if (key !== null) this.inFlight = { key, at: this.now };
     this.send(a);
+    this.refreshInteractables();
   }
 
   private refreshInteractables() {
@@ -704,7 +743,7 @@ export class Game {
         onClick: () => this.ui.toast(`${this.name(seat)} is term-limited: ${this.limitReason(seat)}.`, 'bad'),
       });
     }
-    const legal = legalFromView(v);
+    const legal = this.inFlight ? [] : legalFromView(v);
     for (const a of legal) {
       switch (a.type) {
         case 'nominate':
@@ -1157,6 +1196,7 @@ export class Game {
 
   update(dt: number) {
     this.now += dt;
+    if (this.inFlight && this.now - this.inFlight.at > 5) this.actionRejected();
     const v = this.view;
     this.world.setNight(v?.phase === 'night');
     this.world.setOwnOutfit(v?.yourRole === 'hitler');
