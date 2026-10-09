@@ -168,7 +168,7 @@ export class Room {
     const [removed] = this.seats.splice(seat, 1);
     this.clearDisconnectTimer(removed.token);
     this.seats.forEach((s, i) => s.conn && (s.conn.seat = i));
-    if (this.host === seat || this.host >= this.seats.length || this.seats[this.host]?.bot) {
+    if (this.host === seat) {
       this.host = Math.max(0, this.seats.findIndex((s) => !s.bot));
     } else if (this.host > seat) {
       this.host -= 1;
