@@ -168,6 +168,18 @@ export class UI {
     this.hideGameOver();
   }
 
+  resetTable() {
+    $('chat-log').replaceChildren();
+    $('lobby-chat').replaceChildren();
+    $('confirm-leave').classList.add('hidden');
+    this.hideGameOver();
+    this.setTimer(null, false);
+    const input = $<HTMLInputElement>('chat-input');
+    input.blur();
+    input.value = '';
+    this.chatOpen = false;
+  }
+
   showRoom(room: RoomView) {
     this.room = room;
     $('room-code').textContent = room.code;

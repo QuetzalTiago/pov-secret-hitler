@@ -31,17 +31,24 @@ function saveSession(s: Session | null) {
   }
 }
 
+let leaving = false; // Leave sent, `left` not yet received: ignore in-flight room/chat updates
 const net = new Net();
 const ui = new UI({
-  create: (name) => net.send({ t: 'create', name }),
-  join: (code, name) => net.send({ t: 'join', code, name }),
+  create: (name) => {
+    leaving = false;
+    net.send({ t: 'create', name });
+  },
+  join: (code, name) => {
+    leaving = false;
+    net.send({ t: 'join', code, name });
+  },
   addBot: () => net.send({ t: 'addBot' }),
   removeBot: () => net.send({ t: 'removeBot' }),
   start: () => net.send({ t: 'start' }),
   leave: () => {
     net.send({ t: 'leave' });
-    saveSession(null);
-    ui.showHome();
+    leaving = true;
+    resetClient();
   },
   chat: (text) => net.send({ t: 'chat', text }),
   rematch: () => net.send({ t: 'rematch' }),
@@ -59,6 +66,14 @@ interactor.cardMode = () => game.cardMode();
 let room: RoomView | null = null;
 let frames = 0;
 
+function resetClient() {
+  room = null;
+  saveSession(null);
+  game.reset();
+  ui.resetTable();
+  ui.showHome();
+}
+
 net.onOpen = () => {
   const s = loadSession();
   if (s) net.send({ t: 'resume', code: s.code, token: s.token });
@@ -67,32 +82,33 @@ net.onStatus = (s) => ui.setStatus(s);
 net.onMessage = (m: ServerMsg) => {
   switch (m.t) {
     case 'welcome':
+      leaving = false;
       saveSession({ code: m.code, token: m.token });
       // Drop ?join= so a reload resumes the seat instead of re-joining.
       if (location.search.includes('join=')) history.replaceState(null, '', location.pathname);
       break;
     case 'room':
+      if (leaving) break;
       room = m.room;
       ui.showRoom(m.room);
       game.onRoom(m.room);
       interactor.setLockable(m.room.stage === 'game' && m.room.game?.phase !== 'gameOver');
       break;
     case 'chat':
+      if (leaving) break;
       ui.addChat(m.name, m.text, m.seat === room?.you);
       if (m.seat !== room?.you) game.onChat(m.seat, m.text);
       break;
     case 'error':
       if (m.fatal) {
-        saveSession(null);
-        room = null;
-        ui.showHome();
+        leaving = false;
+        resetClient();
       }
       ui.error(m.msg);
       break;
     case 'left':
-      room = null;
-      saveSession(null);
-      ui.showHome();
+      leaving = false;
+      resetClient();
       break;
     case 'pong':
       break;

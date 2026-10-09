@@ -202,13 +202,7 @@ export class Game {
       this.reconcilePool();
       this.syncTiles(prevPhase === undefined);
     } else {
-      this.tiles = { liberal: 0, fascist: 0 };
-      this.tokenMover.set(this.board.slot('tracker', 0).setY(0.014));
-      this.board.liberalTiles.concat(this.board.fascistTiles).forEach((t) => (t.visible = false));
-      this.pool.forEach((p) => (p.where = 'pile'));
-      this.myVote = null;
-      this.reveal = null;
-      this.envelopeOpen = false;
+      this.clearTable();
     }
     this.deadlineAt = room.deadlineMs === null ? null : performance.now() + room.deadlineMs;
     this.refreshInteractables();
@@ -217,6 +211,36 @@ export class Game {
     else this.ui.hideGameOver();
     const me = v?.players[room.you];
     this.ui.setChatEnabled(!v || v.phase === 'gameOver' || !!me?.alive);
+  }
+
+  private clearTable() {
+    this.tiles = { liberal: 0, fascist: 0 };
+    this.tokenMover.set(this.board.slot('tracker', 0).setY(0.014));
+    this.board.liberalTiles.concat(this.board.fascistTiles).forEach((t) => (t.visible = false));
+    this.pool.forEach((p) => (p.where = 'pile'));
+    this.myVote = null;
+    this.reveal = null;
+    this.envelopeOpen = false;
+    this.pendingIndex = null;
+    this.shot = null;
+    this.invShown = null;
+    this.invFlight = null;
+    this.pointAt = null;
+  }
+
+  /** Back to an empty table (left, kicked or fatal error). */
+  reset() {
+    this.room = null;
+    this.view = null;
+    this.clearTable();
+    this.cardsDone = false;
+    this.pickedPlayer = false;
+    this.speaker = null;
+    this.deadlineAt = null;
+    this.lastSecond = -1;
+    this.refreshInteractables();
+    this.ui.setPrompt('', false);
+    this.ui.setTimer(null, false);
   }
 
   onChat(seat: number, text: string) {
