@@ -11,8 +11,8 @@ The game was built fast across 5 phases without review. What bugs and performanc
 
 ### Server: critical (fixed in this spike)
 
-1. Crash risk: `server/room.ts` `botMove` (~line 373-382) throws `new Error('bot made illegal move')`. It runs inside timer callbacks (`onTimeout` ~359) and inside the un-awaited async `think` (~407-432). There is no `uncaughtException`/`unhandledRejection` handler anywhere, so one bad bot move kills the whole process and every room. `apply` (~314) also re-throws non-RuleError errors.
-2. Wrong host after a lobby seat is removed: `server/room.ts` `removeSeat` (~166-176) tests `host >= length` and `seats[host]?.bot` after the splice but before shifting the host index. E.g. host is seat 2 of 3, seat 0 leaves: host is reassigned to the old seat 1 instead of staying with the same player.
+1. Crash risk: `server/room.ts` `botMove` (~line 373-382) throws `new Error('bot made illegal move')`. It runs inside timer callbacks (`onTimeout` ~359) and inside the un-awaited async `think` (~407-432). There is no `uncaughtException`/`unhandledRejection` handler anywhere, so one bad bot move kills the whole process and every room. `apply` (~314) also re-throws non-RuleError errors. Fixed in commit "Harden room timers and bot moves against exceptions"; regression test `tests/room-resilience.test.ts`.
+2. Wrong host after a lobby seat is removed: `server/room.ts` `removeSeat` (~166-176) tests `host >= length` and `seats[host]?.bot` after the splice but before shifting the host index. E.g. host is seat 2 of 3, seat 0 leaves: host is reassigned to the old seat 1 instead of staying with the same player. Fixed in commit "Keep the right host when a lobby seat is removed"; regression test `tests/room-host.test.ts`.
 
 ### Server: minor (backlog)
 
@@ -52,7 +52,7 @@ The game was built fast across 5 phases without review. What bugs and performanc
 
 ## Follow-up tracking
 
-A new Fleet task "Code review follow-ups: client bugs & rendering perf" holds these todos in dependency order:
+Fleet task **LOCAL-3071b063** ("Code review follow-ups: client bugs & rendering perf") tracks this work. Its todos are listed below in dependency order. The `fleet` CLI was not available on the machine where this spike ran, so they still need adding to that task with `fleet task add-todo LOCAL-3071b063 --after <ids> "<text>"`.
 
 1. Perf baseline `?perf` HUD (fps, renderer.info) and record 5/10-player numbers here.
 2. Reset client state on leave/left/fatal error; ignore room messages after leave.
