@@ -1,4 +1,4 @@
-# Code review spike (todo #74), 2026-10
+# Code review spike (todos #74, #85), 2026-10
 
 ## Question
 
@@ -14,11 +14,11 @@ The game was built fast across 5 phases without review. What bugs and performanc
 1. Crash risk: `server/room.ts` `botMove` (~line 373-382) throws `new Error('bot made illegal move')`. It runs inside timer callbacks (`onTimeout` ~359) and inside the un-awaited async `think` (~407-432). There is no `uncaughtException`/`unhandledRejection` handler anywhere, so one bad bot move kills the whole process and every room. `apply` (~314) also re-throws non-RuleError errors. Fixed in commit "Harden room timers and bot moves against exceptions"; regression test `tests/room-resilience.test.ts`.
 2. Wrong host after a lobby seat is removed: `server/room.ts` `removeSeat` (~166-176) tests `host >= length` and `seats[host]?.bot` after the splice but before shifting the host index. E.g. host is seat 2 of 3, seat 0 leaves: host is reassigned to the old seat 1 instead of staying with the same player. Fixed in commit "Keep the right host when a lobby seat is removed"; regression test `tests/room-host.test.ts`.
 
-### Server: minor (backlog)
+### Server: minor (fixed)
 
-- Game rooms whose humans all explicitly left stay until the 30-minute idle GC and count against maxRooms=50.
-- `botTalk` (`server/room.ts` ~439) sets the chat throttle even when the bot chose to stay silent.
-- `Room.restore` trusts the snapshot shape (seat count vs game players not validated).
+- Game rooms whose humans all explicitly left stay until the 30-minute idle GC and count against maxRooms=50. Fixed in commit "Close game rooms once every human has left"; test `tests/room-empty.test.ts`.
+- `botTalk` (`server/room.ts` ~439) sets the chat throttle even when the bot chose to stay silent. Fixed in commit "Bot chat throttle only on real lines; validate restored snapshots"; test `tests/bot-talk.test.ts`.
+- `Room.restore` trusts the snapshot shape (seat count vs game players not validated). Fixed in the same commit: restore rejects an unknown stage, a seat/player count mismatch and an out-of-range host; tests in `tests/persistence.test.ts`.
 
 ### Client: state and UI bugs
 
@@ -52,14 +52,14 @@ The game was built fast across 5 phases without review. What bugs and performanc
 
 ## Follow-up tracking
 
-Fleet task **LOCAL-3071b063** ("Code review follow-ups: client bugs & rendering perf") tracks this work. Its todos are listed below in dependency order. The `fleet` CLI was not available on the machine where this spike ran, so they still need adding to that task with `fleet task add-todo LOCAL-3071b063 --after <ids> "<text>"`.
+Fleet task **LOCAL-bc050340** ("Code review follow-ups: client bugs & rendering perf") tracks the client work. The original follow-up task LOCAL-3071b063 no longer existed, so it was recreated. Its todos, in dependency order:
 
-1. Perf baseline `?perf` HUD (fps, renderer.info) and record 5/10-player numbers here.
-2. Reset client state on leave/left/fatal error; ignore room messages after leave.
-3. In-flight action guard (after 2).
-4. Small UI/net fixes (after 2).
-5. Dispose helper + GPU leak fixes + duplicate envelope (after 1).
-6. Replace per-patron PointLight (after 1).
-7. Renderer settings: preserveDrawingBuffer, shadows, pixel ratio on resize (after 1, 6).
-8. Per-frame allocation cleanup (after 1).
-9. Draw-call reduction via instancing/shared geometry (after 5, 7), re-measured against 1.
+1. #86 Perf baseline `?perf` HUD; record 5/10-player numbers here.
+2. #87 Reset client state on leave/left/fatal error; ignore room messages after leave.
+3. #88 In-flight action guard (after #87).
+4. #89 Small UI/net fixes (after #87).
+5. #90 Dispose helper + GPU leak fixes + duplicate envelope (after #86).
+6. #91 Replace per-patron PointLight (after #86).
+7. #92 Per-frame allocation cleanup (after #86).
+8. #93 Renderer settings: preserveDrawingBuffer, shadows, pixel ratio on resize (after #86, #91).
+9. #94 Draw-call reduction via instancing/shared geometry, re-measured against #86 (after #90, #93).
