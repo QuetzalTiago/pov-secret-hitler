@@ -63,11 +63,16 @@ class Client {
       });
     }
   }
+  private acted = '';
   play() {
     const g = this.room?.game;
     if (!g) return;
     const legal = legalFromView(g);
-    if (legal.length) this.send({ t: 'act', a: botAction(g, legal, Math.random) });
+    // Act once per decision point, like a person would; re-sending on every broadcast trips the rate limiter.
+    const key = `${g.phase}:${g.round}:${g.vetoRefused}:${g.hand?.length ?? 0}`;
+    if (!legal.length || key === this.acted) return;
+    this.acted = key;
+    this.send({ t: 'act', a: botAction(g, legal, Math.random) });
   }
   close() {
     this.ws.close();

@@ -5,3 +5,9 @@ test-results/
 playwright-report/
 *.log
 e2e/screenshots/preview/
+tunnel.json
+.env
+.env.*
+!.env.example
+data/
+logs/

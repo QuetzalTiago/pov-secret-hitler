@@ -77,6 +77,15 @@ export class Mover {
   }
 }
 
+/** A box spanning two points (slightly overlapping the joints so limbs never show gaps). */
+export function boxLimb(a: THREE.Vector3, b: THREE.Vector3, w: number, d: number, mat: THREE.Material): THREE.Mesh {
+  const len = a.distanceTo(b) + Math.min(w, d) * 0.8;
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, len, d), mat);
+  m.position.copy(a).add(b).multiplyScalar(0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  return m;
+}
+
 export function yawQuat(yaw: number, extraX = 0, extraZ = 0): THREE.Quaternion {
   return new THREE.Quaternion().setFromEuler(new THREE.Euler(extraX, yaw, extraZ, 'YXZ'));
 }
@@ -95,6 +104,9 @@ export class World {
   muzzle: THREE.PointLight;
   handLight: THREE.PointLight;
   private tableGroup = new THREE.Group();
+  private sleeve = new THREE.MeshStandardMaterial({ color: 0x2a2a33, roughness: 0.8 });
+  private armband: THREE.Mesh | null = null;
+  private hitlerOutfit = false;
   private smoke: { s: THREE.Sprite; v: THREE.Vector3; spin: number }[] = [];
   private yaw = 0;
   private pitch = 0;
@@ -175,10 +187,48 @@ export class World {
 
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('pointermove', (e) => {
+      if (this.locked) {
+        // Captured mouse: relative look, clamped like a seated head turn.
+        this.targetYaw = THREE.MathUtils.clamp(this.targetYaw - e.movementX * 0.0022, -1.35, 1.35);
+        this.targetPitch = THREE.MathUtils.clamp(this.targetPitch - e.movementY * 0.0022, -0.55, 0.5);
+        return;
+      }
       this.mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      if (this.freezeLook) return;
       this.targetYaw = -this.mouse.x * 0.7;
       this.targetPitch = this.mouse.y * 0.32;
     });
+    document.addEventListener('pointerlockchange', () => {
+      this.locked = document.pointerLockElement === this.renderer.domElement;
+      this.onLockChange(this.locked);
+    });
+  }
+
+  /** True while the mouse is captured (cursor hidden, aiming with the centre crosshair). */
+  locked = false;
+  /** Disable capture with ?nolock (tests) or in browsers without pointer lock. */
+  lockAllowed = !new URLSearchParams(location.search).has('nolock') && 'requestPointerLock' in HTMLElement.prototype;
+  onLockChange: (locked: boolean) => void = () => {};
+  /** Holds the view still while the free cursor picks a card. */
+  freezeLook = false;
+
+  requestLock() {
+    if (!this.lockAllowed || this.locked) return;
+    try {
+      const p = this.renderer.domElement.requestPointerLock() as unknown;
+      if (p instanceof Promise) p.catch(() => {});
+    } catch {
+      /* not allowed right now */
+    }
+  }
+
+  releaseLock() {
+    if (this.locked) document.exitPointerLock();
+  }
+
+  /** Where the player is aiming, in normalised device coordinates. */
+  aimNdc(): THREE.Vector2 {
+    return this.locked ? new THREE.Vector2(0, 0) : this.mouse;
   }
 
   resize() {
@@ -242,10 +292,10 @@ export class World {
         room.add(bottle);
       }
     }
-    const neon = textSprite('LAST CALL', { color: '#ff6fae', size: 64 });
+    const neon = textSprite('povsecrethitler.app', { color: '#ff6fae', size: 64 });
     const neonMat = new THREE.SpriteMaterial({ map: neon.texture, transparent: true, depthWrite: false });
     const sign = new THREE.Sprite(neonMat);
-    sign.scale.set(1.6, 1.6 / neon.aspect, 1);
+    sign.scale.set(2.2, 2.2 / neon.aspect, 1);
     sign.position.set(0, 2.95, -4.6);
     room.add(sign);
     const neonLight = new THREE.PointLight(0xff4f9a, 2.5, 5, 1.5);
@@ -339,23 +389,94 @@ export class World {
     }
     // Your own hands resting on the table edge.
     const skin = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
-    const sleeve = new THREE.MeshStandardMaterial({ color: 0x2a2a33, roughness: 0.8 });
+    const sleeve = this.sleeve;
     for (const side of [-1, 1]) {
-      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.03, 0.1), skin);
-      hand.position.set(side * 0.5, TABLE_Y + 0.016, L.rz - 0.06);
-      hand.rotation.y = side * -0.45;
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.36), sleeve);
-      arm.position.set(side * 0.6, TABLE_Y + 0.02, L.rz + 0.17);
-      arm.rotation.y = side * -0.45;
-      hand.castShadow = arm.castShadow = true;
-      this.tableGroup.add(hand, arm);
+      // Shoulder (just out of view) -> elbow (off the table edge) -> wrist resting on the table.
+      const shoulder = new THREE.Vector3(side * 0.24, 1.0, L.rz + 0.42);
+      const elbow = new THREE.Vector3(side * 0.44, 0.83, L.rz + 0.2);
+      const wrist = new THREE.Vector3(side * 0.4, TABLE_Y + 0.03, L.rz - 0.07);
+      const upper = boxLimb(shoulder, elbow, 0.1, 0.1, sleeve);
+      const fore = boxLimb(elbow, wrist, 0.085, 0.075, sleeve);
+      if (side === -1) {
+        // Armband for when you are Hitler (hidden otherwise).
+        const band = boxLimb(elbow.clone().lerp(wrist, 0.25), elbow.clone().lerp(wrist, 0.4), 0.095, 0.085, new THREE.MeshStandardMaterial({ color: 0xa01818, roughness: 0.5 }));
+        band.visible = this.hitlerOutfit;
+        this.armband = band;
+        this.tableGroup.add(band);
+      }
+      const dir = wrist.clone().sub(elbow).setY(0).normalize();
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.032, 0.11), skin);
+      hand.position.copy(wrist).addScaledVector(dir, 0.05).setY(TABLE_Y + 0.017);
+      hand.rotation.y = Math.atan2(dir.x, dir.z);
+      for (const m of [upper, fore, hand]) {
+        m.castShadow = true;
+        this.tableGroup.add(m);
+      }
+      if (side === 1) this.restRightArm = [upper, fore, hand]; // your right (+X): the gun hand
     }
     this.camera.position.copy(L.eye());
+  }
+
+  private restRightArm: THREE.Mesh[] = [];
+  private ownArm: { fore: THREE.Mesh; hand: THREE.Mesh; finger: THREE.Mesh } | null = null;
+
+  /**
+   * Raises your right arm from below the view: onto the revolver's grip (`gun`), or pointing at a
+   * world position (`point`). Null puts the arm back on the table.
+   */
+  setOwnArm(pose: { gun: THREE.Object3D } | { point: THREE.Vector3 } | null) {
+    if (!this.ownArm) {
+      const skin = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
+      const fore = new THREE.Mesh(new THREE.BoxGeometry(0.085, 1, 0.08), this.sleeve);
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.09), skin);
+      const finger = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.022, 0.08), skin);
+      finger.position.set(0, 0.02, -0.08); // the hand looks down -Z, so the finger sticks out in front
+      hand.add(finger);
+      fore.visible = hand.visible = false;
+      this.scene.add(fore, hand);
+      this.ownArm = { fore, hand, finger };
+    }
+    const { fore, hand, finger } = this.ownArm;
+    fore.visible = hand.visible = !!pose;
+    for (const m of this.restRightArm) m.visible = !pose;
+    if (!pose) return;
+    let grip: THREE.Vector3;
+    if ('gun' in pose) {
+      pose.gun.updateMatrixWorld();
+      grip = pose.gun.localToWorld(new THREE.Vector3(0, -0.03, 0.08));
+      hand.quaternion.copy(pose.gun.getWorldQuaternion(new THREE.Quaternion()));
+      finger.visible = false;
+    } else {
+      this.camera.updateMatrixWorld();
+      grip = this.camera.localToWorld(new THREE.Vector3(0.15, -0.1, -0.45)); // above the prompt banner
+      // Hand faces the target (its -Z axis points at it) with the index finger extended.
+      const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion); // no roll as you look around
+      hand.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(grip, pose.point, camUp));
+      finger.visible = true;
+    }
+    const elbowLocal = new THREE.Vector3(0.34, -0.5, 0.05);
+    const elbow = this.camera.localToWorld(elbowLocal.clone());
+    const len = elbow.distanceTo(grip);
+    fore.position.copy(elbow).add(grip).multiplyScalar(0.5);
+    // Orient in camera space, then apply the camera's rotation: the arm turns with your view instead of
+    // rolling around its own length (a world-space shortest-arc rotation twists as the camera yaws).
+    const dirLocal = this.camera.worldToLocal(grip.clone()).sub(elbowLocal).normalize();
+    fore.quaternion.copy(this.camera.quaternion).multiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirLocal));
+    fore.scale.set(1, len + 0.04, 1);
+    hand.position.copy(grip);
   }
 
   /** True once the camera has caught up with the cursor (used by tests before clicking). */
   settled(): boolean {
     return Math.abs(this.targetYaw - this.yaw) < 0.002 && Math.abs(this.targetPitch - this.pitch) < 0.002;
+  }
+
+  /** Your own first-person sleeves: uniform and armband when you are Hitler (only your client knows). */
+  setOwnOutfit(hitler: boolean) {
+    if (hitler === this.hitlerOutfit) return;
+    this.hitlerOutfit = hitler;
+    this.sleeve.color.set(hitler ? 0x7a6844 : 0x2a2a33);
+    if (this.armband) this.armband.visible = hitler;
   }
 
   setNight(on: boolean) {

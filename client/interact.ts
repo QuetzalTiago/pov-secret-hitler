@@ -16,24 +16,43 @@ export class Interactor {
   items = new Map<string, Interactable>();
   hovered: string | null = null;
   enabled = true;
+  /** True while seated at a game: clicking the table captures the mouse. */
+  lockable = false;
+  /** True while you are choosing a card held in your hand: the mouse is freed to point at it. */
+  cardMode: () => boolean = () => false;
+  private releasedForCards = false;
   private ray = new THREE.Raycaster();
   private pointer = new THREE.Vector2(-9, -9);
   private havePointer = false;
 
-  constructor(private world: World, private tooltip: HTMLElement) {
+  constructor(private world: World, private tooltip: HTMLElement, private crosshair: HTMLElement, private hint: HTMLElement) {
+    world.onLockChange = () => this.refreshChrome();
     const canvas = world.renderer.domElement;
     window.addEventListener('pointermove', (e) => {
       this.pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      if (this.world.locked) return;
       this.havePointer = true;
       this.tooltip.style.left = `${e.clientX + 16}px`;
       this.tooltip.style.top = `${e.clientY + 14}px`;
     });
     canvas.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || !this.enabled) return;
-      this.pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
-      this.havePointer = true;
-      const id = this.pick();
+      if (this.lockable && !this.cardMode() && this.world.lockAllowed && !this.world.locked) {
+        // First click just takes control of the view; it never triggers an action by accident.
+        this.world.requestLock();
+        return;
+      }
+      if (!this.world.locked) {
+        this.pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+        this.havePointer = true;
+      }
+      const id = this.pick(this.world.aimNdc());
       if (id) this.activate(id);
+      // Card picked: take the mouse back (still inside the click gesture, so the browser allows it).
+      if (this.releasedForCards && this.lockable && !this.cardMode()) {
+        this.releasedForCards = false;
+        this.world.requestLock();
+      }
     });
   }
 
@@ -72,7 +91,14 @@ export class Interactor {
 
   /** Called every frame: the camera moves with the mouse, so re-pick continuously. */
   update() {
-    const id = this.enabled && this.havePointer ? this.pick() : null;
+    const cards = this.lockable && this.cardMode();
+    this.world.freezeLook = cards;
+    if (cards && this.world.locked) {
+      this.releasedForCards = true;
+      this.world.releaseLock();
+    }
+    this.hint.classList.toggle('hidden', this.world.locked || cards || !this.lockable || !this.world.lockAllowed);
+    const id = this.enabled && (this.havePointer || this.world.locked) ? this.pick(this.world.aimNdc()) : null;
     if (id !== this.hovered) this.setHovered(id);
   }
 
@@ -82,7 +108,26 @@ export class Interactor {
     this.tooltip.textContent = item?.label ?? '';
     this.tooltip.style.display = item ? 'block' : 'none';
     this.world.renderer.domElement.style.cursor = item ? 'pointer' : 'default';
+    this.crosshair.classList.toggle('hot', !!item);
     if (item) sfx.hover();
+  }
+
+  /** Shows the crosshair while captured, or a hint inviting a click when not. */
+  refreshChrome() {
+    const locked = this.world.locked;
+    this.crosshair.classList.toggle('hidden', !locked);
+    this.hint.classList.toggle('hidden', locked || !this.lockable || !this.world.lockAllowed);
+    if (locked) {
+      this.tooltip.style.left = `calc(50% + 18px)`;
+      this.tooltip.style.top = `calc(50% + 14px)`;
+    }
+  }
+
+  setLockable(on: boolean) {
+    if (this.lockable === on) return;
+    this.lockable = on;
+    if (!on) this.world.releaseLock();
+    this.refreshChrome();
   }
 
   /** Screen-space pixel position of an interactable's centre (for tests). */

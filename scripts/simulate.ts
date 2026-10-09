@@ -11,7 +11,7 @@ let failures = 0;
 for (const n of counts) {
   for (let i = 0; i < perCount; i++) {
     const seed = n * 100003 + i;
-    const mode = i % 4 === 3 ? 'heuristic' : 'random';
+    const mode = i % 4 === 3 ? 'heuristic' : i % 4 === 2 ? 'smart' : 'random';
     try {
       results.push(playGame(n, seed, mode));
     } catch (err) {

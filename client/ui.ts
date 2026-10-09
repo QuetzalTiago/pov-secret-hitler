@@ -60,7 +60,7 @@ export class UI {
       h.join(code, n);
     };
     $<HTMLInputElement>('code').addEventListener('keydown', (e) => e.key === 'Enter' && $('join').click());
-    nameInput.addEventListener('keydown', (e) => e.key === 'Enter' && $('create').click());
+    nameInput.addEventListener('keydown', (e) => e.key === 'Enter' && $(this.invite ? 'join' : 'create').click());
     $('add-bot').onclick = () => h.addBot();
     $('remove-bot').onclick = () => h.removeBot();
     $('start').onclick = () => h.start();
@@ -85,11 +85,9 @@ export class UI {
       setMuted(!isMuted());
       $('sound').textContent = isMuted() ? 'Sound: off' : 'Sound: on';
     };
-    $('copy-code').onclick = () => {
-      const code = this.room?.code ?? '';
-      void navigator.clipboard?.writeText(code).catch(() => {});
-      this.toast(`Room code ${code} copied.`);
-    };
+    $('copy-code').onclick = () => this.copy(this.room?.code ?? '', 'copy-code', 'copied');
+    $('copy-invite').onclick = () => this.copy(UI.inviteLink(this.room?.code ?? ''), 'copy-invite', 'Link copied!');
+    $('invite-link').onclick = () => $<HTMLInputElement>('invite-link').select();
 
     const input = $<HTMLInputElement>('chat-input');
     window.addEventListener('keydown', (e) => {
@@ -116,6 +114,51 @@ export class UI {
     });
   }
 
+  private invite: string | null = null;
+
+  static inviteLink(code: string): string {
+    return `${location.origin}/?join=${code}`;
+  }
+
+  /** Copies text, confirming on the button itself (toasts are hidden in the lobby). */
+  private copy(text: string, buttonId: string, done: string) {
+    const btn = $(buttonId);
+    const label = btn.textContent;
+    const confirm = (msg: string) => {
+      btn.textContent = msg;
+      setTimeout(() => (btn.textContent = label), 1800);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => confirm(done), () => this.selectInvite(confirm));
+    } else this.selectInvite(confirm);
+  }
+
+  private selectInvite(confirm: (msg: string) => void) {
+    $<HTMLInputElement>('invite-link').select();
+    confirm('Press Ctrl+C');
+  }
+
+  /** Arrived through an invite link: pre-fill the table code and make Join the main action. */
+  setInvite(code: string) {
+    this.invite = code;
+    $<HTMLInputElement>('code').value = code;
+    $('invite-code').textContent = code;
+    $('invite-banner').classList.remove('hidden');
+    $('join').classList.add('primary');
+    $('join').textContent = `Join table ${code}`;
+    $('create').classList.remove('primary');
+    $('create').classList.add('link');
+    $('create').textContent = 'or open your own table';
+    // Invited layout: name, one big Join button, then the option to start your own table.
+    const join = $('join');
+    const row = join.parentElement!;
+    $('create').before(join);
+    join.style.width = '100%';
+    row.classList.add('hidden');
+    document.querySelector('#home .or')?.classList.add('hidden');
+    $<HTMLInputElement>('name').focus();
+  }
+
   showHome() {
     this.room = null;
     $('lobby').classList.remove('hidden');
@@ -128,6 +171,7 @@ export class UI {
   showRoom(room: RoomView) {
     this.room = room;
     $('room-code').textContent = room.code;
+    $<HTMLInputElement>('invite-link').value = UI.inviteLink(room.code);
     $('hud-code').textContent = room.code;
     if (room.stage === 'lobby') {
       $('lobby').classList.remove('hidden');

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { RoomView } from '../shared/protocol';
 import type { ActionBody, GameEvent, Policy } from '../shared/types';
 import { legalFromView, type GameView } from '../shared/view';
-import { sfx } from './audio';
+import { setMusicMood, sfx, voice } from './audio';
 import type { Interactable, Interactor } from './interact';
 import { Character } from './scene/characters';
 import { Board, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
@@ -66,9 +66,14 @@ export class Game {
   private reveals = new Map<number, { card: Card; mover: Mover }>();
   private tiles = { liberal: 0, fascist: 0 };
   private tileMovers: Mover[] = [];
+  private tokenMover!: Mover;
 
   // Transient, client-only presentation state.
   private envelopeOpen = false;
+  /** Set when you click a card, so the mouse can be recaptured before the server replies. */
+  private cardsDone = false;
+  /** Set when you pick a player, so your pointing arm drops immediately instead of waiting for the server. */
+  private pickedPlayer = false;
   private myVote: boolean | null = null;
   private reveal: { votes: (boolean | null)[]; until: number } | null = null;
   private pendingIndex: number | null = null;
@@ -76,6 +81,34 @@ export class Game {
   private invShown: number | null = null;
   private invFlight: { by: number; target: number; until: number } | null = null;
   private speaker: { seat: number; until: number } | null = null;
+  /** The President keeps pointing at whoever they just chose for a moment. */
+  private pointAt: { by: number; target: number; until: number } | null = null;
+
+  /** Who is pointing and at what: a President choosing a player, or one who just chose. */
+  private pointing(): { seat: number; at: THREE.Vector3 } | null {
+    const v = this.view;
+    const me = this.room?.you;
+    if (!v || me === undefined) return null;
+    const L = this.world.layout;
+    const headOf = (s: number) => (s === me ? this.world.camera.position.clone() : L.head(s));
+    // Your own arm drops as soon as you choose; other Presidents hold the point briefly so everyone sees the pick.
+    if (this.pickedPlayer) return null;
+    if (this.pointAt && this.now < this.pointAt.until && this.pointAt.by !== me) return { seat: this.pointAt.by, at: headOf(this.pointAt.target) };
+    if (v.phase !== 'nominate' && v.phase !== 'investigate' && v.phase !== 'special') return null;
+    if (v.president === me) {
+      // You point wherever you are aiming.
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(this.world.aimNdc(), this.world.camera);
+      return { seat: me, at: ray.ray.at(3, new THREE.Vector3()) };
+    }
+    // Another President sweeps across the players they may choose from.
+    const options =
+      v.phase === 'nominate'
+        ? v.eligible
+        : v.players.filter((p) => p.alive && p.seat !== v.president && (v.phase !== 'investigate' || !v.investigated.includes(p.seat))).map((p) => p.seat);
+    if (!options.length) return null;
+    return { seat: v.president, at: headOf(options[Math.floor(this.now / 2.2) % options.length]) };
+  }
   private layoutKey = '';
   private now = 0;
   private lastHeartbeat = 0;
@@ -135,6 +168,9 @@ export class Game {
     this.invMover = world.track(new Mover(this.invCard.mesh));
 
     this.tileMovers = [...this.board.liberalTiles, ...this.board.fascistTiles].map((t) => world.track(new Mover(t)));
+    // Election tracker coin sits on its circle (board-local coordinates) and slides when it advances.
+    this.board.token.position.copy(this.board.slot('tracker', 0).setY(0.014));
+    this.tokenMover = world.track(new Mover(this.board.token).set(this.board.slot('tracker', 0).setY(0.014), undefined, 5));
     this.board.setPowers([null, null, 'peek', 'execute', 'execute', null]);
     this.relayout(5, 0);
   }
@@ -146,6 +182,8 @@ export class Game {
     const prevRound = this.view?.round;
     this.room = room;
     this.view = room.game;
+    this.cardsDone = false;
+    this.pickedPlayer = false;
     const n = room.game ? room.game.players.length : room.seats.length;
     this.relayout(n, room.you);
     this.syncCharacters();
@@ -165,6 +203,7 @@ export class Game {
       this.syncTiles(prevPhase === undefined);
     } else {
       this.tiles = { liberal: 0, fascist: 0 };
+      this.tokenMover.set(this.board.slot('tracker', 0).setY(0.014));
       this.board.liberalTiles.concat(this.board.fascistTiles).forEach((t) => (t.visible = false));
       this.pool.forEach((p) => (p.where = 'pile'));
       this.myVote = null;
@@ -208,6 +247,16 @@ export class Game {
     void L;
   }
 
+  private newCharacter(seat: number, variant: 'normal' | 'hitler'): Character {
+    const L = this.world.layout;
+    const c = new Character(seat, seat, variant);
+    c.group.position.copy(L.chair(seat));
+    c.group.rotation.y = L.yaw(seat) + Math.PI;
+    this.world.scene.add(c.group);
+    this.chars.set(seat, c);
+    return c;
+  }
+
   private syncCharacters() {
     const room = this.room!;
     const L = this.world.layout;
@@ -223,12 +272,16 @@ export class Game {
     for (const seat of seats) {
       if (seat === room.you) continue;
       let c = this.chars.get(seat);
+      // Only a viewer the server told "this seat is Hitler" (fascists, or everyone at game over) gets the special model.
+      const variant = v?.players[seat]?.role === 'hitler' ? 'hitler' : 'normal';
+      if (c && c.variant !== variant) {
+        this.world.scene.remove(c.group);
+        c.dispose();
+        this.chars.delete(seat);
+        c = this.newCharacter(seat, variant);
+      }
       if (!c) {
-        c = new Character(seat, seat);
-        c.group.position.copy(L.chair(seat));
-        c.group.rotation.y = L.yaw(seat) + Math.PI;
-        this.world.scene.add(c.group);
-        this.chars.set(seat, c);
+        c = this.newCharacter(seat, variant);
         const env = this.envelope.mesh.clone();
         env.material = (this.envelope.mesh.material as THREE.Material[]).map((m) => m.clone());
         env.position.copy(L.front(seat, -0.34, -0.02));
@@ -281,6 +334,7 @@ export class Game {
         break;
       case 'nominated':
         sfx.slide();
+        this.pointAt = { by: e.president, target: e.target, until: this.now + 2.5 };
         this.ui.toast(`${this.subj(e.president, 'nominate')} ${this.name(e.target)} for Chancellor.`);
         break;
       case 'voted':
@@ -293,6 +347,8 @@ export class Game {
         this.reveal = { votes: e.votes, until: this.now + 4.5 };
         this.voteCards.forEach((vc) => (vc.shown = false));
         setTimeout(() => sfx.flip(), 150);
+        // One shout for the table, decided by the group: JA! if the government passed, NEIN! if it failed.
+        setTimeout(() => voice.vote(e.passed), 300);
         this.ui.toast(e.passed ? `JA! ${ja} to ${nein}. The government is elected.` : `NEIN. ${ja} to ${nein}. The election fails.`, e.passed ? 'good' : 'bad');
         break;
       }
@@ -313,6 +369,7 @@ export class Game {
           p.card.mesh.quaternion.copy(new THREE.Quaternion());
           p.card.mesh.visible = true;
         });
+        if (e.seat === me) this.dropIntoHand();
         break;
       case 'presDiscarded': {
         sfx.toss();
@@ -325,6 +382,7 @@ export class Game {
       }
       case 'passedToChancellor':
         sfx.slide();
+        if (e.to === me) this.dropIntoHand();
         this.pool.filter((p) => p.where === 'held').forEach((p) => {
           p.holder = e.to;
           p.face = null;
@@ -381,6 +439,7 @@ export class Game {
             p.card.mesh.position.copy(this.drawPile.topPosition());
             p.card.mesh.visible = true;
           });
+          if (e.president === me) this.dropIntoHand();
         }
         break;
       case 'peeked':
@@ -390,6 +449,7 @@ export class Game {
         break;
       case 'investigated':
         sfx.slide();
+        this.pointAt = { by: e.by, target: e.target, until: this.now + 2.5 };
         this.invFlight = { by: e.by, target: e.target, until: this.now + 2.6 };
         if (e.by === me) {
           this.invShown = e.target;
@@ -400,11 +460,14 @@ export class Game {
         this.ui.toast(`${this.subj(e.by, 'investigate')} ${this.name(e.target)}.`, 'power');
         break;
       case 'specialElected':
+        this.pointAt = { by: e.by, target: e.target, until: this.now + 2.5 };
         this.ui.toast(`${this.subj(e.by, 'call')} a special election: ${this.name(e.target)} will preside.`, 'power');
         break;
       case 'executed': {
         this.shot = { by: e.by, target: e.target, until: this.now + 2.8 };
-        sfx.gunshot();
+        this.chars.get(e.by)?.recoil();
+        voice.gunshot();
+        voice.death();
         this.world.addShake(e.target === me ? 1.5 : 1.0);
         const muzzle = new THREE.Vector3(0, 0, -0.2).applyMatrix4(this.gun.matrixWorld);
         this.world.flash(muzzle);
@@ -429,6 +492,20 @@ export class Game {
       case 'acked':
         break;
     }
+  }
+
+  /** Your own cards arrive from above the view and settle into your hand, rather than rising from the table. */
+  private dropIntoHand() {
+    const cam = this.world.camera;
+    cam.updateMatrixWorld();
+    const held = this.pool.filter((p) => p.where === 'held');
+    held.forEach((p, i) => {
+      const [, q] = this.handPose(i, held.length);
+      const off = i - (held.length - 1) / 2;
+      p.card.mesh.position.copy(new THREE.Vector3(off * 0.125, 0.42 + i * 0.05, -0.45).applyMatrix4(cam.matrixWorld));
+      p.card.mesh.quaternion.copy(q);
+      p.card.mesh.visible = true;
+    });
   }
 
   private sendTo(p: PoolCard, where: Where) {
@@ -490,11 +567,24 @@ export class Game {
     place(this.board.liberalTiles, v.liberal, 'liberal', 0);
     place(this.board.fascistTiles, v.fascist, 'fascist', 5);
     this.tiles = { liberal: v.liberal, fascist: v.fascist };
+    this.tokenMover.set(this.board.slot('tracker', Math.min(3, v.tracker)).setY(0.014), undefined, instant ? 50 : 5);
   }
 
   // ---------- interaction ----------
 
+  /** True while a card in your hand is waiting for you to choose it. */
+  cardMode(): boolean {
+    const v = this.view;
+    const me = this.room?.you;
+    if (!v || me === undefined || v.phase === 'gameOver') return false;
+    if (this.envelopeOpen || this.invShown !== null) return true;
+    if (this.cardsDone || !v.pending.includes(me)) return false;
+    return v.hand !== null || v.peek !== null;
+  }
+
   private act(a: ActionBody, index?: number) {
+    if (a.type === 'presDiscard' || a.type === 'chancEnact' || a.type === 'peekDone') this.cardsDone = true;
+    if (a.type === 'nominate' || a.type === 'investigate' || a.type === 'specialElect') this.pickedPlayer = true;
     if (index !== undefined) this.pendingIndex = index;
     if (a.type === 'vote') {
       this.myVote = a.ja;
@@ -546,6 +636,18 @@ export class Game {
           this.invShown = null;
           this.refreshInteractables();
         },
+      });
+    }
+    // Term-limited players can be hovered so the rule is explained instead of silently ignored.
+    for (const seat of this.termLimited()) {
+      const c = this.chars.get(seat);
+      if (!c) continue;
+      list.push({
+        id: `limited-${seat}`,
+        objects: c.hitMeshes,
+        label: `${this.name(seat)} can't be Chancellor: ${this.limitReason(seat)} (term limit)`,
+        action: false,
+        onClick: () => this.ui.toast(`${this.name(seat)} is term-limited: ${this.limitReason(seat)}.`, 'bad'),
       });
     }
     const legal = legalFromView(v);
@@ -631,6 +733,22 @@ export class Game {
     this.interactor.set(list);
   }
 
+  /** Living players (other than the President) who can't be nominated right now. */
+  private termLimited(): number[] {
+    const v = this.view;
+    if (!v || v.phase !== 'nominate') return [];
+    return v.players
+      .filter((p) => p.alive && p.seat !== v.president && !v.eligible.includes(p.seat))
+      .map((p) => p.seat);
+  }
+
+  private limitReason(seat: number): string {
+    const v = this.view!;
+    if (seat === v.lastChancellor) return 'they were the last elected Chancellor';
+    if (seat === v.lastPresident) return 'they were the last elected President';
+    return 'not eligible this round';
+  }
+
   // ---------- prompt ----------
 
   promptText(): string {
@@ -647,8 +765,13 @@ export class Game {
       case 'night':
         if (!v.players[me].acked) return this.envelopeOpen ? 'Memorise your role, then click the card to close your eyes.' : 'Night. Click your envelope to see your secret role.';
         return `Eyes closed. Waiting for ${waitingOn.length} more…`;
-      case 'nominate':
-        return mine ? 'You are President. Click a player to nominate them as Chancellor.' : `${dead}Waiting for President ${pres} to nominate a Chancellor.`;
+      case 'nominate': {
+        const limited = this.termLimited().map((s) => this.name(s));
+        const note = limited.length ? ` Term-limited: ${limited.join(', ')}.` : '';
+        return mine
+          ? `You are President. Click a player to nominate them as Chancellor.${note}`
+          : `${dead}Waiting for President ${pres} to nominate a Chancellor.${note}`;
+      }
       case 'vote':
         if (mine && this.myVote === null) return `Vote on President ${pres} with Chancellor ${this.name(v.nominee)}: slam JA! or NEIN.`;
         return `${dead}Votes are in from ${v.players.filter((p) => p.hasVoted).length} of ${v.players.filter((p) => p.alive).length}. Waiting for ${waitingOn.join(', ') || 'the reveal'}.`;
@@ -732,7 +855,8 @@ export class Game {
     held.forEach((p, i) => {
       const hover = hovered === `hand-${i}` || hovered === `peek-${i}`;
       if (p.holder === me) {
-        const [pos, q] = this.handPose(i, held.length, -0.42, hover ? -0.13 : -0.17);
+        // Held high enough to be fully visible; hovering brings the card toward you.
+        const [pos, q] = this.handPose(i, held.length, hover ? -0.36 : -0.42, hover ? -0.045 : -0.07);
         p.mover.set(pos, q, 10);
         p.card.setGlow(hover ? 0.12 : 0);
       } else {
@@ -779,8 +903,8 @@ export class Game {
           mover.set(pos, mul(Q('y', tiltToMe(me)), Q('x', 0.9)), 10);
         } else mover.set(pos, Q('x', Math.PI), 16);
       } else {
-        rest.y += hover ? 0.03 : 0;
-        mover.set(rest, mul(Q('y', 0.08), Q('x', hover ? -0.25 : 0)), 12);
+        rest.y += hover ? 0.04 : 0;
+        mover.set(rest, mul(Q('y', 0.08), Q('x', hover ? 0.3 : 0)), 12);
       }
       ballot.setGlow(hover ? 0.25 : 0);
       mover.visible = !!v && v.players[me]?.alive !== false;
@@ -838,6 +962,15 @@ export class Game {
     const shooting = this.shot && now < this.shot.until ? this.shot : null;
     if (this.shot && !shooting) this.shot = null;
     const holderSeat = shooting ? shooting.by : v?.phase === 'execute' ? v.president : null;
+    // Arms: the gun holder aims; a President choosing someone points; everyone else rests.
+    const pointing = this.pointing();
+    for (const [seat, c] of this.chars) {
+      if (seat === holderSeat) continue;
+      c.setAim(pointing && pointing.seat === seat ? pointing.at : null, 'point');
+    }
+    if (holderSeat === me && v) this.world.setOwnArm({ gun: this.gun });
+    else if (pointing && pointing.seat === me) this.world.setOwnArm({ point: pointing.at });
+    else this.world.setOwnArm(null);
     if (holderSeat === me && v) {
       const cam = this.world.camera;
       const pos = new THREE.Vector3(0.16, -0.15, -0.4).applyMatrix4(cam.matrixWorld);
@@ -845,20 +978,29 @@ export class Game {
       if (shooting) aim = L.head(shooting.target);
       else {
         const ray = new THREE.Raycaster();
-        ray.setFromCamera(this.world.mouse, cam);
+        ray.setFromCamera(this.world.aimNdc(), cam);
         aim = ray.ray.at(4, new THREE.Vector3());
       }
       const m = new THREE.Matrix4().lookAt(pos, aim, new THREE.Vector3(0, 1, 0));
       const q = new THREE.Quaternion().setFromRotationMatrix(m);
       this.gunMover.set(pos, shooting && now > shooting.until - 2.6 && now < shooting.until - 2.3 ? mul(q, Q('x', 0.5)) : q, 14);
     } else if (holderSeat !== null && holderSeat !== undefined) {
-      const pos = L.front(holderSeat, 0.12, -0.05, 0.92);
-      pos.y += 0.28;
-      const aimAt = shooting ? L.head(shooting.target) : new THREE.Vector3(Math.sin(now * 0.7) * 0.8, 1.2, Math.cos(now * 0.5) * 0.5);
-      const m = new THREE.Matrix4().lookAt(pos, aimAt, new THREE.Vector3(0, 1, 0));
-      let q = new THREE.Quaternion().setFromRotationMatrix(m);
-      if (shooting && now > shooting.until - 2.6 && now < shooting.until - 2.3) q = mul(q, Q('x', 0.5)); // recoil
-      this.gunMover.set(pos, q, 6);
+      // The President raises their arm; the aim drifts from player to player until the shot, then locks on.
+      const c = this.chars.get(holderSeat);
+      const candidates = v ? v.players.filter((p) => p.alive && p.seat !== holderSeat).map((p) => p.seat) : [];
+      const aimAt = shooting
+        ? L.head(shooting.target)
+        : candidates.length
+          ? (candidates[Math.floor(now / 1.8) % candidates.length] === me ? this.world.camera.position.clone() : L.head(candidates[Math.floor(now / 1.8) % candidates.length]))
+          : new THREE.Vector3(0, 1.2, 0);
+      if (c) {
+        c.setAim(aimAt);
+        const { pos, quat } = c.gunPose(); // the gun sits in the hand and points wherever the arm points
+        this.gunMover.set(pos, quat, 16);
+      } else {
+        const pos = L.front(holderSeat, 0.12, -0.05, 0.92).setY(TABLE_Y + 0.28);
+        this.gunMover.set(pos, new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(pos, aimAt, new THREE.Vector3(0, 1, 0))), 16);
+      }
     } else {
       this.gunMover.set(gunRest, mul(Q('y', 0.7), Q('z', Math.PI / 2)), 5);
     }
@@ -938,6 +1080,7 @@ export class Game {
     if (this.shot && this.now < this.shot.until) focus = this.shot.target;
     const speaking = this.speaker && this.now < this.speaker.until ? this.speaker.seat : null;
     const hovered = this.interactor.hovered;
+    const pointing = this.pointing();
     const knowsTeam = v?.yourRole && v.yourRole !== 'liberal';
     for (const [seat, c] of this.chars) {
       let target: THREE.Vector3 | null = null;
@@ -950,6 +1093,7 @@ export class Game {
         target = t !== null && t !== undefined ? focusPoint(t) : new THREE.Vector3(0, TABLE_Y, 0);
       } else target = new THREE.Vector3(0, TABLE_Y, 0);
       if (!v) target = camPos.clone();
+      if (pointing && pointing.seat === seat) target = pointing.at; // eyes follow the finger
       c.lookAt(target);
       c.setHighlight(hovered === `seat-${seat}`);
       const role = v?.players[seat]?.role;
@@ -962,6 +1106,8 @@ export class Game {
     this.now += dt;
     const v = this.view;
     this.world.setNight(v?.phase === 'night');
+    this.world.setOwnOutfit(v?.yourRole === 'hitler');
+    setMusicMood(v?.phase === 'night', !!v && (v.phase === 'execute' || (!!this.shot && this.now < this.shot.until)));
     this.world.tension = v ? v.fascist / 6 : 0;
     this.world.danger = v && (v.phase === 'execute' || (this.shot && this.now < this.shot.until)) ? 1 : 0;
     if (v?.phase === 'execute' && this.now - this.lastHeartbeat > 1.1) {

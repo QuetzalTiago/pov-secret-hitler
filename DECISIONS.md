@@ -2,7 +2,7 @@
 
 Decisions made autonomously while building, with the reasoning.
 
-1. **Name:** the project is called *Smoke & Ballots* to stay clearly a fan adaptation; the game itself is Secret Hitler and is credited as such.
+1. **Name:** the project is branded *POV Secret Hitler* (povsecrethitler.app). It is labelled everywhere as an unofficial, non-commercial fan adaptation, and the original game and designers are credited.
 2. **Single package, no workspaces.** `shared/` is imported by server (via `tsx`), client (via Vite) and tests (via Vitest). Less tooling, one `npm install`.
 3. **Server runs through `tsx`** rather than a separate `tsc` build step. TypeScript 7 is installed for type checking (`npm run typecheck`).
 4. **Seat index is the player identity inside the engine.** Clockwise = increasing seat index; "to your left" = next seat. Seats are fixed once the game starts.
@@ -16,4 +16,4 @@ Decisions made autonomously while building, with the reasoning.
 12. **Mouse look** is cursor-driven (camera yaw/pitch follows the cursor within clamps) instead of pointer lock, so clicking objects with a visible cursor works and Playwright can drive it.
 13. **Tunnel target** is `http://127.0.0.1:PORT` instead of `localhost` so cloudflared never tries `::1` while the server is bound to IPv4 loopback only.
 14. **Per-IP limits** use the `CF-Connecting-IP` header, which is trustworthy because the server only listens on loopback and the only public path in is the Cloudflare tunnel.
-15. **No external assets:** geometry, textures (canvas), fonts (system font stacks) and sounds (WebAudio) are generated at runtime.
+15. **No external assets, with one exception:** geometry, textures (canvas) and fonts (system stacks) are generated at runtime. At the owner's request, the gunshot, death groans and the JA!/NEIN! shouts are real recordings from openly licensed sources (CC0 and CC BY-SA 3.0), and the background music is Kevin MacLeod's "Bass Walker" on loop (CC BY 3.0). All are credited in-game, in client/sfx/CREDITS.md and client/music/CREDITS.md; everything else is synthesized with WebAudio.

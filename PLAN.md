@@ -1,4 +1,4 @@
-# Plan: "Smoke & Ballots" — 3D first-person online Secret Hitler (Liar's Bar style)
+# Plan: "POV Secret Hitler" (povsecrethitler.app) — 3D first-person online Secret Hitler (Liar's Bar style)
 
 ## Context
 Greenfield build in `C:\Users\Tiago\pov-secret-hitler` (directory is empty, not a git repo).

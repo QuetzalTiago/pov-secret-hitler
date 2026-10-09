@@ -1,5 +1,7 @@
 // Plays complete games with bots and checks invariants after every step.
 import { botAction, randomAction } from '../shared/bot';
+import { buildDecision, heuristicChoice } from '../shared/smartbot';
+import { newMemory, noteMyHand, observe } from '../shared/tracker';
 import {
   aliveCount, cardCounts, createGame, legalActions, pendingActors, reduce,
 } from '../shared/engine';
@@ -59,7 +61,7 @@ export function eventsAreClean(events: GameEvent[]): void {
 export function playGame(
   n: number,
   seed: number,
-  mode: 'random' | 'heuristic',
+  mode: 'random' | 'heuristic' | 'smart',
   onStep?: (s: GameState, events: GameEvent[]) => void,
 ): GameResult {
   const names = Array.from({ length: n }, (_, i) => `Bot${i}`);
@@ -71,6 +73,7 @@ export function playGame(
     return v;
   };
   checkInvariants(s);
+  const memories = names.map((_, i) => newMemory(i, n));
   let steps = 0;
   let events = 0;
   while (s.phase !== 'gameOver') {
@@ -78,9 +81,20 @@ export function playGame(
     const actors = pendingActors(s);
     const seat = actors[Math.floor(rand() * actors.length)];
     const legal = legalActions(s, seat);
-    const body = mode === 'random' ? randomAction(legal, rand) : botAction(viewFor(s, seat), legal, rand);
+    let body;
+    if (mode === 'random') body = randomAction(legal, rand);
+    else if (mode === 'heuristic') body = botAction(viewFor(s, seat), legal, rand);
+    else {
+      // Same strategy + memory the server bots use when Jev is unavailable.
+      const v = viewFor(s, seat);
+      const d = buildDecision(v, legal, memories[seat], (x) => names[x]);
+      body = d.options[heuristicChoice(d, rand)].action;
+      if (body.type === 'presDiscard') noteMyHand(memories[seat], v, body.index);
+      if (body.type === 'chancEnact') noteMyHand(memories[seat], v, null);
+    }
     const res = reduce(s, { ...body, seat } as never);
     s = res.state;
+    if (mode === 'smart') memories.forEach((m, i) => observe(m, viewFor(s, i), res.events));
     events += res.events.length;
     eventsAreClean(res.events);
     checkInvariants(s);

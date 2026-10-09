@@ -1,6 +1,6 @@
 import './style.css';
 import type { RoomView, ServerMsg } from '../shared/protocol';
-import { initAudio, startAmbience } from './audio';
+import { initAudio, isMusicOn, setMusicOn, startMusic } from './audio';
 import { Game } from './game';
 import { Interactor } from './interact';
 import { Net } from './net';
@@ -47,8 +47,14 @@ const ui = new UI({
 });
 
 const world = new World(document.getElementById('app')!);
-const interactor = new Interactor(world, document.getElementById('tooltip')!);
+const interactor = new Interactor(
+  world,
+  document.getElementById('tooltip')!,
+  document.getElementById('crosshair')!,
+  document.getElementById('lock-hint')!,
+);
 const game = new Game(world, interactor, ui, (a) => net.send({ t: 'act', a }));
+interactor.cardMode = () => game.cardMode();
 let room: RoomView | null = null;
 let frames = 0;
 
@@ -61,11 +67,14 @@ net.onMessage = (m: ServerMsg) => {
   switch (m.t) {
     case 'welcome':
       saveSession({ code: m.code, token: m.token });
+      // Drop ?join= so a reload resumes the seat instead of re-joining.
+      if (location.search.includes('join=')) history.replaceState(null, '', location.pathname);
       break;
     case 'room':
       room = m.room;
       ui.showRoom(m.room);
       game.onRoom(m.room);
+      interactor.setLockable(m.room.stage === 'game' && m.room.game?.phase !== 'gameOver');
       break;
     case 'chat':
       ui.addChat(m.name, m.text, m.seat === room?.you);
@@ -90,11 +99,23 @@ net.onMessage = (m: ServerMsg) => {
 };
 
 ui.showHome();
+// Invite links look like /?join=ABCD.
+const invite = new URLSearchParams(location.search).get('join')?.trim().toUpperCase() ?? '';
+if (/^[A-Z]{4}$/.test(invite)) {
+  const s = loadSession();
+  if (s && s.code !== invite) saveSession(null); // the invite wins over an old table
+  if (!s || s.code !== invite) ui.setInvite(invite);
+}
 net.connect();
+const showHome = ui.showHome.bind(ui);
+ui.showHome = () => {
+  interactor.setLockable(false);
+  showHome();
+};
 
 const unlockAudio = () => {
   initAudio();
-  startAmbience();
+  startMusic();
 };
 window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
@@ -130,3 +151,15 @@ window.__sh = {
   settled: () => world.settled(),
   world,
 };
+
+
+// Music toggle (lobby and in-game buttons share one setting, remembered between visits).
+const musicButtons = [...document.querySelectorAll<HTMLButtonElement>('.music-toggle')];
+const showMusic = () => musicButtons.forEach((b) => (b.textContent = `Music: ${isMusicOn() ? 'on' : 'off'}`));
+showMusic();
+musicButtons.forEach((b) =>
+  b.addEventListener('click', () => {
+    setMusicOn(!isMusicOn());
+    showMusic();
+  }),
+);

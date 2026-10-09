@@ -8,7 +8,8 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { CODE_ALPHABET, MAX_MESSAGE_BYTES, parseClientMsg, type ClientMsg, type ServerMsg } from '../shared/protocol';
 import { config } from './config';
 import { TokenBucket } from './ratelimit';
-import { Room, type Conn } from './room';
+import { Room, type Conn, type RoomSnapshot } from './room';
+import { RoomStore } from './store';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const clientDir = join(here, '..', 'dist', 'client');
@@ -50,6 +51,26 @@ const CSP = [
 
 export function startServer(port = config.port): Promise<RunningServer> {
   const rooms = new Map<string, Room>();
+  const store = new RoomStore(config.dbPath);
+  const track = (room: Room) => {
+    room.onChange = (r) => store.save(r.code, r.snapshot());
+    rooms.set(room.code, room);
+    return room;
+  };
+  // A room that really ends (empty lobby, idle too long) is removed from the database too.
+  const ended = (room: Room) => {
+    rooms.delete(room.code);
+    store.delete(room.code);
+  };
+  for (const row of store.load(config.restoreMaxAgeMs)) {
+    try {
+      track(Room.restore(row.data as RoomSnapshot, ended));
+    } catch (e) {
+      console.error(`[store] could not restore room ${row.code}:`, (e as Error).message);
+      store.delete(row.code);
+    }
+  }
+  if (rooms.size) console.log(`[store] restored ${rooms.size} room(s) from ${config.dbPath}`);
   const perIp = new Map<string, number>();
   let connections = 0;
   let nextId = 1;
@@ -67,7 +88,16 @@ export function startServer(port = config.port): Promise<RunningServer> {
     res.json({ ok: true, rooms: rooms.size, connections });
   });
   if (existsSync(clientDir)) {
-    app.use(express.static(clientDir, { index: 'index.html', maxAge: '1h' }));
+    app.use(
+      express.static(clientDir, {
+        index: 'index.html',
+        maxAge: '1h',
+        // Asset names are content-hashed; the HTML must always be revalidated so rebuilds show up.
+        setHeaders: (res, path) => {
+          if (path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+        },
+      }),
+    );
   } else {
     app.get('/', (_req, res) => {
       res.type('text').send('Client not built. Run `npm run build` first.');
@@ -172,8 +202,7 @@ export function startServer(port = config.port): Promise<RunningServer> {
         if (rooms.size >= config.maxRooms) return 'The bar is packed: too many rooms right now. Try later.';
         const code = newCode();
         if (!code) return 'Could not allocate a room.';
-        const r = new Room(code, (dead) => rooms.delete(dead.code));
-        rooms.set(code, r);
+        const r = track(new Room(code, ended));
         return r.join(conn, msg.name);
       }
       case 'join': {
@@ -217,7 +246,8 @@ export function startServer(port = config.port): Promise<RunningServer> {
     }
   }, 60_000);
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    http.once('error', reject); // e.g. EADDRINUSE
     http.listen(port, config.host, () => {
       const addr = http.address();
       const actual = typeof addr === 'object' && addr ? addr.port : port;
@@ -227,7 +257,9 @@ export function startServer(port = config.port): Promise<RunningServer> {
         close: () =>
           new Promise<void>((res) => {
             clearInterval(gc);
-            for (const r of rooms.values()) r.close();
+            // Shutdown keeps rooms in the database so games survive a restart.
+            for (const r of rooms.values()) r.shutdown();
+            store.close();
             for (const c of wss.clients) c.terminate();
             wss.close();
             http.close(() => res());
@@ -239,7 +271,8 @@ export function startServer(port = config.port): Promise<RunningServer> {
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
+  config.dbPath = process.env.SH_DB_PATH ?? 'data/rooms.db';
   startServer().then((s) => {
-    console.log(`Smoke & Ballots listening on http://${config.host}:${s.port}`);
+    console.log(`POV Secret Hitler (povsecrethitler.app) listening on http://${config.host}:${s.port}`);
   });
 }

@@ -39,6 +39,7 @@ input:focus { border-color: var(--gold); }
 .panel.wide { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; line-height: 1.45; }
 h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 40px; margin: 0; letter-spacing: 1px; color: var(--gold); text-shadow: 0 0 18px rgba(255, 140, 60, 0.35); }
 h1 span { color: var(--ink); font-style: italic; }
+.domain { margin: -6px 0 0; font-size: 13px; letter-spacing: 2px; color: #ff7ab8; text-shadow: 0 0 10px rgba(255, 90, 160, 0.5); }
 h2 { font-family: Georgia, serif; margin: 0; color: var(--gold); }
 .sub { color: var(--muted); margin: 0; font-size: 14px; }
 label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--muted); }
@@ -69,12 +70,29 @@ label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color:
 #timer.urgent { color: #ff5a4a; animation: pulse 0.5s infinite alternate; }
 @keyframes pulse { to { opacity: 0.5; } }
 #prompt {
-  position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); max-width: min(760px, calc(100vw - 40px)); text-align: center;
-  background: rgba(10, 6, 4, 0.72); border: 1px solid rgba(214,168,74,0.25); padding: 10px 18px; border-radius: 10px; font-size: 16px;
-  text-shadow: 0 1px 2px #000;
+  position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); max-width: min(820px, calc(100vw - 32px));
+  text-align: center; font-size: 20px; font-weight: 600; line-height: 1.35; letter-spacing: 0.2px;
+  background: rgba(12, 7, 4, 0.86); color: var(--ink); border: 1px solid rgba(214,168,74,0.4);
+  padding: 12px 26px; border-radius: 14px; box-shadow: 0 10px 34px rgba(0,0,0,0.65); text-shadow: 0 1px 2px #000;
 }
 #prompt:empty { display: none; }
-#prompt.mine { border-color: var(--gold); color: #ffe7b0; box-shadow: 0 0 22px rgba(214,168,74,0.25); }
+/* Call to action: it's your move. */
+#prompt.mine {
+  font-size: 23px; font-weight: 700; color: #1c1006; text-shadow: none;
+  background: linear-gradient(180deg, #f2c766 0%, #d39a3a 55%, #b77a24 100%);
+  border: 2px solid #ffe6a8; padding: 10px 30px 14px;
+  animation: cta-pulse 1.8s ease-out infinite;
+}
+#prompt.mine::before {
+  content: 'YOUR MOVE'; display: block; font-size: 12px; font-weight: 800; letter-spacing: 4px;
+  color: #5a3208; margin-bottom: 3px;
+}
+@keyframes cta-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 200, 100, 0.65), 0 10px 34px rgba(0,0,0,0.65); }
+  70% { box-shadow: 0 0 0 16px rgba(255, 200, 100, 0), 0 10px 34px rgba(0,0,0,0.65); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 200, 100, 0), 0 10px 34px rgba(0,0,0,0.65); }
+}
+@media (prefers-reduced-motion: reduce) { #prompt.mine { animation: none; } }
 #toasts { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .toast { background: rgba(10,6,4,0.78); border-left: 3px solid var(--gold); padding: 7px 14px; border-radius: 6px; font-size: 15px; transition: opacity 0.8s; text-shadow: 0 1px 2px #000; }
 .toast.fade { opacity: 0; }
@@ -82,7 +100,7 @@ label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color:
 .toast.bad, .toast.fascist { border-color: #e0503a; }
 .toast.power { border-color: #c070ff; }
 .toast.night { border-color: #7a2018; color: #ffb0a0; }
-#chat { position: absolute; left: 14px; bottom: 14px; width: min(340px, calc(100vw - 28px)); display: flex; flex-direction: column; gap: 6px; }
+#chat { position: absolute; left: 14px; bottom: 110px; width: min(340px, calc(100vw - 28px)); display: flex; flex-direction: column; gap: 6px; }
 #chat-log { max-height: 180px; overflow: hidden; display: flex; flex-direction: column; gap: 2px; font-size: 14px; text-shadow: 0 1px 3px #000; }
 #chat-log .line b { color: var(--gold); }
 #chat-log .line.self b { color: #9fd0ef; }
@@ -105,7 +123,30 @@ label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color:
 @media (max-width: 640px) {
   #chat { width: calc(100vw - 28px); bottom: 70px; }
   #chat-log { max-height: 90px; }
-  #prompt { font-size: 14px; bottom: 12px; }
+  #prompt { font-size: 16px; bottom: 12px; padding: 10px 16px; }
+  #prompt.mine { font-size: 18px; }
   #top-right { flex-wrap: wrap; justify-content: flex-end; max-width: 60vw; }
   h1 { font-size: 30px; }
 }
+#crosshair {
+  position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
+  background: rgba(255, 240, 210, 0.85); box-shadow: 0 0 4px #000; pointer-events: none; z-index: 12;
+  transition: width 0.12s, height 0.12s, margin 0.12s, background 0.12s;
+}
+#crosshair.hot { width: 14px; height: 14px; margin: -7px 0 0 -7px; background: transparent; border: 2px solid var(--gold); }
+#lock-hint {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 12;
+  background: rgba(10, 6, 4, 0.72); border: 1px solid var(--edge); padding: 8px 16px; border-radius: 8px; font-size: 15px;
+}
+.invite { display: flex; gap: 8px; }
+#invite-link { flex: 1; min-width: 0; font-size: 13px; color: #ffe7b0; cursor: text; }
+#invite-banner {
+  background: rgba(214, 168, 74, 0.14); border: 1px solid var(--edge); border-radius: 8px; padding: 9px 12px;
+  text-align: center; font-size: 15px;
+}
+#invite-banner b { letter-spacing: 3px; color: var(--gold); }
+h3 { margin: 6px 0 0; color: var(--gold); font-family: Georgia, serif; font-size: 16px; }
+#music-lobby { position: absolute; top: 12px; right: 14px; }
+/* Host controls: "Deal the roles" spans the full width of the + Bot / − Bot row above it. */
+#host-controls { display: flex; flex-direction: column; gap: 8px; }
+#host-controls #start { width: 100%; }

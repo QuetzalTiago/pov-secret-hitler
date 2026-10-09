@@ -1,11 +1,14 @@
 // One room: lobby, game loop, bots, timers, disconnect takeover, chat.
 import { randomBytes, randomInt } from 'node:crypto';
-import { botAction } from '../shared/bot';
 import { RuleError, createGame, legalActions, pendingActors, reduce } from '../shared/engine';
 import type { RoomView, SeatInfo, ServerMsg } from '../shared/protocol';
 import { MAX_PLAYERS, MIN_PLAYERS } from '../shared/rules';
 import type { ActionBody, GameEvent, GameState, Phase } from '../shared/types';
+import { newMemory, observe, type Memory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
+import { heuristicTalk, planTalk, type TalkPlan } from './botchat';
+import { askChoice } from './jev';
+import { decide, decideNow } from './brain';
 import { config } from './config';
 
 export interface Conn {
@@ -54,6 +57,11 @@ export class Room {
   private botTimer: NodeJS.Timeout | null = null;
   private disconnectTimers = new Map<string, NodeJS.Timeout>();
   private closed = false;
+  /** Per-seat memory built from that seat's own view (bots read it; it never leaves the server). */
+  private memories: Memory[] = [];
+  private thinking = new Set<number>();
+  private lastBotChat = new Map<number, number>();
+  botStats = { jev: 0, heuristic: 0, trivial: 0, talk: { jev: 0, heuristic: 0 } };
 
   constructor(public code: string, private onEmpty: (room: Room) => void) {}
 
@@ -113,6 +121,14 @@ export class Room {
     const s = this.seats[seat];
     s.conn = null;
     s.disconnectedAt = Date.now();
+    this.startGrace(s);
+    this.broadcast();
+    this.checkEmpty();
+  }
+
+  /** After the grace period an absent human loses their lobby seat, or a bot plays for them in a game. */
+  private startGrace(s: Seat) {
+    this.clearDisconnectTimer(s.token);
     const timer = setTimeout(() => {
       this.disconnectTimers.delete(s.token);
       if (s.conn) return;
@@ -127,8 +143,6 @@ export class Room {
       this.broadcast();
     }, config.reconnectGraceMs);
     this.disconnectTimers.set(s.token, timer);
-    this.broadcast();
-    this.checkEmpty();
   }
 
   leave(conn: Conn) {
@@ -185,6 +199,51 @@ export class Room {
     this.onEmpty(this);
   }
 
+  /** Server shutdown: stop timers but keep the room (it stays in the database and is restored on start). */
+  shutdown() {
+    if (this.closed) return;
+    this.closed = true;
+    if (this.timer) clearTimeout(this.timer);
+    if (this.botTimer) clearTimeout(this.botTimer);
+    for (const t of this.disconnectTimers.values()) clearTimeout(t);
+  }
+
+  // ---------- persistence ----------
+
+  /** Called after every change so the room can be saved. */
+  onChange: ((room: Room) => void) | null = null;
+
+  snapshot(): RoomSnapshot {
+    return {
+      v: 1,
+      code: this.code,
+      stage: this.stage,
+      host: this.host,
+      seats: this.seats.map((s) => ({ name: s.name, token: s.token, bot: s.bot, botControl: s.botControl })),
+      game: this.game,
+      memories: this.memories.map((m) => ({ ...m, known: [...m.known.entries()] })),
+    };
+  }
+
+  /** Rebuilds a room after a restart. Humans are treated as just disconnected: they get the usual grace period. */
+  static restore(snap: RoomSnapshot, onEmpty: (room: Room) => void): Room {
+    if (snap?.v !== 1 || typeof snap.code !== 'string' || !Array.isArray(snap.seats)) throw new Error('bad room snapshot');
+    const room = new Room(snap.code, onEmpty);
+    room.stage = snap.stage;
+    room.host = snap.host;
+    room.game = snap.game;
+    room.memories = (snap.memories ?? []).map((m) => ({ ...m, known: new Map(m.known) }) as Memory);
+    if (room.game && room.memories.length !== room.game.players.length) {
+      room.memories = room.game.players.map((p) => newMemory(p.seat, room.game!.players.length));
+    }
+    const now = Date.now();
+    room.seats = snap.seats.map((s) => ({ ...s, conn: null, disconnectedAt: s.bot ? null : now }));
+    for (const s of room.seats) if (!s.bot) room.startGrace(s);
+    room.lastActivity = now;
+    room.resetTimerIfNeeded(); // fresh phase timer
+    return room;
+  }
+
   // ---------- host controls ----------
 
   private isHost(conn: Conn) {
@@ -221,6 +280,8 @@ export class Room {
     if (this.seats.length < MIN_PLAYERS) return `Need at least ${MIN_PLAYERS} players (add bots to fill seats).`;
     this.stage = 'game';
     this.game = createGame(this.seats.map((s) => s.name), randomInt(0, 2 ** 32));
+    this.memories = this.seats.map((_, i) => newMemory(i, this.seats.length));
+    this.thinking.clear();
     this.after([{ k: 'nightStart' }]);
     return null;
   }
@@ -265,6 +326,11 @@ export class Room {
   }
 
   private after(events: GameEvent[]) {
+    const g = this.game;
+    if (g) {
+      this.memories.forEach((m, seat) => observe(m, viewFor(g, seat), events));
+      this.botTalk(events);
+    }
     this.resetTimerIfNeeded();
     this.broadcast(events);
     this.schedule();
@@ -309,7 +375,8 @@ export class Room {
     if (!g) return;
     const legal = legalActions(g, seat);
     if (legal.length === 0) return;
-    const body = botAction(viewFor(g, seat), legal, Math.random);
+    const body = decideNow(viewFor(g, seat), legal, this.memories[seat], (s) => this.seatName(s));
+    this.botStats.heuristic++;
     const err = this.apply(seat, body);
     if (err) throw new Error(`bot made illegal move: ${err}`);
   }
@@ -321,7 +388,7 @@ export class Room {
     const g = this.game;
     // Nobody watching: pause bots until a human comes back.
     if (!g || g.phase === 'gameOver' || this.closed || this.connectedHumans() === 0) return;
-    const botSeats = pendingActors(g).filter((seat) => this.seats[seat]?.botControl);
+    const botSeats = pendingActors(g).filter((seat) => this.seats[seat]?.botControl && !this.thinking.has(seat));
     if (botSeats.length === 0) return;
     const quick = g.phase === 'vote' || g.phase === 'night';
     const base = config.botDelayMs * (quick ? 0.4 : 1);
@@ -330,9 +397,81 @@ export class Room {
       this.botTimer = null;
       const now = this.game;
       if (!now) return;
-      const seat = pendingActors(now).find((s) => this.seats[s]?.botControl);
-      if (seat !== undefined) this.botMove(seat);
-      else this.schedule();
+      const seat = pendingActors(now).find((s) => this.seats[s]?.botControl && !this.thinking.has(s));
+      if (seat !== undefined) void this.think(seat);
+      this.schedule(); // let other bots (e.g. voters) start thinking too
+    }, delay);
+  }
+
+  /** Asks the brain (Jev, falling back to the built-in strategy) and plays the move if still relevant. */
+  private async think(seat: number) {
+    const g = this.game;
+    if (!g) return;
+    const key = `${g.phase}:${g.round}:${g.vetoRefused}`;
+    const legal = legalActions(g, seat);
+    if (!legal.length) return;
+    this.thinking.add(seat);
+    let action: ActionBody;
+    try {
+      const r = await decide(viewFor(g, seat), legal, this.memories[seat], (s) => this.seatName(s));
+      action = r.action;
+      this.botStats[r.source]++;
+    } catch (e) {
+      console.error('[bot] brain error', e);
+      action = legal[0];
+    } finally {
+      this.thinking.delete(seat);
+    }
+    const now = this.game;
+    // The world may have moved on while we were thinking (timer, reconnect, game over).
+    if (this.closed || !now || `${now.phase}:${now.round}:${now.vetoRefused}` !== key || !pendingActors(now).includes(seat) || !this.seats[seat]?.botControl) {
+      this.schedule();
+      return;
+    }
+    if (this.apply(seat, action)) this.botMove(seat); // stale or illegal: fall back to an immediate legal move
+  }
+
+  private seatName(seat: number): string {
+    return this.seats[seat]?.name ?? `Seat ${seat + 1}`;
+  }
+
+  /** Permanent bots chat about what just happened (from their own point of view). */
+  private botTalk(events: GameEvent[]) {
+    const g = this.game;
+    if (!g) return;
+    this.seats.forEach((s, seat) => {
+      if (!s.bot || (!g.players[seat]?.alive && g.phase !== 'gameOver')) return;
+      const now = Date.now();
+      if (now - (this.lastBotChat.get(seat) ?? 0) < 6000) return;
+      const view = viewFor(g, seat);
+      for (const e of events) {
+        const plan = planTalk(e, view, this.memories[seat], (x) => this.seatName(x), Math.random);
+        if (!plan) continue;
+        this.lastBotChat.set(seat, now);
+        void this.speak(seat, plan);
+        break;
+      }
+    });
+  }
+
+  /** Posts a bot's line: fixed small talk directly; strategic talk after Jev decides what to say. */
+  private async speak(seat: number, plan: TalkPlan) {
+    const started = Date.now();
+    let line: string | null;
+    if (plan.kind === 'line') line = plan.line;
+    else {
+      const criteria = Object.fromEntries(Object.entries(plan.options).map(([k, o]) => [k, o.description]));
+      const answer = await askChoice(plan.state, plan.instructions, criteria, fetch, 2);
+      const key = answer && answer.choice in plan.options ? answer.choice : heuristicTalk(plan.options, Math.random);
+      this.botStats.talk[answer ? 'jev' : 'heuristic']++;
+      line = plan.options[key].line;
+    }
+    if (!line) return; // chose to stay quiet
+    const delay = Math.max(0, 900 + Math.random() * 1800 - (Date.now() - started));
+    setTimeout(() => {
+      if (this.closed) return;
+      const msg: ServerMsg = { t: 'chat', seat, name: this.seats[seat]?.name ?? '?', text: line };
+      for (const x of this.seats) x.conn?.send(msg);
     }, delay);
   }
 
@@ -377,5 +516,19 @@ export class Room {
 
   broadcast(events: GameEvent[] = []) {
     this.seats.forEach((s, seat) => s.conn?.send({ t: 'room', room: this.viewFor(seat, events) }));
+    // Every state change ends in a broadcast, so this is the one place that persists the room.
+    if (!this.closed) this.onChange?.(this);
   }
+}
+
+type StoredMemory = Omit<Memory, 'known'> & { known: [number, 'liberal' | 'fascist'][] };
+
+export interface RoomSnapshot {
+  v: 1;
+  code: string;
+  stage: 'lobby' | 'game';
+  host: number;
+  seats: { name: string; token: string; bot: boolean; botControl: boolean }[];
+  game: GameState | null;
+  memories: StoredMemory[];
 }

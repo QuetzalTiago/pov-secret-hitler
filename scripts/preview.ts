@@ -14,7 +14,7 @@ const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--ena
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 page.on('console', (m) => m.type() === 'error' && console.log('[console]', m.text()));
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.goto(`http://127.0.0.1:${server.port}/`);
+await page.goto(`http://127.0.0.1:${server.port}/?nolock=1`);
 await page.screenshot({ path: `${out}/00-home.png` });
 await page.fill('#name', 'Tester');
 await page.click('#create');
