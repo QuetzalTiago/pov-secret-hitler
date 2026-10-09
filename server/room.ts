@@ -25,6 +25,8 @@ interface Seat {
   bot: boolean;
   botControl: boolean;
   disconnectedAt: number | null;
+  /** Pressed Leave during a game (as opposed to a dropped socket). */
+  left: boolean;
 }
 
 const BOT_NAMES = [
@@ -81,7 +83,7 @@ export class Room {
     let unique = name;
     for (let i = 2; this.seats.some((s) => s.name === unique); i++) unique = `${name.slice(0, 13)} ${i}`;
     const token = randomBytes(16).toString('hex');
-    this.seats.push({ name: unique, token, conn, bot: false, botControl: false, disconnectedAt: null });
+    this.seats.push({ name: unique, token, conn, bot: false, botControl: false, disconnectedAt: null, left: false });
     this.attach(conn, this.seats.length - 1);
     if (this.humanCount() === 1) this.host = this.seats.length - 1;
     conn.send({ t: 'welcome', code: this.code, token, seat: conn.seat });
@@ -99,6 +101,7 @@ export class Room {
     }
     this.clearDisconnectTimer(s.token);
     s.botControl = false;
+    s.left = false;
     s.disconnectedAt = null;
     this.attach(conn, seat);
     conn.send({ t: 'welcome', code: this.code, token, seat });
@@ -161,6 +164,7 @@ export class Room {
       s.conn = null;
       s.disconnectedAt = Date.now();
       s.botControl = true;
+      s.left = true;
       this.schedule();
     }
     this.broadcast();
@@ -191,6 +195,7 @@ export class Room {
 
   private checkEmpty() {
     if (this.connectedHumans() === 0 && this.stage === 'lobby' && this.humanCount() === 0) this.close();
+    else if (this.stage !== 'lobby' && this.humanCount() > 0 && this.seats.every((s) => s.bot || s.left)) this.close();
   }
 
   close() {
@@ -241,7 +246,7 @@ export class Room {
       room.memories = room.game.players.map((p) => newMemory(p.seat, room.game!.players.length));
     }
     const now = Date.now();
-    room.seats = snap.seats.map((s) => ({ ...s, conn: null, disconnectedAt: s.bot ? null : now }));
+    room.seats = snap.seats.map((s) => ({ ...s, conn: null, disconnectedAt: s.bot ? null : now, left: false }));
     for (const s of room.seats) if (!s.bot) room.startGrace(s);
     room.lastActivity = now;
     room.resetTimerIfNeeded(); // fresh phase timer
@@ -260,7 +265,7 @@ export class Room {
     if (this.seats.length >= MAX_PLAYERS) return 'The table is full.';
     const used = new Set(this.seats.map((s) => s.name));
     const name = BOT_NAMES.find((n) => !used.has(n)) ?? `Bot ${this.seats.length}`;
-    this.seats.push({ name, token: randomBytes(16).toString('hex'), conn: null, bot: true, botControl: true, disconnectedAt: null });
+    this.seats.push({ name, token: randomBytes(16).toString('hex'), conn: null, bot: true, botControl: true, disconnectedAt: null, left: false });
     this.broadcast();
     return null;
   }
