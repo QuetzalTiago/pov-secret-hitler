@@ -44,9 +44,34 @@ The game was built fast across 5 phases without review. What bugs and performanc
 - A: fix everything in one pass.
 - B (chosen): fix the two critical server bugs now (both can take the whole server down or break lobby control), and track the rest as an ordered follow-up task, measuring a perf baseline before the rendering work so optimisations are proven, not assumed.
 
+## Perf baseline (todo #86)
+
+Measured 2026-10-09 with `npm run perf` (`scripts/perf.ts`) after `npx vite build`. The script starts the server in-process (bot delay 300 ms), opens one human client at `/?perf&nolock=1` at 1280x720, adds bots up to N seats, and samples `window.__sh.perf()` (the `?perf` HUD's numbers) every 500 ms in three scenes: **lobby** (bots seated, before dealing), **night** (just after dealing), and **vote** (the human has acked the night and nominated if president, and an election vote is open). fps and frame ms are medians, worst ms is the max frame time, and counts are maxima over the samples. Draw calls and triangles come from `renderer.info.render`, so they include the shadow pass. Open any client with `?perf` to see the same HUD live.
+
+Machine: Intel i5-10400F, NVIDIA RTX 4060 Ti, Windows 11, Playwright Chromium 153 headless with `--gpu` (ANGLE D3D11).
+
+| players | scene | fps | frame ms | worst ms | draw calls | triangles | programs | geometries | textures |
+|---|---|---|---|---|---|---|---|---|---|
+| 5 | lobby | 46.0 | 22.0 | 116.6 | 441 | 6456 | 30 | 190 | 20 |
+| 5 | night | 42.6 | 24.6 | 83.4 | 371 | 5772 | 31 | 193 | 24 |
+| 5 | vote | 38.0 | 26.3 | 150.0 | 421 | 5862 | 31 | 202 | 26 |
+| 10 | lobby | 43.1 | 23.5 | 83.4 | 592 | 8394 | 65 | 535 | 23 |
+| 10 | night | 40.0 | 25.0 | 83.4 | 572 | 7616 | 65 | 543 | 28 |
+| 10 | vote | 31.8 | 32.3 | 116.6 | 679 | 7838 | 65 | 557 | 30 |
+
+Reading it:
+
+- **fps is noisy and capped.** rAF is vsync-locked at 60 (`--disable-gpu-vsync` has no effect headless). An earlier 4 s run on the same machine read 60 fps everywhere except vote (58 at 5 players, 34 at 10). The run above had other sessions loading the CPU. Compare fps only between runs on an idle machine, and lean on the counts, which are stable to within a few draw calls between runs (and match in SwiftShader mode, `npm run perf` without `--gpu`).
+- **Draw calls are high for the triangle count:** 370-680 calls for only 6-8k triangles. The scene is CPU/draw-call bound, not fill bound. That is the case for instancing/merging in #94 and for fewer shadow casters in #93.
+- **Programs more than double from 5 to 10 players (30 to 65)**, even in the lobby. This fits the per-patron PointLight: each added light changes the light count and recompiles every lit material (#91).
+- **Geometries scale with patrons (190 to 535)**, so patron meshes don't share geometry (#94). Geometries/textures also creep up from scene to scene within one game (for example 535 to 557), which is a baseline for the leak fixes in #90 (they should stay flat across rematches).
+- **The vote scene is the slowest** in both runs, with the most draw calls and the worst frame spikes (83-150 ms hitches).
+
+Re-measure after each of #90-#94 with `npm run perf -- --gpu --seconds 10` on an idle machine, and add a before/after row here.
+
 ## Risks and open questions
 
-- Rendering numbers are from reading code, not measured; the first follow-up todo adds a `?perf` HUD to get real draw-call/fps numbers at 5 and 10 players.
+- Rendering numbers above are measured (see Perf baseline); fps in headless Chromium is vsync-capped and sensitive to machine load, so draw calls/programs/geometries are the reliable comparison.
 - Removing the per-patron PointLight changes the look of the night-phase red glow; needs a visual check.
 - Unverified: whether finished one-shot WebAudio nodes are garbage-collected in every browser.
 
@@ -54,7 +79,7 @@ The game was built fast across 5 phases without review. What bugs and performanc
 
 Fleet task **LOCAL-bc050340** ("Code review follow-ups: client bugs & rendering perf") tracks the client work. The original follow-up task LOCAL-3071b063 no longer existed, so it was recreated. Its todos, in dependency order:
 
-1. #86 Perf baseline `?perf` HUD; record 5/10-player numbers here.
+1. #86 Perf baseline `?perf` HUD; 5/10-player numbers recorded above (done).
 2. #87 Reset client state on leave/left/fatal error; ignore room messages after leave.
 3. #88 In-flight action guard (after #87).
 4. #89 Small UI/net fixes (after #87).
