@@ -4,7 +4,7 @@ import { Room, type Conn } from '../server/room';
 // A bot that picks a silent option must not be throttled.
 vi.mock('../server/botchat', async (orig) => ({
   ...(await orig<typeof import('../server/botchat')>()),
-  planTalk: vi.fn(() => ({ kind: 'line', line: '' })),
+  planTalk: vi.fn(() => ({ kind: 'line', line: '', situation: 'nothing happened' })),
 }));
 
 describe('bot chat throttle', () => {

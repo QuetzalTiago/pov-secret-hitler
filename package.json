@@ -23,6 +23,7 @@
     "dev:client": "vite",
     "test": "vitest run",
     "simulate": "tsx scripts/simulate.ts",
+    "talk": "tsx scripts/talk.ts",
     "e2e": "playwright test",
     "perf": "tsx scripts/perf.ts",
     "host": "tsx scripts/host.ts",

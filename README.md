@@ -22,6 +22,11 @@ An unofficial, non-commercial fan project. Not affiliated with or endorsed by th
   own hand), keeps suspicion scores, and makes decisions with the [Jev](https://docs.typesafe.ai) decision model
   when an API key is configured, falling back to a built-in strategy. They also talk: Liberals tell the
   truth, Fascists lie when it helps.
+- **Bots that talk back**: point a finger at one and it answers. Bots reply when you name, accuse or
+  insult them, argue their case with the evidence they actually hold, throw out reads of their own ("ese
+  está raro"), call out whoever has gone quiet, warn you when they think you are being set up, hold grudges,
+  and get annoyed when the table ignores them. Each one has a fixed personality, and they swear like real
+  players. See [Table talk](#table-talk-bots-that-answer-you) below.
 - **Server-authoritative and leak-proof**: clients only ever receive their own player's view; every message
   is validated, rate-limited and size-capped.
 - **Persistent**: rooms are saved to SQLite, so a server restart doesn't end games in progress.
@@ -55,6 +60,60 @@ Useful URL flags: `?nolock` (don't capture the mouse, handy for testing), `?perf
 
 Copy `.env.example` to `.env` and set `TYPESAFE_API_KEY`. The key is read only by the server and only sent to
 `api.typesafe.ai`. Without it, bots use the built-in strategy. Tests never use the key.
+
+## Table talk: bots that answer you
+
+Bots are chat participants, not a commentary track. Accuse one and it defends itself with the cards it
+actually saw; insult one and it insults you back; ignore one that asked you a direct question and it gets
+annoyed and says so. They also open accusations themselves when someone's record starts to smell, and they
+remember who crossed them.
+
+Two different models do two different jobs, and the split is deliberate:
+
+| | Decides | Model |
+|---|---|---|
+| **What** a bot says: truth, lie, accusation, or silence | the strategy layer | Jev, falling back to the built-in heuristics |
+| **How** it says it: the actual words, in character | the writing layer | any small text model (`SH_LLM_*`) |
+
+Keeping the strategy out of the text model means a Fascist bot's lies are still chosen by the same tested
+logic that plays its cards, and a bot can never talk itself into giving the game away. Every generated line
+is sanitized before it reaches the table, and anything that reveals the speaker's own hidden role or breaks
+character is dropped in favour of the scripted line.
+
+What bots do with this, beyond answering you:
+
+- **Read the table out loud.** Unprompted, in the quiet moments: a passing suspicion ("ese está raro, tiene
+  pinta de facho"), a dig at whoever has not spoken in a while, or a full accusation with the round and the
+  card when they actually have the evidence.
+- **Call out a setup.** When a President they distrust is about to hand policies to someone the table still
+  trusts, they say so — "ojo Nacho, te van a hacer la cama" — and louder when it is about to happen to them.
+- **Take it personally.** Insult one and it insults you back and remembers; vote its government down and it
+  notes every NEIN; ask it a direct question and ignore the answer and it will complain about being ignored.
+
+They also talk the way the table talks rather than the way a translation engine does: *facho* for a fascist,
+*facha* for the card, "me tocaron tres fachas", "quedar pegado", "se están cubriendo entre ellos".
+
+To turn it on, set `SH_LLM_KEY` in `.env`. The default provider is Google Gemini on
+[its free tier](https://aistudio.google.com/apikey); `SH_LLM_PROVIDER=openai` with `SH_LLM_URL` points the same
+code at Groq, OpenRouter, or a local Ollama. See `.env.example` for ready-made settings.
+
+**Without a key nothing is lost**: bots fall back to the built-in template lines and the game plays exactly
+as it did before. The same is true if the provider errors, rate-limits or times out mid-game — a circuit
+breaker stops calling out, the table quietly goes back to template lines, and it recovers on its own. The
+text model is never on the path of a game action, so it cannot stall or break a match.
+
+Bots speak **Rioplatense Spanish by default** (`SH_BOT_LANG=es-AR`, which also gives them Rioplatense names
+and template lines); set `SH_BOT_LANG=en` for English. They swear the way players at a real table do — set
+`SH_LLM_PROFANITY=0` if you would rather they did not.
+
+To hear them without opening five browser windows (and to check your key works), `npm run talk` plays a
+short game and prints the table arguing through it:
+
+```
+  Tomás: sos un pelotudo, me cagaste la partida
+  Moni: dejate de joder tomás si yo puse libe porque vicky me pasó una y una, a mí no me rompas las pelotas
+  Nacho: tomás me pasó las dos facha hermano, hacete cargo, me tiraste el muerto a mí y ahora llorás
+```
 
 ## Testing
 
