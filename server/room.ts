@@ -64,6 +64,8 @@ export class Room {
   private deadline: number | null = null;
   private botTimer: NodeJS.Timeout | null = null;
   private disconnectTimers = new Map<string, NodeJS.Timeout>();
+  /** Running while no human is connected; ends the room when it fires. */
+  private abandonTimer: NodeJS.Timeout | null = null;
   private closed = false;
   /** Per-seat memory built from that seat's own view (bots read it; it never leaves the server). */
   private memories: Memory[] = [];
@@ -132,6 +134,7 @@ export class Room {
     conn.room = this;
     conn.seat = seat;
     this.lastActivity = Date.now();
+    this.checkAbandoned();
   }
 
   /** Socket closed without an explicit leave. */
@@ -227,6 +230,25 @@ export class Room {
   private checkEmpty() {
     if (this.connectedHumans() === 0 && this.stage === 'lobby' && this.humanCount() === 0) this.close();
     else if (this.stage !== 'lobby' && this.humanCount() > 0 && this.seats.every((s) => s.bot || s.left)) this.close();
+    else this.checkAbandoned();
+  }
+
+  /**
+   * Everyone away: if no human is connected for config.abandonMs (1 minute), the session is ended and deleted.
+   * Anyone reconnecting in time cancels it.
+   */
+  private checkAbandoned() {
+    if (this.closed) return;
+    if (this.connectedHumans() > 0) {
+      if (this.abandonTimer) clearTimeout(this.abandonTimer);
+      this.abandonTimer = null;
+      return;
+    }
+    if (this.abandonTimer) return;
+    this.abandonTimer = setTimeout(() => {
+      this.abandonTimer = null;
+      if (!this.closed && this.connectedHumans() === 0) this.close();
+    }, config.abandonMs);
   }
 
   close() {
@@ -234,6 +256,7 @@ export class Room {
     this.closed = true;
     if (this.timer) clearTimeout(this.timer);
     if (this.botTimer) clearTimeout(this.botTimer);
+    if (this.abandonTimer) clearTimeout(this.abandonTimer);
     this.stopMoodTimer();
     for (const t of this.disconnectTimers.values()) clearTimeout(t);
     for (const s of this.seats) if (s.conn) s.conn.room = null;
@@ -246,6 +269,7 @@ export class Room {
     this.closed = true;
     if (this.timer) clearTimeout(this.timer);
     if (this.botTimer) clearTimeout(this.botTimer);
+    if (this.abandonTimer) clearTimeout(this.abandonTimer);
     this.stopMoodTimer();
     for (const t of this.disconnectTimers.values()) clearTimeout(t);
   }
@@ -287,6 +311,7 @@ export class Room {
     room.lastActivity = now;
     room.resetTimerIfNeeded(); // fresh phase timer
     if (room.stage === 'game') room.startMoodTimer();
+    room.checkAbandoned();
     return room;
   }
 
