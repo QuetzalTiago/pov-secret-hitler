@@ -130,17 +130,21 @@ export class Room {
   private startGrace(s: Seat) {
     this.clearDisconnectTimer(s.token);
     const timer = setTimeout(() => {
-      this.disconnectTimers.delete(s.token);
-      if (s.conn) return;
-      if (this.stage === 'lobby') {
-        this.removeSeat(this.seats.indexOf(s));
-        this.checkEmpty();
-        if (this.closed) return;
-      } else {
-        s.botControl = true;
-        this.schedule();
+      try {
+        this.disconnectTimers.delete(s.token);
+        if (s.conn) return;
+        if (this.stage === 'lobby') {
+          this.removeSeat(this.seats.indexOf(s));
+          this.checkEmpty();
+          if (this.closed) return;
+        } else {
+          s.botControl = true;
+          this.schedule();
+        }
+        this.broadcast();
+      } catch (e) {
+        console.error('[room] grace timer failed', e);
       }
-      this.broadcast();
     }, config.reconnectGraceMs);
     this.disconnectTimers.set(s.token, timer);
   }
@@ -346,7 +350,13 @@ export class Room {
     if (g.phase === 'gameOver') return;
     const ms = PHASE_SECONDS[g.phase] * 1000 * config.timerScale;
     this.deadline = Date.now() + ms;
-    this.timer = setTimeout(() => this.onTimeout(key), ms);
+    this.timer = setTimeout(() => {
+      try {
+        this.onTimeout(key);
+      } catch (e) {
+        console.error('[room] onTimeout failed', e);
+      }
+    }, ms);
   }
 
   private clearTimer() {
@@ -375,10 +385,28 @@ export class Room {
     if (!g) return;
     const legal = legalActions(g, seat);
     if (legal.length === 0) return;
-    const body = decideNow(viewFor(g, seat), legal, this.memories[seat], (s) => this.seatName(s));
+    let body = legal[0];
+    try {
+      body = decideNow(viewFor(g, seat), legal, this.memories[seat], (s) => this.seatName(s));
+    } catch (e) {
+      console.error('[bot] decideNow failed', e);
+    }
     this.botStats.heuristic++;
-    const err = this.apply(seat, body);
-    if (err) throw new Error(`bot made illegal move: ${err}`);
+    const err = this.tryApply(seat, body);
+    if (!err) return;
+    console.error('[bot] illegal move', seat, body, err);
+    if (body === legal[0]) return; // the phase timer will retry
+    const err2 = this.tryApply(seat, legal[0]);
+    if (err2) console.error('[bot] fallback move also illegal', seat, legal[0], err2);
+  }
+
+  /** apply() for bot moves: an unexpected exception becomes an error string instead of escaping. */
+  private tryApply(seat: number, body: ActionBody): string | null {
+    try {
+      return this.apply(seat, body);
+    } catch (e) {
+      return String(e);
+    }
   }
 
   /** Schedules the next bot move if a bot-driven seat owes an action. */
@@ -395,11 +423,15 @@ export class Room {
     const delay = base + Math.random() * base * 0.8;
     this.botTimer = setTimeout(() => {
       this.botTimer = null;
-      const now = this.game;
-      if (!now) return;
-      const seat = pendingActors(now).find((s) => this.seats[s]?.botControl && !this.thinking.has(s));
-      if (seat !== undefined) void this.think(seat);
-      this.schedule(); // let other bots (e.g. voters) start thinking too
+      try {
+        const now = this.game;
+        if (!now) return;
+        const seat = pendingActors(now).find((s) => this.seats[s]?.botControl && !this.thinking.has(s));
+        if (seat !== undefined) this.think(seat).catch((e) => console.error('[bot] think failed', e));
+        this.schedule(); // let other bots (e.g. voters) start thinking too
+      } catch (e) {
+        console.error('[room] botTimer failed', e);
+      }
     }, delay);
   }
 
@@ -428,7 +460,7 @@ export class Room {
       this.schedule();
       return;
     }
-    if (this.apply(seat, action)) this.botMove(seat); // stale or illegal: fall back to an immediate legal move
+    if (this.tryApply(seat, action)) this.botMove(seat); // stale or illegal: fall back to an immediate legal move
   }
 
   private seatName(seat: number): string {
@@ -448,7 +480,7 @@ export class Room {
         const plan = planTalk(e, view, this.memories[seat], (x) => this.seatName(x), Math.random);
         if (!plan) continue;
         this.lastBotChat.set(seat, now);
-        void this.speak(seat, plan);
+        this.speak(seat, plan).catch((e) => console.error('[bot] speak failed', e));
         break;
       }
     });
@@ -469,9 +501,13 @@ export class Room {
     if (!line) return; // chose to stay quiet
     const delay = Math.max(0, 900 + Math.random() * 1800 - (Date.now() - started));
     setTimeout(() => {
-      if (this.closed) return;
-      const msg: ServerMsg = { t: 'chat', seat, name: this.seats[seat]?.name ?? '?', text: line };
-      for (const x of this.seats) x.conn?.send(msg);
+      try {
+        if (this.closed) return;
+        const msg: ServerMsg = { t: 'chat', seat, name: this.seats[seat]?.name ?? '?', text: line };
+        for (const x of this.seats) x.conn?.send(msg);
+      } catch (e) {
+        console.error('[room] chat failed', e);
+      }
     }, delay);
   }
 

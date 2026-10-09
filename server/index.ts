@@ -271,6 +271,8 @@ export function startServer(port = config.port): Promise<RunningServer> {
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
+  process.on('unhandledRejection', (e) => console.error('[server] unhandled rejection', e));
+  process.on('uncaughtException', (e) => console.error('[server] uncaught exception', e));
   config.dbPath = process.env.SH_DB_PATH ?? 'data/rooms.db';
   startServer().then((s) => {
     console.log(`POV Secret Hitler (povsecrethitler.app) listening on http://${config.host}:${s.port}`);
