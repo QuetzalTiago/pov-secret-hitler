@@ -1,5 +1,6 @@
 // Procedural low-poly patrons. Original designs: coats, faces and hats vary by seat.
 import * as THREE from 'three';
+import { disposeObject } from './dispose';
 import { textSprite } from './textures';
 import { boxLimb } from './world';
 
@@ -246,6 +247,7 @@ export class Character {
     if (this.bubble) {
       this.group.remove(this.bubble);
       this.bubble.material.map?.dispose();
+      this.bubble.material.dispose();
     }
     const { texture, aspect } = textSprite(text, { color: '#1a120c', bg: 'rgba(245,236,214,0.95)', size: 30, maxWidth: 440 });
     this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
@@ -391,16 +393,13 @@ export class Character {
       if (left <= 0) {
         this.group.remove(this.bubble);
         this.bubble.material.map?.dispose();
+        this.bubble.material.dispose();
         this.bubble = null;
       }
     }
   }
 
   dispose() {
-    this.group.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.geometry) m.geometry.dispose();
-    });
-    this.tag.material.map?.dispose();
+    disposeObject(this.group);
   }
 }

@@ -117,6 +117,7 @@ export class Board {
     this.powersKey = key;
     const t = boardTexture(powers);
     const side = new THREE.MeshStandardMaterial({ color: 0x1c130c });
+    for (const m of new Set([this.surface.material].flat())) m.dispose();
     this.surface.material = [side, side, new THREE.MeshStandardMaterial({ map: t, roughness: 0.6 }), side, side, side];
   }
 

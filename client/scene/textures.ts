@@ -4,6 +4,12 @@ import * as THREE from 'three';
 const SERIF = '"Georgia", "Times New Roman", serif';
 const SANS = '"Trebuchet MS", "Segoe UI", system-ui, sans-serif';
 const cache = new Map<string, THREE.CanvasTexture>();
+const owned = new WeakSet<THREE.Texture>();
+const CACHE_MAX = 64;
+
+export function isCachedTexture(t: THREE.Texture): boolean {
+  return owned.has(t);
+}
 
 export const COLORS = {
   liberal: '#2f6f9a',
@@ -24,13 +30,24 @@ function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContex
 
 function tex(key: string, w: number, h: number, draw: (g: CanvasRenderingContext2D, w: number, h: number) => void) {
   const hit = cache.get(key);
-  if (hit) return hit;
+  if (hit) {
+    cache.delete(key);
+    cache.set(key, hit);
+    return hit;
+  }
   const [c, g] = canvas(w, h);
   draw(g, w, h);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
   cache.set(key, t);
+  owned.add(t);
+  if (cache.size > CACHE_MAX) {
+    const [oldKey, old] = cache.entries().next().value!;
+    cache.delete(oldKey);
+    owned.delete(old);
+    old.dispose();
+  }
   return t;
 }
 

@@ -1,5 +1,6 @@
 // Renderer, bar environment, lighting, camera look/shake, and table layout math.
 import * as THREE from 'three';
+import { disposeObject } from './dispose';
 import {
   feltTexture, glowTexture, plankTexture, smokeTexture, textSprite, wallTexture, woodTexture,
 } from './textures';
@@ -339,6 +340,7 @@ export class World {
     const count = Math.max(n, 5);
     if (this.layout.n === count && this.layout.me === me && this.tableGroup.children.length) return;
     this.layout = new Layout(count, me);
+    disposeObject(this.tableGroup, { keep: [this.sleeve] });
     this.tableGroup.clear();
     const L = this.layout;
     const wood = new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.55, metalness: 0.05 });

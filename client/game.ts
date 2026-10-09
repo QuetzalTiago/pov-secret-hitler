@@ -6,6 +6,7 @@ import { legalFromView, type GameView } from '../shared/view';
 import { setMusicMood, sfx, voice } from './audio';
 import type { Interactable, Interactor } from './interact';
 import { Character } from './scene/characters';
+import { disposeObject } from './scene/dispose';
 import { Board, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
 import { ballotFace, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
 import { Mover, TABLE_Y, type World } from './scene/world';
@@ -259,7 +260,7 @@ export class Game {
       c.dispose();
     }
     this.chars.clear();
-    for (const m of this.envelopes.values()) this.world.scene.remove(m);
+    for (const m of this.envelopes.values()) this.removeEnvelope(m);
     this.envelopes.clear();
     const L = this.world.layout;
     this.drawPile.group.position.set(-this.board.w / 2 - 0.13, TABLE_Y, -0.02);
@@ -281,6 +282,12 @@ export class Game {
     return c;
   }
 
+  // Geometry is shared with the template; only the per-clone materials are freed.
+  private removeEnvelope(env: THREE.Mesh) {
+    this.world.scene.remove(env);
+    disposeObject(env, { geometry: false });
+  }
+
   private syncCharacters() {
     const room = this.room!;
     const L = this.world.layout;
@@ -291,6 +298,9 @@ export class Game {
         this.world.scene.remove(c.group);
         c.dispose();
         this.chars.delete(seat);
+        const env = this.envelopes.get(seat);
+        if (env) this.removeEnvelope(env);
+        this.envelopes.delete(seat);
       }
     }
     for (const seat of seats) {
@@ -306,6 +316,8 @@ export class Game {
       }
       if (!c) {
         c = this.newCharacter(seat, variant);
+      }
+      if (!this.envelopes.has(seat)) {
         const env = this.envelope.mesh.clone();
         env.material = (this.envelope.mesh.material as THREE.Material[]).map((m) => m.clone());
         env.position.copy(L.front(seat, -0.34, -0.02));
@@ -1069,6 +1081,7 @@ export class Game {
     } else if (this.reveals.size) {
       for (const r of this.reveals.values()) {
         this.world.scene.remove(r.card.mesh);
+        disposeObject(r.card.mesh);
         this.world.movers.delete(r.mover);
       }
       this.reveals.clear();
