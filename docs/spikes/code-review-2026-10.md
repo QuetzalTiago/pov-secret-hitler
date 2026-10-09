@@ -28,14 +28,14 @@ The game was built fast across 5 phases without review. What bugs and performanc
 - In-flight room messages after Leave re-show the room; chat logs (`client/ui.ts` ~262-277) and the leave-confirm dialog (~68-77) carry over to the next table.
 - `client/ui.ts` ~126-129 copy-button label can stick; ~251 an old error timer can hide a newer error.
 - `client/net.ts` ~22-28 try/catch swallows exceptions thrown by the message handler, not just JSON errors; up to 20 queued messages (including stale `act`s) are replayed after reconnect.
-- `client/game.ts` ~265-290 duplicate envelope when a seat leaves and rejoins without a relayout.
+- `client/game.ts` ~265-290 duplicate envelope when a seat leaves and rejoins without a relayout. Fixed in #90.
 - Checked and fine: no XSS (textContent/canvas only), seat indexing, chat log caps, no event replay on resume (server resume broadcasts no events).
 
 ### Client: rendering and performance
 
 - `client/scene/characters.ts` ~146: one PointLight per patron, so up to 14 point lights; joins/leaves change the light count and recompile every material.
 - `client/scene/world.ts` ~124: `preserveDrawingBuffer: true` always on (Playwright screenshots don't need it).
-- GPU leaks: `world.ts` `setLayout` (~342) `tableGroup.clear()` without dispose; `Character.dispose` (`characters.ts` ~399) skips materials; envelope clones (`game.ts` ~285), game-over reveal cards (`game.ts` ~1046), chat-bubble SpriteMaterials (`characters.ts` ~246-251), `Board.setPowers` (`props.ts` ~114) materials never disposed; texture cache in `textures.ts` never evicts.
+- GPU leaks: `world.ts` `setLayout` (~342) `tableGroup.clear()` without dispose; `Character.dispose` (`characters.ts` ~399) skips materials; envelope clones (`game.ts` ~285), game-over reveal cards (`game.ts` ~1046), chat-bubble SpriteMaterials (`characters.ts` ~246-251), `Board.setPowers` (`props.ts` ~114) materials never disposed; texture cache in `textures.ts` never evicts. Fixed in #90.
 - Shadows: PCFSoftShadowMap at 1024^2 (`world.ts` ~128, ~145), ~35 shadow-casting meshes per patron; ~53 bottle draw calls (`world.ts` ~272-293); 26 large transparent smoke sprites (~326-334).
 - Per-frame allocations: `client/interact.ts` ~72-89 `pick()` rebuilds a Map and array every frame; `computeTargets` (`game.ts` ~809-1052) allocates vectors/quaternions; new Raycaster per frame (`game.ts` ~100, ~980); `ui.setTimer` writes DOM every frame; `audio.ts` ~61-75 fills a fresh noise buffer per sfx call.
 
@@ -68,6 +68,17 @@ Reading it:
 - **The vote scene is the slowest** in both runs, with the most draw calls and the worst frame spikes (83-150 ms hitches).
 
 Re-measure after each of #90-#94 with `npm run perf -- --gpu --seconds 10` on an idle machine, and add a before/after row here.
+
+### Leak check after #90
+
+`npm run perf -- --leak 3` (new in #90; needs `npx vite build` first) plays 7-player games with seat churn (two bots leave and rejoin) and a rematch between rounds, and reads renderer.info at each game over. SwiftShader mode; counts are what matter.
+
+| build | round 1 geometries | last round geometries | round 1 textures | last round textures | programs |
+|---|---|---|---|---|---|
+| before #90 (2 rounds) | 534 | 694 | 39 | 42 | 46 |
+| after #90 (3 rounds) | 314 | 301 | 38 | 37 | 33 |
+
+Geometries and textures now stay flat across rematches (they grew by 160 geometries per round before). Programs also dropped from 46 to 33 because disposed materials free their shader programs. The textures.ts cache is an LRU capped at 64 entries.
 
 ## Risks and open questions
 
