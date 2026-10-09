@@ -165,3 +165,61 @@ test('five players complete a full game through the 3D UI', async ({ browser, ba
   expect(stats.real).toBeGreaterThan(stats.fallback);
   expect(errors, errors.join('\n')).toEqual([]);
 });
+
+test('leaving a table resets client state and a new table works afterwards', async ({ page, baseURL }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const room = () => page.evaluate(() => (window as unknown as { __sh: Hooks }).__sh.room());
+  const actions = () => page.evaluate(() => (window as unknown as { __sh: Hooks }).__sh.actions());
+  const expectHomeReset = async () => {
+    await expect(page.locator('#home')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#room')).toHaveClass(/hidden/);
+    await expect(page.locator('#hud')).toHaveClass(/hidden/);
+    await expect(page.locator('#gameover')).toHaveClass(/hidden/);
+    await expect(page.locator('#confirm-leave')).toHaveClass(/hidden/);
+    await expect(page.locator('#chat-log > *')).toHaveCount(0);
+    await expect(page.locator('#lobby-chat > *')).toHaveCount(0);
+    await expect(page.locator('#chat-input')).toHaveValue('');
+    expect(await room()).toBeNull();
+    expect(await actions()).toEqual([]);
+    expect(await page.evaluate(() => localStorage.getItem('sh-session'))).toBeNull();
+  };
+
+  await page.goto(baseURL!);
+  await page.fill('#name', 'Ada');
+
+  // Leave from the lobby.
+  await page.click('#create');
+  await expect(page.locator('#room-code')).toHaveText(/^[A-Z]{4}$/);
+  await page.click('#lobby-leave');
+  await expectHomeReset();
+
+  // New table, fill with bots, start, chat, then leave mid-game via the confirm dialog.
+  await page.click('#create');
+  await expect(page.locator('#room')).not.toHaveClass(/hidden/);
+  await expect(page.locator('#room-code')).toHaveText(/^[A-Z]{4}$/);
+  expect(await room()).not.toBeNull();
+  for (let i = 0; i < 4; i++) await page.click('#add-bot');
+  await expect(page.locator('#seats li')).toHaveCount(5);
+  await page.click('#start');
+  await expect(page.locator('#hud')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('hello table');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#chat-log')).toContainText('hello table');
+  await page.click('#leave');
+  await expect(page.locator('#confirm-leave')).toBeVisible();
+  await page.click('#confirm-yes');
+  await expectHomeReset();
+  // In-flight room/chat updates from the abandoned table must not bring it back.
+  await page.waitForTimeout(1500);
+  await expectHomeReset();
+
+  // A fresh table still works.
+  await page.click('#create');
+  await expect(page.locator('#room')).not.toHaveClass(/hidden/);
+  await expect(page.locator('#room-code')).toHaveText(/^[A-Z]{4}$/);
+  expect(await room()).not.toBeNull();
+  await expect(page.locator('#home')).toHaveClass(/hidden/);
+  expect(errors, errors.join('\n')).toEqual([]);
+});
