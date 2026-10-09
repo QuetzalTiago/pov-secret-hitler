@@ -2,9 +2,19 @@
   "name": "pov-secret-hitler",
   "version": "1.0.0",
   "private": true,
-  "homepage": "https://povsecrethitler.app",
   "description": "POV Secret Hitler (povsecrethitler.app): unofficial, non-commercial 3D first-person online adaptation of Secret Hitler (CC BY-NC-SA 4.0)",
   "license": "CC-BY-NC-SA-4.0",
+  "homepage": "https://povsecrethitler.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QuetzalTiago/pov-secret-hitler.git"
+  },
+  "bugs": {
+    "url": "https://github.com/QuetzalTiago/pov-secret-hitler/issues"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
   "type": "module",
   "scripts": {
     "build": "vite build",
