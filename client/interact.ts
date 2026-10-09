@@ -24,6 +24,16 @@ export class Interactor {
   private ray = new THREE.Raycaster();
   private pointer = new THREE.Vector2(-9, -9);
   private havePointer = false;
+  private owners = new Map<THREE.Object3D, string>();
+  private objs: THREE.Object3D[] = [];
+  private hits: THREE.Intersection[] = [];
+  private pickId = '';
+  private collect = (c: THREE.Object3D) => {
+    if ((c as THREE.Mesh).isMesh && c.visible) {
+      this.owners.set(c, this.pickId);
+      this.objs.push(c);
+    }
+  };
 
   constructor(private world: World, private tooltip: HTMLElement, private crosshair: HTMLElement, private hint: HTMLElement) {
     world.onLockChange = () => this.refreshChrome();
@@ -73,19 +83,22 @@ export class Interactor {
     if (this.items.size === 0) return null;
     this.world.camera.updateMatrixWorld();
     this.ray.setFromCamera(at, this.world.camera);
-    const owners = new Map<THREE.Object3D, string>();
-    const objs: THREE.Object3D[] = [];
+    const { owners, objs, hits } = this;
+    owners.clear();
+    objs.length = 0;
+    hits.length = 0;
     for (const item of this.items.values()) {
-      for (const o of item.objects) {
-        o.traverse((c) => {
-          if ((c as THREE.Mesh).isMesh && c.visible) {
-            owners.set(c, item.id);
-            objs.push(c);
-          }
-        });
+      this.pickId = item.id;
+      for (const o of item.objects) o.traverse(this.collect);
+    }
+    this.ray.intersectObjects(objs, false, hits);
+    let hit: THREE.Intersection | undefined;
+    for (const h of hits) {
+      if (isVisible(h.object)) {
+        hit = h;
+        break;
       }
     }
-    const hit = this.ray.intersectObjects(objs, false).find((h) => isVisible(h.object));
     return hit ? owners.get(hit.object) ?? null : null;
   }
 

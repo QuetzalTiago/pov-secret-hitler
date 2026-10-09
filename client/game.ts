@@ -22,12 +22,21 @@ interface PoolCard {
   boardSlot: THREE.Vector3 | null;
 }
 
+const AXIS_X = new THREE.Vector3(1, 0, 0);
+const AXIS_Y = new THREE.Vector3(0, 1, 0);
+const AXIS_Z = new THREE.Vector3(0, 0, 1);
 const Q = (axis: 'x' | 'y' | 'z', angle: number) =>
-  new THREE.Quaternion().setFromAxisAngle(
-    axis === 'x' ? new THREE.Vector3(1, 0, 0) : axis === 'y' ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1),
-    angle,
-  );
-const mul = (...qs: THREE.Quaternion[]) => qs.reduce((a, b) => a.clone().multiply(b), new THREE.Quaternion());
+  new THREE.Quaternion().setFromAxisAngle(axis === 'x' ? AXIS_X : axis === 'y' ? AXIS_Y : AXIS_Z, angle);
+const mul = (...qs: THREE.Quaternion[]) => {
+  const out = new THREE.Quaternion();
+  for (const q of qs) out.multiply(q);
+  return out;
+};
+// Shared constants for computeTargets. Mover.set copies them, so never mutate these.
+const IDENTITY_Q = new THREE.Quaternion();
+const FLIP_X_Q = Q('x', Math.PI);
+const DISCARD_LIFT = new THREE.Vector3(0, 0.02, 0);
+const BOARD_LIFT = new THREE.Vector3(0, 0.03, 0);
 
 const POWER_TEXT: Record<string, string> = {
   peek: 'Policy peek: the President looks at the top three policies.',
@@ -98,9 +107,8 @@ export class Game {
     if (v.phase !== 'nominate' && v.phase !== 'investigate' && v.phase !== 'special') return null;
     if (v.president === me) {
       // You point wherever you are aiming.
-      const ray = new THREE.Raycaster();
-      ray.setFromCamera(this.world.aimNdc(), this.world.camera);
-      return { seat: me, at: ray.ray.at(3, new THREE.Vector3()) };
+      this.ray.setFromCamera(this.world.aimNdc(), this.world.camera);
+      return { seat: me, at: this.ray.ray.at(3, new THREE.Vector3()) };
     }
     // Another President sweeps across the players they may choose from.
     const options =
@@ -111,6 +119,16 @@ export class Game {
     return { seat: v.president, at: headOf(options[Math.floor(this.now / 2.2) % options.length]) };
   }
   private layoutKey = '';
+  private ray = new THREE.Raycaster();
+  private tmpV = new THREE.Vector3();
+  private restP = new THREE.Vector3();
+  private restC = new THREE.Vector3();
+  private gunRest = new THREE.Vector3();
+  private gunPos = new THREE.Vector3();
+  private gunUp = new THREE.Vector3(0, 1, 0);
+  private gunMat = new THREE.Matrix4();
+  private gunQ = new THREE.Quaternion();
+  private fallbackAim = new THREE.Vector3(0, 1.2, 0);
   private now = 0;
   private lastHeartbeat = 0;
   private lastSecond = -1;
@@ -853,7 +871,7 @@ export class Game {
 
     // Envelope and role card.
     const envPos = L.front(me, -0.3, 0.02);
-    this.envMover.set(envPos.clone().setY(envPos.y + (hovered === 'envelope' ? 0.02 : 0)), Q('y', L.yaw(me)));
+    this.envMover.set(this.tmpV.copy(envPos).setY(envPos.y + (hovered === 'envelope' ? 0.02 : 0)), Q('y', L.yaw(me)));
     this.envMover.visible = !!v;
     this.envelope.setGlow(hovered === 'envelope' || (v?.phase === 'night' && !this.envelopeOpen && !v.players[me]?.acked) ? 0.6 + Math.sin(now * 4) * 0.3 : 0);
     if (v?.yourRole) this.roleCard.setFace(roleCard(v.yourRole));
@@ -863,26 +881,26 @@ export class Game {
       this.roleMover.visible = true;
       this.roleMover.hideOnArrive = false;
     } else {
-      this.roleMover.set(envPos.clone().setY(envPos.y + 0.006), Q('y', L.yaw(me)), 12);
+      this.roleMover.set(this.tmpV.copy(envPos).setY(envPos.y + 0.006), Q('y', L.yaw(me)), 12);
       this.roleMover.hideOnArrive = true;
     }
     this.roleCard.setGlow(hovered === 'role-card' ? 0.1 : 0);
     for (const [seat, env] of this.envelopes) env.visible = !!v && !!v.players[seat];
 
     // Placards.
-    const restP = new THREE.Vector3(-0.25, TABLE_Y + 0.043, -this.board.h / 2 - 0.12);
-    const restC = new THREE.Vector3(0.25, TABLE_Y + 0.043, -this.board.h / 2 - 0.12);
+    const restP = this.restP.set(-0.25, TABLE_Y + 0.043, -this.board.h / 2 - 0.12);
+    const restC = this.restC.set(0.25, TABLE_Y + 0.043, -this.board.h / 2 - 0.12);
     if (v && v.phase !== 'night') {
       const p = L.front(v.president, -0.2, 0.12);
       p.y += 0.043;
       this.presMover.set(p, Q('y', L.yaw(v.president)), 4);
-    } else this.presMover.set(restP, new THREE.Quaternion(), 4);
+    } else this.presMover.set(restP, IDENTITY_Q, 4);
     const chan = v ? (v.phase === 'vote' ? v.nominee : v.chancellor) : null;
     if (chan !== null && chan !== undefined && v?.phase !== 'gameOver') {
       const p = L.front(chan, 0.2, 0.12);
       p.y += 0.043;
       this.chanMover.set(p, mul(Q('y', L.yaw(chan)), Q('x', v?.phase === 'vote' ? -0.35 : 0)), 4);
-    } else this.chanMover.set(restC, new THREE.Quaternion(), 4);
+    } else this.chanMover.set(restC, IDENTITY_Q, 4);
 
     // Policy cards.
     this.drawPile.setCount(v?.deckCount ?? 17);
@@ -909,11 +927,11 @@ export class Game {
     });
     for (const p of this.pool) {
       if (p.where === 'discard') {
-        p.mover.set(this.discardPile.topPosition().add(new THREE.Vector3(0, 0.02, 0)), Q('x', Math.PI), 6);
+        p.mover.set(this.discardPile.topPosition().add(DISCARD_LIFT), FLIP_X_Q, 6);
       } else if (p.where === 'board' && p.boardSlot) {
-        p.mover.set(p.boardSlot.clone().add(new THREE.Vector3(0, 0.03, 0)), new THREE.Quaternion(), 5);
+        p.mover.set(this.tmpV.copy(p.boardSlot).add(BOARD_LIFT), IDENTITY_Q, 5);
       } else if (p.where === 'pile') {
-        p.mover.set(this.drawPile.topPosition(), Q('x', Math.PI), 8);
+        p.mover.set(this.drawPile.topPosition(), FLIP_X_Q, 8);
         p.mover.hideOnArrive = true;
       }
       if (p.where !== 'held' && p.where !== 'board') p.card.setGlow(0);
@@ -937,7 +955,7 @@ export class Game {
         if (revealing) {
           pos.y += 0.06;
           mover.set(pos, mul(Q('y', tiltToMe(me)), Q('x', 0.9)), 10);
-        } else mover.set(pos, Q('x', Math.PI), 16);
+        } else mover.set(pos, FLIP_X_Q, 16);
       } else {
         rest.y += hover ? 0.04 : 0;
         mover.set(rest, mul(Q('y', 0.08), Q('x', hover ? 0.3 : 0)), 12);
@@ -973,13 +991,13 @@ export class Game {
             vc.card.mesh.position.copy(slot).add(new THREE.Vector3(0, 0.3, 0));
             vc.card.mesh.scale.setScalar(1);
           }
-          vc.mover.set(slot, mul(Q('y', L.yaw(p.seat)), Q('x', Math.PI)), 16);
+          vc.mover.set(slot, mul(Q('y', L.yaw(p.seat)), FLIP_X_Q), 16);
           vc.mover.scale = 1;
           vc.mover.visible = true;
           vc.mover.hideOnArrive = false;
         } else {
           vc.shown = false;
-          vc.mover.set(slot.clone().setY(TABLE_Y - 0.05), mul(Q('y', L.yaw(p.seat)), Q('x', Math.PI)), 8);
+          vc.mover.set(this.tmpV.copy(slot).setY(TABLE_Y - 0.05), mul(Q('y', L.yaw(p.seat)), FLIP_X_Q), 8);
           vc.mover.scale = 1;
           vc.mover.hideOnArrive = true;
         }
@@ -990,11 +1008,11 @@ export class Game {
     const vetoLegal = !!v && v.phase === 'legChancellor' && v.chancellor === me && v.vetoUnlocked && !v.vetoRefused;
     const vt = L.front(me, -0.12, 0.2);
     vt.y += vetoLegal ? 0.012 + (hovered === 'veto' ? 0.03 : 0) : -0.05;
-    this.vetoMover.set(vt, new THREE.Quaternion(), 8);
+    this.vetoMover.set(vt, IDENTITY_Q, 8);
     this.vetoMover.visible = vetoLegal;
 
     // Revolver.
-    const gunRest = new THREE.Vector3(this.board.w / 2 + 0.1, TABLE_Y + 0.02, this.board.h / 2 + 0.08);
+    const gunRest = this.gunRest.set(this.board.w / 2 + 0.1, TABLE_Y + 0.02, this.board.h / 2 + 0.08);
     const shooting = this.shot && now < this.shot.until ? this.shot : null;
     if (this.shot && !shooting) this.shot = null;
     const holderSeat = shooting ? shooting.by : v?.phase === 'execute' ? v.president : null;
@@ -1009,16 +1027,14 @@ export class Game {
     else this.world.setOwnArm(null);
     if (holderSeat === me && v) {
       const cam = this.world.camera;
-      const pos = new THREE.Vector3(0.16, -0.15, -0.4).applyMatrix4(cam.matrixWorld);
+      const pos = this.gunPos.set(0.16, -0.15, -0.4).applyMatrix4(cam.matrixWorld);
       let aim: THREE.Vector3;
       if (shooting) aim = L.head(shooting.target);
       else {
-        const ray = new THREE.Raycaster();
-        ray.setFromCamera(this.world.aimNdc(), cam);
-        aim = ray.ray.at(4, new THREE.Vector3());
+        this.ray.setFromCamera(this.world.aimNdc(), cam);
+        aim = this.ray.ray.at(4, new THREE.Vector3());
       }
-      const m = new THREE.Matrix4().lookAt(pos, aim, new THREE.Vector3(0, 1, 0));
-      const q = new THREE.Quaternion().setFromRotationMatrix(m);
+      const q = this.gunQ.setFromRotationMatrix(this.gunMat.lookAt(pos, aim, this.gunUp));
       this.gunMover.set(pos, shooting && now > shooting.until - 2.6 && now < shooting.until - 2.3 ? mul(q, Q('x', 0.5)) : q, 14);
     } else if (holderSeat !== null && holderSeat !== undefined) {
       // The President raises their arm; the aim drifts from player to player until the shot, then locks on.
@@ -1028,14 +1044,14 @@ export class Game {
         ? L.head(shooting.target)
         : candidates.length
           ? (candidates[Math.floor(now / 1.8) % candidates.length] === me ? this.world.camera.position.clone() : L.head(candidates[Math.floor(now / 1.8) % candidates.length]))
-          : new THREE.Vector3(0, 1.2, 0);
+          : this.fallbackAim;
       if (c) {
         c.setAim(aimAt);
         const { pos, quat } = c.gunPose(); // the gun sits in the hand and points wherever the arm points
         this.gunMover.set(pos, quat, 16);
       } else {
         const pos = L.front(holderSeat, 0.12, -0.05, 0.92).setY(TABLE_Y + 0.28);
-        this.gunMover.set(pos, new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(pos, aimAt, new THREE.Vector3(0, 1, 0))), 16);
+        this.gunMover.set(pos, this.gunQ.setFromRotationMatrix(this.gunMat.lookAt(pos, aimAt, this.gunUp)), 16);
       }
     } else {
       this.gunMover.set(gunRest, mul(Q('y', 0.7), Q('z', Math.PI / 2)), 5);
@@ -1053,12 +1069,12 @@ export class Game {
     } else if (flight) {
       const p = L.front(flight.by, 0, 0.1);
       p.y += 0.02;
-      this.invMover.set(p, mul(Q('y', L.yaw(flight.by)), Q('x', Math.PI)), 2.5);
+      this.invMover.set(p, mul(Q('y', L.yaw(flight.by)), FLIP_X_Q), 2.5);
       this.invMover.visible = true;
       this.invMover.hideOnArrive = false;
       if (!this.invCard.mesh.visible) this.invCard.mesh.position.copy(L.front(flight.target));
     } else {
-      this.invMover.set(L.front(me, 0, 0, 0.6).setY(TABLE_Y - 0.1), new THREE.Quaternion(), 4);
+      this.invMover.set(L.front(me, 0, 0, 0.6).setY(TABLE_Y - 0.1), IDENTITY_Q, 4);
       this.invMover.hideOnArrive = true;
     }
 

@@ -74,6 +74,18 @@ function noiseBuffer(seconds: number, brown = false): AudioBuffer | null {
   return buf;
 }
 
+// One shared white-noise buffer per AudioContext; grown only if a longer sound is requested.
+let cachedNoise: { ctx: AudioContext; buf: AudioBuffer; seconds: number } | null = null;
+
+function whiteNoise(seconds: number): AudioBuffer | null {
+  if (!ctx) return null;
+  if (!cachedNoise || cachedNoise.ctx !== ctx || cachedNoise.seconds < seconds) {
+    const len = Math.max(seconds, 2.5);
+    cachedNoise = { ctx, buf: noiseBuffer(len)!, seconds: len };
+  }
+  return cachedNoise.buf;
+}
+
 function noise(opts: {
   dur: number;
   freq: number;
@@ -88,7 +100,7 @@ function noise(opts: {
   if (!ctx || !master) return;
   const t = ctx.currentTime + (opts.delay ?? 0);
   const src = ctx.createBufferSource();
-  src.buffer = noiseBuffer(opts.dur + 0.05);
+  src.buffer = whiteNoise(opts.dur + 0.05);
   const f = ctx.createBiquadFilter();
   f.type = opts.type ?? 'bandpass';
   f.frequency.setValueAtTime(opts.freq, t);

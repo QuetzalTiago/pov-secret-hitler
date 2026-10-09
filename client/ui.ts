@@ -25,6 +25,8 @@ const REASONS: Record<string, string> = {
 
 export class UI {
   private chatOpen = false;
+  private timerText: string | null = null;
+  private timerClass: string | null = null;
   private room: RoomView | null = null;
   private copyLabels = new Map<string, string>();
   private copyTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -241,14 +243,14 @@ export class UI {
   }
 
   setTimer(secs: number | null, mine: boolean) {
+    const text = secs === null ? '' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    const cls = secs !== null && mine ? (secs <= 10 ? 'urgent' : 'mine') : '';
+    if (text === this.timerText && cls === this.timerClass) return;
+    this.timerText = text;
+    this.timerClass = cls;
     const el = $('timer');
-    if (secs === null) {
-      el.textContent = '';
-      el.className = '';
-      return;
-    }
-    el.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-    el.className = mine && secs <= 10 ? 'urgent' : mine ? 'mine' : '';
+    el.textContent = text;
+    el.className = cls;
   }
 
   toast(text: string, kind = 'info') {
