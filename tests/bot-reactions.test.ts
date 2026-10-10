@@ -752,18 +752,21 @@ describe('changing its mind', () => {
     offend(mood, 0, 0.5); // the bot had written the human off
     expect(relation(mood, 0).rapport).toBeLessThan(0);
 
-    // The human got stuck with a Fascist early, then placed a Liberal in the current round.
+    // The human got stuck with a Fascist early, then placed a Liberal in the current round. Seat 2 is the
+    // President who handed it to them and has done nothing since, and seat 4 has a clean record, so the
+    // human is the only player this bot could possibly change its mind about.
     room.game!.round = 3;
     inner.memories[bot].governments.push({ round: 1, president: 2, chancellor: 0, result: 'F' });
-    inner.memories[bot].governments.push({ round: 3, president: 0, chancellor: 2, result: 'L' });
+    inner.memories[bot].governments.push({ round: 3, president: 0, chancellor: 4, result: 'L' });
 
     let reconsidered = false;
     for (let i = 0; i < 40 && !reconsidered; i++) reconsidered = inner.maybeReconsider(bot, mood, Date.now());
     expect(reconsidered).toBe(true);
     expect(relation(mood, 0).rapport).toBeGreaterThan(0); // they are on decent terms now
     expect(mood.recanted.has(0)).toBe(true);
-    // Once said, it is not said again: no bot announces the same change of heart twice.
-    expect(inner.maybeReconsider(bot, mood, Date.now())).toBe(false);
+    // Once said, it is not said again: no bot announces the same change of heart twice. (With other
+    // candidates present it would simply move on to them, which is why this scenario leaves only one.)
+    for (let i = 0; i < 20; i++) expect(inner.maybeReconsider(bot, mood, Date.now())).toBe(false);
     room.close();
   });
 
