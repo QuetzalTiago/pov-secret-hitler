@@ -14,7 +14,7 @@ import type { GameView } from '../shared/view';
 import type { BotLang } from './config';
 import { config } from './config';
 import { write } from './llm';
-import { ACCUSE, INSULT, QUESTION, REGISTER, SETUP } from './lexicon';
+import { ACCUSE, INSULT, QUESTION, REGISTER, SETUP, SUPPORT } from './lexicon';
 import type { Persona } from './persona';
 
 export interface ChatLine {
@@ -24,36 +24,74 @@ export interface ChatLine {
   at: number;
 }
 
+/**
+ * How a bot stands with ONE other player. Relationships are per-person on purpose: being called a garca by
+ * Bruno is no reason to bite Moni's head off, and a bot that cannot tell its friends from its enemies is
+ * not playing the social game at all.
+ */
+export interface Relation {
+  /** -1..1. Below zero is a grudge; above zero they are becoming allies. Moves slowly, fades slowly. */
+  rapport: number;
+  /** 0..1. How angry this bot is AT THIS PERSON right now. Spikes on an attack, cools off quickly. */
+  heat: number;
+}
+
 /** What a bot is feeling. Lives in the room, decays over time, and colours every line it writes. */
 export interface Mood {
-  /** 0..1 - how worked up this bot is right now. */
-  anger: number;
-  /** Per-seat resentment, 0..1. Real players remember who screwed them. */
-  grudge: Map<number, number>;
-  /** It asked someone something and is waiting for an answer. */
+  /** Per-seat standing. Everything social hangs off this. */
+  relations: Map<number, Relation>;
+  /** It asked someone a direct question and is waiting for an answer. */
   awaiting: { seat: number; at: number } | null;
   /** It already complained about being ignored; don't let it whine every tick. */
   complainedAt: number;
   lastSpokeAt: number;
+  /** Players it has already publicly changed its mind about, so it does not keep announcing it. */
+  recanted: Set<number>;
 }
 
 export function newMood(): Mood {
-  return { anger: 0, grudge: new Map(), awaiting: null, complainedAt: 0, lastSpokeAt: 0 };
+  return { relations: new Map(), awaiting: null, complainedAt: 0, lastSpokeAt: 0, recanted: new Set() };
 }
 
-export function bump(mood: Mood, seat: number, amount: number): void {
-  mood.grudge.set(seat, Math.min(1, (mood.grudge.get(seat) ?? 0) + amount));
-  mood.anger = Math.min(1, mood.anger + amount * 0.7);
-}
-
-/** Anger fades; grudges fade much slower. Called whenever the bot speaks or a round turns over. */
-export function cool(mood: Mood, factor = 0.75): void {
-  mood.anger *= factor;
-  for (const [seat, g] of mood.grudge) {
-    const next = g * 0.95;
-    if (next < 0.05) mood.grudge.delete(seat);
-    else mood.grudge.set(seat, next);
+export function relation(mood: Mood, seat: number): Relation {
+  let r = mood.relations.get(seat);
+  if (!r) {
+    r = { rapport: 0, heat: 0 };
+    mood.relations.set(seat, r);
   }
+  return r;
+}
+
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+
+/** Someone attacked this bot. Heat spikes with that person only, and the relationship sours. */
+export function offend(mood: Mood, seat: number, amount: number): void {
+  const r = relation(mood, seat);
+  r.heat = clamp(r.heat + amount, 0, 1);
+  r.rapport = clamp(r.rapport - amount * 0.5, -1, 1);
+}
+
+/** Someone backed this bot up, voted with it, or governed well with it. This is how allies are made. */
+export function warmTo(mood: Mood, seat: number, amount: number): void {
+  const r = relation(mood, seat);
+  r.rapport = clamp(r.rapport + amount, -1, 1);
+  r.heat = clamp(r.heat - amount * 0.6, 0, 1);
+}
+
+/** Heat burns off fast, rapport drifts back to neutral slowly. Called whenever the bot speaks. */
+export function cool(mood: Mood, factor = 0.7): void {
+  for (const [seat, r] of mood.relations) {
+    r.heat *= factor;
+    r.rapport *= 0.985;
+    if (r.heat < 0.03 && Math.abs(r.rapport) < 0.05) mood.relations.delete(seat);
+  }
+}
+
+/** The angriest this bot currently is with anyone: only used to decide how readily it jumps into chatter. */
+export function tension(mood: Mood): number {
+  let worst = 0;
+  for (const r of mood.relations.values()) worst = Math.max(worst, r.heat);
+  return worst;
 }
 
 // ---------- reading the room ----------
@@ -64,7 +102,7 @@ function fold(s: string): string {
 }
 
 
-export type Trigger = 'insulted' | 'accused' | 'setup' | 'addressed' | 'general';
+export type Trigger = 'insulted' | 'accused' | 'setup' | 'support' | 'addressed' | 'general';
 
 export interface Reaction {
   trigger: Trigger;
@@ -76,18 +114,23 @@ export interface Reaction {
  * How a bot reads one message someone else sent. Name matching is deliberately loose (first name,
  * accent-insensitive) because that is how people actually type at a table.
  */
-export function readMessage(text: string, botName: string, persona: Persona, mood: Mood): Reaction {
+export function readMessage(text: string, botName: string, persona: Persona, mood: Mood, from = -1): Reaction {
   const t = fold(text);
   const named = new RegExp(`(^|[^a-z0-9])${fold(botName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(t);
   const insult = INSULT.test(t);
   const accuse = ACCUSE.test(t);
   const setup = SETUP.test(t);
-  const heat = mood.anger * 0.25;
+  const support = SUPPORT.test(t);
+  const rel = from >= 0 ? relation(mood, from) : { rapport: 0, heat: 0 };
+  // Eagerness rises with how worked up this bot already is WITH THIS PERSON, not with the table at large.
+  const heat = rel.heat * 0.25;
 
   if (named && insult) return { trigger: 'insulted', chance: 0.97 };
   // Checked before a plain accusation: "te van a hacer la cama" warns this bot rather than accusing it.
   if (named && setup) return { trigger: 'setup', chance: 0.95 };
   if (named && accuse) return { trigger: 'accused', chance: 0.95 };
+  // Somebody offering to back it up is worth answering: this is how a bot picks up an ally.
+  if (named && support) return { trigger: 'support', chance: 0.8 };
   if (named && QUESTION.test(t)) return { trigger: 'addressed', chance: 0.9 };
   if (named) return { trigger: 'addressed', chance: 0.75 + heat };
   // Not named: an insult, an accusation or a cry of "they set me up" still pulls in the loud ones.
@@ -99,18 +142,36 @@ export function readMessage(text: string, botName: string, persona: Persona, moo
 
 // ---------- prompts ----------
 
-function moodLine(mood: Mood, lang: BotLang, name: (s: number) => string): string {
+/** Which tone tier applies toward one player. */
+export function toneFor(mood: Mood, seat: number | null): 'calm' | 'edgy' | 'hot' {
+  const h = seat === null ? tension(mood) * 0.5 : relation(mood, seat).heat;
+  return h > 0.55 ? 'hot' : h > 0.25 ? 'edgy' : 'calm';
+}
+
+/** Where this bot stands with everyone: who it is angry at, who it is warming to, and who owes it nothing. */
+function standing(mood: Mood, lang: BotLang, name: (s: number) => string, toward: number | null): string {
   const es = lang === 'es-AR';
   const bits: string[] = [];
-  const a = mood.anger;
-  if (a > 0.66) bits.push(es ? 'Estás REALMENTE caliente, al borde de explotar.' : 'You are REALLY angry, about to explode.');
-  else if (a > 0.33) bits.push(es ? 'Estás picado, de mal humor.' : 'You are annoyed and in a bad mood.');
-  else if (a > 0.12) bits.push(es ? 'Estás un poco molesto.' : 'You are slightly irritated.');
-  else bits.push(es ? 'Estás tranquilo.' : 'You are calm.');
-  const worst = [...mood.grudge.entries()].sort((x, y) => y[1] - x[1]).filter(([, g]) => g > 0.25);
-  if (worst.length) {
-    const who = worst.slice(0, 2).map(([s]) => name(s)).join(es ? ' y ' : ' and ');
-    bits.push(es ? `Le tenés bronca a ${who}.` : `You hold a grudge against ${who}.`);
+  if (toward !== null) {
+    const r = relation(mood, toward);
+    const who = name(toward);
+    if (r.heat > 0.55) bits.push(es ? `Con ${who} estás caliente de verdad.` : `You are genuinely angry at ${who}.`);
+    else if (r.heat > 0.25) bits.push(es ? `${who} te tiene picado.` : `${who} is getting on your nerves.`);
+    else if (r.rapport > 0.3) bits.push(es ? `A ${who} lo venís bancando, juega derecho con vos.` : `You have been backing ${who}; they play straight with you.`);
+    else bits.push(es ? `Con ${who} no tenés ningún problema.` : `You have no problem with ${who}.`);
+  }
+  const allies = [...mood.relations.entries()].filter(([, r]) => r.rapport > 0.3).sort((a, b) => b[1].rapport - a[1].rapport);
+  const enemies = [...mood.relations.entries()].filter(([, r]) => r.rapport < -0.3 || r.heat > 0.5).sort((a, b) => a[1].rapport - b[1].rapport);
+  if (allies.length) {
+    const who = allies.slice(0, 2).map(([s]) => name(s)).join(es ? ' y ' : ' and ');
+    bits.push(es ? `Te llevás bien con ${who}.` : `You get on well with ${who}.`);
+  }
+  if (enemies.length) {
+    const who = enemies.slice(0, 2).map(([s]) => name(s)).join(es ? ' y ' : ' and ');
+    bits.push(es ? `Estás enganchado con ${who}.` : `You are at odds with ${who}.`);
+  }
+  if (!allies.length) {
+    bits.push(es ? 'Todavía no tenés a nadie de tu lado: te conviene encontrar con quién aliarte.' : 'Nobody is on your side yet: you could use an ally.');
   }
   return bits.join(' ');
 }
@@ -125,7 +186,8 @@ export interface TalkContext {
   lang: BotLang;
 }
 
-function systemPrompt(ctx: TalkContext, me: string): string {
+/** `toward` is the player this line is aimed at, which is what decides how hard the bot comes out. */
+function systemPrompt(ctx: TalkContext, me: string, toward: number | null): string {
   const L = REGISTER[ctx.lang] ?? REGISTER.en;
   const es = ctx.lang === 'es-AR';
   const head = es
@@ -134,28 +196,90 @@ function systemPrompt(ctx: TalkContext, me: string): string {
   return [
     head,
     L.voice,
-    config.llm.profanity ? L.swearing : L.clean,
+    config.llm.profanity ? L.tone[toneFor(ctx.mood, toward)] : L.clean,
     L.idioms,
     (es ? 'Reglas:' : 'Rules:') + '\n- ' + L.rules.join('\n- '),
   ].join('\n\n');
 }
 
 /** Everything this seat is allowed to know, as compact JSON plus the recent chat. */
-function situationBlock(ctx: TalkContext, situation: string): string {
+/**
+ * A leaner state than the decision layer's. `buildState` spells out every player's full record twice over,
+ * which is right when Jev is weighing a move but costs ~1700 prompt tokens here - enough to push a chat
+ * reply past its timeout. The trend lines below say the same thing in prose, so this keeps only the facts
+ * they do not cover. Built from the same `view` and `memory`, so it can still never carry a secret.
+ */
+function talkState(ctx: TalkContext, prof: ReturnType<typeof profiles>) {
+  const full = buildState(ctx.view, ctx.memory, prof, ctx.name);
+  return {
+    you: full.you,
+    board: full.board,
+    players: (full.players as { name: string; alive: boolean; knownRole: string; evidence: string[] }[]).map((p) => ({
+      name: p.name,
+      alive: p.alive,
+      knownRole: p.knownRole,
+      ...(p.evidence.length ? { evidence: p.evidence } : {}),
+    })),
+    history: (full.history as string[]).slice(-8),
+    myCards: full.myCards,
+  };
+}
+
+function situationBlock(ctx: TalkContext, situation: string, toward: number | null): string {
   const es = ctx.lang === 'es-AR';
-  const state = buildState(ctx.view, ctx.memory, profiles(ctx.memory, ctx.view), ctx.name);
+  const prof = profiles(ctx.memory, ctx.view);
+  const state = talkState(ctx, prof);
   const chat = ctx.transcript
     .slice(-10)
     .map((l) => `${l.name}: ${l.text}`)
     .join('\n');
+  const reads = readsOn(ctx, prof);
   return [
     `${es ? 'ESTADO DE LA PARTIDA (sólo lo que vos sabés)' : 'GAME STATE (only what you know)'}:\n${JSON.stringify(state)}`,
+    reads ? `${es ? 'CÓMO VIENE CADA UNO (lo último pesa más que lo viejo)' : 'HOW EACH PLAYER IS TRENDING (recent beats old)'}:\n${reads}` : '',
     chat ? `${es ? 'CHAT RECIENTE' : 'RECENT CHAT'}:\n${chat}` : '',
-    `${es ? 'TU ÁNIMO' : 'YOUR MOOD'}: ${moodLine(ctx.mood, ctx.lang, ctx.name)}`,
+    `${es ? 'DÓNDE ESTÁS PARADO' : 'WHERE YOU STAND'}: ${standing(ctx.mood, ctx.lang, ctx.name, toward)}`,
     `${es ? 'SITUACIÓN' : 'SITUATION'}: ${situation}`,
   ]
     .filter(Boolean)
     .join('\n\n');
+}
+
+/**
+ * A short per-player trend line. The raw suspicion score in the game state is cumulative, which anchors the
+ * writer on whatever someone did first and never lets it move. This says what each player has done LATELY,
+ * and flags the Chancellor who had no choice, so a bot can actually change its mind.
+ */
+function readsOn(ctx: TalkContext, prof: ReturnType<typeof profiles>): string {
+  const es = ctx.lang === 'es-AR';
+  const me = ctx.view.you!;
+  const round = ctx.view.round;
+  const lines: string[] = [];
+  for (const p of ctx.view.players) {
+    if (p.seat === me || !p.alive) continue;
+    const govs = ctx.memory.governments.filter((g) => g.president === p.seat || g.chancellor === p.seat);
+    if (!govs.length) {
+      lines.push(es ? `${ctx.name(p.seat)}: todavía no estuvo en ningún gobierno, no hay nada en su contra.` : `${ctx.name(p.seat)}: has not been in a government yet; nothing against them.`);
+      continue;
+    }
+    const recent = govs.filter((g) => round - g.round <= 2);
+    const bad = recent.filter((g) => g.result === 'F');
+    const good = recent.filter((g) => g.result === 'L');
+    const last = govs[govs.length - 1];
+    const forced = last.result === 'F' && last.chancellor === p.seat;
+    const bits: string[] = [];
+    if (good.length && !bad.length) bits.push(es ? `viene poniendo liberales (ronda ${good.at(-1)!.round})` : `has been placing Liberals (round ${good.at(-1)!.round})`);
+    else if (bad.length && !good.length) bits.push(es ? `quedó pegado con facha en la ronda ${bad.at(-1)!.round}` : `was stuck with a Fascist in round ${bad.at(-1)!.round}`);
+    else if (bad.length && good.length) bits.push(es ? 'mezcla de las dos cosas últimamente' : 'a mix of both lately');
+    else bits.push(es ? `hace ${round - last.round} rondas que no toca una carta` : `has not touched a card in ${round - last.round} rounds`);
+    if (forced) {
+      bits.push(es
+        ? `ojo: fue CANCILLER, puede no haber tenido opción si ${ctx.name(last.president)} le pasó dos fachas`
+        : `note: they were CHANCELLOR and may have had no choice if ${ctx.name(last.president)} handed them two Fascists`);
+    }
+    lines.push(`${ctx.name(p.seat)}: ${bits.join('; ')}. ${es ? 'Sospecha acumulada' : 'Cumulative suspicion'} ${prof[p.seat].suspicion.toFixed(1)}.`);
+  }
+  return lines.join('\n');
 }
 
 // ---------- sanitizing ----------
@@ -215,11 +339,11 @@ export function sanitize(raw: string, names: string[], guardRole: boolean): stri
 
 // ---------- the two things a bot writes ----------
 
-async function compose(ctx: TalkContext, situation: string, task: string, temperature: number): Promise<string | null> {
+async function compose(ctx: TalkContext, situation: string, task: string, temperature: number, toward: number | null = null): Promise<string | null> {
   const me = ctx.name(ctx.view.you!);
   const raw = await write({
-    system: systemPrompt(ctx, me),
-    user: `${situationBlock(ctx, situation)}\n\n${task}`,
+    system: systemPrompt(ctx, me, toward),
+    user: `${situationBlock(ctx, situation, toward)}\n\n${task}`,
     maxTokens: 90,
     temperature,
   });
@@ -240,13 +364,15 @@ export async function writeIntent(ctx: TalkContext, situation: string, intent: s
 }
 
 /** Writes a reply to something a player just said. Returns null when the bot has nothing worth typing. */
-export async function writeReply(ctx: TalkContext, from: string, text: string, trigger: Trigger): Promise<string | null> {
+export async function writeReply(ctx: TalkContext, fromSeat: number, text: string, trigger: Trigger): Promise<string | null> {
+  const from = ctx.name(fromSeat);
   const es = ctx.lang === 'es-AR';
   const how = es
     ? {
         insulted: `${from} te acaba de insultar. Contestale a la altura, no te dejes pisar.`,
         accused: `${from} te está acusando. Defendete con lo que sabés de la partida y devolvé la sospecha si te sirve.`,
         setup: `${from} está hablando de que a alguien le están haciendo la cama. Fijate bien qué dijo: puede estar avisándote a vos, quejándose de que se la hicieron a él, o acusándote de que se la hiciste vos. Contestá en consecuencia, con lo que sabés de la partida.`,
+        support: `${from} te está bancando o te está dando la razón. Agradecelo y devolvé la gentileza si te cierra: un aliado te sirve. Podés proponerle ir juntos en la próxima votación.`,
         addressed: `${from} te habló directamente. Contestale.`,
         general: `${from} dijo eso en la mesa. Metete en la conversación si tenés algo para aportar.`,
       }[trigger]
@@ -254,11 +380,25 @@ export async function writeReply(ctx: TalkContext, from: string, text: string, t
         insulted: `${from} just insulted you. Give it back, do not let them walk over you.`,
         accused: `${from} is accusing you. Defend yourself with what you know and turn the suspicion around if it helps.`,
         setup: `${from} is talking about someone being set up to take the blame. Read what they said: they may be warning you, complaining it was done to them, or accusing you of doing it. Answer accordingly, using what you know.`,
+        support: `${from} is backing you up or agreeing with you. Acknowledge it and return the favour if it fits: an ally is worth having. You could propose voting together next time.`,
         addressed: `${from} spoke to you directly. Answer them.`,
         general: `${from} said that at the table. Jump in if you have something to add.`,
       }[trigger];
   const task = `${how}\n${es ? `Lo que dijo ${from}` : `What ${from} said`}: "${text}"`;
-  return compose(ctx, es ? `${from} te habló en el chat.` : `${from} spoke to you in the chat.`, task, 1.05);
+  return compose(ctx, es ? `${from} te habló en el chat.` : `${from} spoke to you in the chat.`, task, 1.05, fromSeat);
+}
+
+/**
+ * Walking a suspicion back out loud. A player who gets stuck with one Fascist policy and is branded for the
+ * rest of the game is the single most unrealistic thing a bot can do, so when the evidence turns they say so.
+ */
+export async function writeReconsider(ctx: TalkContext, target: number, why: string): Promise<string | null> {
+  const es = ctx.lang === 'es-AR';
+  const who = ctx.name(target);
+  const task = es
+    ? `Venías desconfiando de ${who}, pero cambiaste de idea: ${why}. Decilo en voz alta, sin dramatizar, como quien reconoce que se equivocó. Podés ofrecerle ir juntos de acá en adelante.`
+    : `You had been suspicious of ${who}, but you have changed your mind: ${why}. Say so out loud, without making a speech, like someone admitting they got it wrong. You can offer to work together from here.`;
+  return compose(ctx, es ? `Te estabas equivocando con ${who}.` : `You were wrong about ${who}.`, task, 1, target);
 }
 
 /** How hard a bot comes out with a suspicion. Real tables do both, and mostly the soft one. */
@@ -286,7 +426,7 @@ export async function writeAccusation(ctx: TalkContext, target: number, why: str
   const situation = es
     ? { read: `Algo de ${who} no te cierra.`, quiet: `${who} está demasiado callado.`, accusation: `Sospechás de ${who} y querés que la mesa lo escuche.` }[kind]
     : { read: `Something about ${who} does not add up.`, quiet: `${who} has gone very quiet.`, accusation: `You suspect ${who} and want the table to hear it.` }[kind];
-  return compose(ctx, situation, task, 1);
+  return compose(ctx, situation, task, 1, target);
 }
 
 /** Writes the "you are all ignoring me" line. Real players get offended; so do these. */
@@ -296,5 +436,5 @@ export async function writeIgnored(ctx: TalkContext, target: number | null): Pro
   const task = es
     ? `Dijiste algo importante y ${who ? `${who} te ignoró` : 'nadie te dio bola'}. Quejate, estás caliente porque no te escuchan.`
     : `You said something important and ${who ? `${who} ignored you` : 'nobody paid any attention'}. Complain: you are angry at being ignored.`;
-  return compose(ctx, es ? 'Te están ignorando en la mesa.' : 'The table is ignoring you.', task, 1.05);
+  return compose(ctx, es ? 'Te están ignorando en la mesa.' : 'The table is ignoring you.', task, 1.05, target);
 }

@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { bump, cool, newMood, readMessage, revealsOwnRole, sanitize } from '../server/bottalk';
+import { cool, newMood, offend, readMessage, relation, revealsOwnRole, sanitize, tension, toneFor, warmTo } from '../server/bottalk';
 import { REGISTER } from '../server/lexicon';
 import { breakerOpen, llmStats, resetLlmState, write } from '../server/llm';
-import { personaFor, BOT_NAMES } from '../server/persona';
+import { personaFor, pickBotName, tooSimilar, BOT_NAMES } from '../server/persona';
 import { config } from '../server/config';
 import { Room } from '../server/room';
 import { MAX_CHAT } from '../shared/protocol';
@@ -87,35 +87,118 @@ describe('reading the room', () => {
     expect(r.chance).toBeLessThan(0.3);
   });
 
-  it('an angry bot is quicker to jump in', () => {
+  it('is quicker to jump in at someone it is already angry with', () => {
     const calm = mood();
     const hot = mood();
-    hot.anger = 1;
+    offend(hot, 2, 1);
     const text = 'alguien aca miente';
-    expect(readMessage(text, 'Nacho', persona, hot).chance).toBeGreaterThan(readMessage(text, 'Nacho', persona, calm).chance);
+    expect(readMessage(text, 'Nacho', persona, hot, 2).chance).toBeGreaterThan(readMessage(text, 'Nacho', persona, calm, 2).chance);
+    // ...and not with an innocent bystander: the grudge is with seat 2, not with the room.
+    expect(readMessage(text, 'Nacho', persona, hot, 3).chance).toBeCloseTo(readMessage(text, 'Nacho', persona, calm, 3).chance);
+  });
+
+  it('notices somebody backing it up', () => {
+    for (const text of ['nacho te banco', 'nacho tenés razón', 'nacho yo te creo', 'nacho vamos juntos']) {
+      expect(readMessage(text, 'Nacho', persona, mood(), 2).trigger, text).toBe('support');
+    }
   });
 });
 
-describe('mood', () => {
-  it('builds and decays anger and grudges', () => {
+describe('relationships', () => {
+  it('keeps a grudge with the person who caused it, and nobody else', () => {
     const m = newMood();
-    bump(m, 3, 0.5);
-    expect(m.grudge.get(3)).toBeCloseTo(0.5);
-    expect(m.anger).toBeGreaterThan(0);
-    const before = m.anger;
+    offend(m, 3, 0.6);
+    expect(relation(m, 3).heat).toBeCloseTo(0.6);
+    expect(relation(m, 3).rapport).toBeLessThan(0);
+    // Seat 4 did nothing and is unaffected. This is the whole point of per-person relations.
+    expect(relation(m, 4).heat).toBe(0);
+    expect(relation(m, 4).rapport).toBe(0);
+  });
+
+  it('cools off fast but remembers slowly', () => {
+    const m = newMood();
+    offend(m, 3, 0.8);
+    const hot = relation(m, 3).heat;
+    const sour = relation(m, 3).rapport;
     cool(m);
-    expect(m.anger).toBeLessThan(before);
-    // Anger fades fast, resentment does not.
-    expect(m.grudge.get(3)!).toBeGreaterThan(0.4);
-    for (let i = 0; i < 200; i++) cool(m);
-    expect(m.grudge.size).toBe(0);
+    expect(relation(m, 3).heat).toBeLessThan(hot * 0.8); // the anger passes
+    expect(relation(m, 3).rapport).toBeCloseTo(sour, 1); // the resentment does not
+  });
+
+  it('makes allies out of people who back it up', () => {
+    const m = newMood();
+    warmTo(m, 2, 0.5);
+    expect(relation(m, 2).rapport).toBeGreaterThan(0.4);
+    // Warming to someone takes the edge off any heat with them.
+    offend(m, 5, 0.6);
+    warmTo(m, 5, 0.4);
+    expect(relation(m, 5).heat).toBeLessThan(0.6);
   });
 
   it('never exceeds its bounds', () => {
     const m = newMood();
-    for (let i = 0; i < 20; i++) bump(m, 1, 0.9);
-    expect(m.anger).toBeLessThanOrEqual(1);
-    expect(m.grudge.get(1)).toBeLessThanOrEqual(1);
+    for (let i = 0; i < 20; i++) offend(m, 1, 0.9);
+    expect(relation(m, 1).heat).toBeLessThanOrEqual(1);
+    expect(relation(m, 1).rapport).toBeGreaterThanOrEqual(-1);
+    for (let i = 0; i < 20; i++) warmTo(m, 1, 0.9);
+    expect(relation(m, 1).rapport).toBeLessThanOrEqual(1);
+  });
+
+  it('forgets people it has no feelings about either way', () => {
+    const m = newMood();
+    offend(m, 3, 0.3);
+    for (let i = 0; i < 300; i++) cool(m);
+    expect(m.relations.size).toBe(0);
+  });
+});
+
+describe('aggression is earned, not the opening move', () => {
+  it('starts calm with everyone', () => {
+    const m = newMood();
+    expect(toneFor(m, 0)).toBe('calm');
+    expect(toneFor(m, null)).toBe('calm');
+    expect(tension(m)).toBe(0);
+  });
+
+  it('escalates only with whoever is doing the attacking', () => {
+    const m = newMood();
+    offend(m, 1, 0.35);
+    expect(toneFor(m, 1)).toBe('edgy');
+    expect(toneFor(m, 2)).toBe('calm'); // seat 2 still gets a civil bot
+    offend(m, 1, 0.4);
+    expect(toneFor(m, 1)).toBe('hot');
+    expect(toneFor(m, 2)).toBe('calm');
+  });
+
+  it('comes back down once it cools off', () => {
+    const m = newMood();
+    offend(m, 1, 0.9);
+    expect(toneFor(m, 1)).toBe('hot');
+    for (let i = 0; i < 4; i++) cool(m);
+    expect(toneFor(m, 1)).toBe('calm');
+  });
+});
+
+describe('bot names', () => {
+  it('spots names a player could mix up', () => {
+    expect(tooSimilar('Flor', 'Florencia')).toBe(true);
+    expect(tooSimilar('Nacho', 'nacho')).toBe(true);
+    expect(tooSimilar('Nacho', 'Nachito')).toBe(true);
+    expect(tooSimilar('Gastón', 'Gaston')).toBe(true);
+    expect(tooSimilar('Moni', 'Mona')).toBe(true);
+    expect(tooSimilar('Nacho', 'Moni')).toBe(false);
+    expect(tooSimilar('Bruno', 'Vicky')).toBe(false);
+  });
+
+  it('never picks a name that clashes with someone already seated', () => {
+    const pool = BOT_NAMES['es-AR'];
+    expect(pickBotName(['Nacho'], pool, 1)).not.toBe('Nacho');
+    expect(pickBotName(['Monica'], pool, 1)).not.toBe('Moni');
+    expect(pickBotName(['Brunito'], pool, 1)).not.toBe('Bruno');
+    // With the whole pool ruled out it falls back, and the fallback is checked too.
+    const everyone = pool.concat(['Bot 1', 'Bot 2']);
+    const fallback = pickBotName(everyone, pool, 1);
+    expect(everyone.some((n) => tooSimilar(n, fallback))).toBe(false);
   });
 });
 
@@ -258,6 +341,31 @@ describe('text model client', () => {
     }
   });
 
+  it('retries once when the provider is overloaded', async () => {
+    config.llm.key = 'test-key';
+    try {
+      let n = 0;
+      const flaky = (async () => {
+        n++;
+        return n === 1
+          ? new Response('{}', { status: 503 })
+          : new Response(JSON.stringify(reply('salió a la segunda')), { status: 200 });
+      }) as unknown as typeof fetch;
+      expect(await write({ system: 's', user: 'u' }, flaky)).toBe('salió a la segunda');
+      expect(n).toBe(2);
+      // A 400 is our bug, not theirs: no point asking twice.
+      let m = 0;
+      const bad = (async () => {
+        m++;
+        return new Response('{}', { status: 400 });
+      }) as unknown as typeof fetch;
+      expect(await write({ system: 's', user: 'u' }, bad)).toBeNull();
+      expect(m).toBe(1);
+    } finally {
+      config.llm.key = '';
+    }
+  });
+
   it('opens a breaker after repeated failures and stops calling out', async () => {
     config.llm.key = 'test-key';
     try {
@@ -365,14 +473,20 @@ describe('a room with talking bots', () => {
     room.close();
   });
 
-  it('remembers who insulted it', () => {
+  it('holds the insult against the one who said it, not the table', () => {
     const { room, conn } = table();
     expect(room.start(conn)).toBeNull();
     room.chat(conn, 'nacho sos un pelotudo hijo de puta');
-    const moods = (room as unknown as { moods: Map<number, { grudge: Map<number, number> }> }).moods;
+    const moods = (room as unknown as { moods: Map<number, ReturnType<typeof newMood>> }).moods;
     const nacho = room.seats.findIndex((s) => s.name === 'Nacho');
     expect(nacho).toBeGreaterThan(0);
-    expect(moods.get(nacho)!.grudge.get(0)).toBeGreaterThan(0);
+    const mood = moods.get(nacho)!;
+    expect(relation(mood, 0).heat).toBeGreaterThan(0); // the human who said it
+    // Every other seat is untouched: nobody else insulted anyone.
+    for (const other of room.seats.map((_, i) => i)) {
+      if (other === 0 || other === nacho) continue;
+      expect(relation(mood, other).heat, `seat ${other}`).toBe(0);
+    }
     room.close();
   });
 
@@ -439,7 +553,7 @@ describe('calling out a setup', () => {
 describe('the register handed to the writer', () => {
   it('teaches the table words, not dictionary Spanish', () => {
     const es = REGISTER['es-AR'];
-    const all = `${es.voice} ${es.swearing} ${es.idioms}`;
+    const all = `${es.voice} ${es.tone.hot} ${es.idioms}`;
     // facho/facha is how the table says it, and the writer is told so explicitly.
     expect(es.idioms).toMatch(/FACHO/);
     expect(es.idioms).toMatch(/FACHA para la carta/);
@@ -451,6 +565,25 @@ describe('the register handed to the writer', () => {
     for (const word of ['pelotudo', 'forro', 'cerrá el orto', 'la concha de tu madre', 'ortiva', 'chanta']) {
       expect(all, word).toContain(word);
     }
+  });
+
+  it('only hands over the full repertoire at the hot tier', () => {
+    for (const lang of ['es-AR', 'en'] as const) {
+      const t = REGISTER[lang].tone;
+      // Calm must forbid insults outright and point the bot at making allies, or it opens every game
+      // swearing at people who have done nothing.
+      expect(t.calm).toMatch(/NO la insultás|Do NOT insult/);
+      expect(t.calm).toMatch(/aliad|all(y|ies)/i);
+      expect(t.edgy).toMatch(/nada de puteadas pesadas|no real swearing/);
+      expect(t.hot).toMatch(/sin autocensura|no self-censoring/);
+    }
+    expect(REGISTER['es-AR'].tone.calm).not.toContain('pelotudo');
+    expect(REGISTER['es-AR'].tone.hot).toContain('pelotudo');
+  });
+
+  it('tells the writer suspicion can go down as well as up', () => {
+    expect(REGISTER['es-AR'].rules.join(' ')).toMatch(/LAS DOS DIRECCIONES/);
+    expect(REGISTER.en.rules.join(' ')).toMatch(/BOTH WAYS/);
   });
 
   it('keeps the rules that stop a bot breaking the game', () => {
@@ -524,7 +657,7 @@ describe('what the writer is allowed to see', () => {
   it('never hands a Liberal bot anyone else\'s role', async () => {
     const { writeReply } = await import('../server/bottalk');
     const ctx = await context(1); // a Liberal
-    const sent = await capture(() => writeReply(ctx, 'P0', 'sos facho', 'accused'));
+    const sent = await capture(() => writeReply(ctx, 0, 'sos facho', 'accused'));
     expect(sent.length).toBe(1);
     const prompt = sent[0].contents[0].parts[0].text;
     expect(prompt).toMatch(/"role":"liberal"/); // its own role, which it obviously knows
@@ -535,7 +668,7 @@ describe('what the writer is allowed to see', () => {
   it('hands a Fascist bot exactly what the rules let it see', async () => {
     const { writeReply } = await import('../server/bottalk');
     const ctx = await context(3); // a Fascist: sees the other Fascist and Hitler
-    const sent = await capture(() => writeReply(ctx, 'P0', 'sos facho', 'accused'));
+    const sent = await capture(() => writeReply(ctx, 0, 'sos facho', 'accused'));
     const prompt = sent[0].contents[0].parts[0].text;
     expect(prompt).toMatch(/"knownRole":"hitler"/);
     // and never a Liberal's role, because nobody is told that
@@ -545,11 +678,130 @@ describe('what the writer is allowed to see', () => {
   it('carries the chat the table can see, and the bot\'s own feelings', async () => {
     const { writeReply } = await import('../server/bottalk');
     const ctx = { ...(await context(1)), transcript: [{ seat: 0, name: 'P0', text: 'me hicieron la cama', at: Date.now() }] };
-    bump(ctx.mood, 0, 0.9);
-    const sent = await capture(() => writeReply(ctx, 'P0', 'sos facho', 'accused'));
+    offend(ctx.mood, 0, 0.9);
+    const sent = await capture(() => writeReply(ctx, 0, 'sos facho', 'accused'));
     const prompt = sent[0].contents[0].parts[0].text;
     expect(prompt).toContain('P0: me hicieron la cama');
-    expect(prompt).toMatch(/Le tenés bronca a P0/);
-    expect(prompt).toMatch(/caliente|picado/);
+    expect(prompt).toMatch(/Con P0 estás caliente/);
+  });
+});
+
+describe('expecting an answer', () => {
+  // A bot that sulks whenever a line of its own goes unanswered is exhausting: most of what gets said at a
+  // table needs no reply at all.
+  const room5 = () => {
+    const conn = { id: 1, room: null, seat: -1, send: () => {} } as unknown as import('../server/room').Conn;
+    const room = new Room('ABCD', () => {});
+    room.join(conn, 'Humano');
+    for (let i = 0; i < 4; i++) room.addBot(conn);
+    room.start(conn);
+    return { room, conn };
+  };
+  const awaiting = (room: Room, seat: number) =>
+    (room as unknown as { moods: Map<number, ReturnType<typeof newMood>> }).moods.get(seat)?.awaiting ?? null;
+  const note = (room: Room, seat: number, text: string) =>
+    (room as unknown as { noteAwaiting: (s: number, t: string) => void }).noteAwaiting(seat, text);
+
+  it('waits for an answer only when it actually asked one person something', () => {
+    const { room } = room5();
+    const other = room.seats.findIndex((s) => s.bot && s.name !== room.seats[1].name);
+    const target = room.seats[other].name;
+    note(room, 1, `${target} a quién votaste?`);
+    expect(awaiting(room, 1)?.seat).toBe(other);
+    room.close();
+  });
+
+  it('expects nothing from a statement or a warning', () => {
+    const { room } = room5();
+    const target = room.seats[2].name;
+    for (const line of [`ojo ${target}, te van a hacer la cama`, `${target} puso la facha, ojo con eso`, 'bueno vamos a ver qué pasa']) {
+      note(room, 1, line);
+      expect(awaiting(room, 1), line).toBeNull();
+    }
+    room.close();
+  });
+
+  it('expects nothing from a question thrown at the whole table', () => {
+    const { room } = room5();
+    const a = room.seats[2].name;
+    const b = room.seats[3].name;
+    note(room, 1, `${a} ${b} alguno me explica qué pasó?`);
+    expect(awaiting(room, 1)).toBeNull(); // nobody in particular was asked
+    note(room, 1, 'alguien me explica qué pasó?');
+    expect(awaiting(room, 1)).toBeNull();
+    room.close();
+  });
+});
+
+describe('changing its mind', () => {
+  it('lets a player off the hook once they place a Liberal policy', async () => {
+    const conn = { id: 1, room: null, seat: -1, send: () => {} } as unknown as import('../server/room').Conn;
+    const room = new Room('ABCD', () => {});
+    room.join(conn, 'Humano');
+    for (let i = 0; i < 4; i++) room.addBot(conn);
+    room.start(conn);
+    const inner = room as unknown as {
+      moods: Map<number, ReturnType<typeof newMood>>;
+      memories: { governments: { round: number; president: number; chancellor: number; result: string }[] }[];
+      maybeReconsider: (s: number, m: ReturnType<typeof newMood>, now: number) => boolean;
+      written: number;
+    };
+    const bot = 1;
+    const mood = newMood();
+    inner.moods.set(bot, mood);
+    offend(mood, 0, 0.5); // the bot had written the human off
+    expect(relation(mood, 0).rapport).toBeLessThan(0);
+
+    // The human got stuck with a Fascist early, then placed a Liberal in the current round.
+    room.game!.round = 3;
+    inner.memories[bot].governments.push({ round: 1, president: 2, chancellor: 0, result: 'F' });
+    inner.memories[bot].governments.push({ round: 3, president: 0, chancellor: 2, result: 'L' });
+
+    let reconsidered = false;
+    for (let i = 0; i < 40 && !reconsidered; i++) reconsidered = inner.maybeReconsider(bot, mood, Date.now());
+    expect(reconsidered).toBe(true);
+    expect(relation(mood, 0).rapport).toBeGreaterThan(0); // they are on decent terms now
+    expect(mood.recanted.has(0)).toBe(true);
+    // Once said, it is not said again: no bot announces the same change of heart twice.
+    expect(inner.maybeReconsider(bot, mood, Date.now())).toBe(false);
+    room.close();
+  });
+
+  it('does not reconsider someone whose last act was Fascist', () => {
+    const conn = { id: 1, room: null, seat: -1, send: () => {} } as unknown as import('../server/room').Conn;
+    const room = new Room('ABCD', () => {});
+    room.join(conn, 'Humano');
+    for (let i = 0; i < 4; i++) room.addBot(conn);
+    room.start(conn);
+    const inner = room as unknown as {
+      memories: { governments: { round: number; president: number; chancellor: number; result: string }[] }[];
+      maybeReconsider: (s: number, m: ReturnType<typeof newMood>, now: number) => boolean;
+    };
+    const mood = newMood();
+    offend(mood, 0, 0.5);
+    room.game!.round = 3;
+    inner.memories[1].governments.push({ round: 3, president: 0, chancellor: 2, result: 'F' });
+    for (let i = 0; i < 20; i++) expect(inner.maybeReconsider(1, mood, Date.now())).toBe(false);
+    room.close();
+  });
+});
+
+describe('a table where nobody shares a name', () => {
+  it('renames a bot when a player turns up with a confusable name', () => {
+    const host = { id: 1, room: null, seat: -1, send: () => {} } as unknown as import('../server/room').Conn;
+    const late = { id: 2, room: null, seat: -1, send: () => {} } as unknown as import('../server/room').Conn;
+    const room = new Room('ABCD', () => {});
+    room.join(host, 'Humano');
+    for (let i = 0; i < 4; i++) room.addBot(host);
+    const clash = room.seats[1].name; // an existing bot
+    room.join(late, `${clash}ito`); // a player whose name looks just like it
+    expect(room.seats.find((s) => !s.bot && s.name === `${clash}ito`)).toBeDefined();
+    const names = room.seats.map((s) => s.name);
+    for (let i = 0; i < names.length; i++) {
+      for (let j = i + 1; j < names.length; j++) {
+        expect(tooSimilar(names[i], names[j]), `${names[i]} vs ${names[j]}`).toBe(false);
+      }
+    }
+    room.close();
   });
 });

@@ -35,3 +35,19 @@ Decisions made autonomously while building, with the reasoning.
     that also means turning the harassment and hate-speech filters off, or a bot goes mute mid-argument.
 19. **Personalities are derived from the bot's name**, not stored: the same name always yields the same
     character, so a bot survives a server restart as itself without adding anything to the room snapshot.
+20. **Bot feelings are per-player, not a single mood.** A bot keeps a `rapport` (−1..1, slow) and a `heat`
+    (0..1, fast) with each individual. A global anger counter meant that being insulted by one player made a
+    bot hostile to the whole table, which made it impossible to befriend any of them. Aggression is also
+    earned rather than the opening state: the prompt's tone tier is chosen from the heat toward the player
+    being addressed, and the calm tier forbids insults outright and tells the bot to look for allies.
+21. **Suspicion has to be able to fall.** The cumulative score from `profiles()` anchors a writer on whatever
+    a player did first. The talk layer adds a recency-weighted trend per player, flags the Chancellor who may
+    have had no choice, and a bot that sees someone it doubted place a Liberal policy says so out loud
+    (`writeReconsider`, once per player). A bot that never updates is the least believable thing at a table.
+22. **Bots are never named anything confusable with another seat.** Not cosmetic: a bot decides it is being
+    addressed by matching its own name in the chat, so "Flor" and "Flora" at one table misroutes replies.
+    Names are compared accent-folded, by prefix and by edit distance; a player keeps the name they chose and
+    any clashing bot is renamed instead.
+23. **A bot only expects an answer when it asked one person a question.** Naming somebody is not a question,
+    and a question to the whole table is nobody's to answer. Sulking about unanswered statements was the
+    single most irritating behaviour in the first version.

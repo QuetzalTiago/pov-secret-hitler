@@ -87,8 +87,13 @@ What bots do with this, beyond answering you:
   card when they actually have the evidence.
 - **Call out a setup.** When a President they distrust is about to hand policies to someone the table still
   trusts, they say so — "ojo Nacho, te van a hacer la cama" — and louder when it is about to happen to them.
-- **Take it personally.** Insult one and it insults you back and remembers; vote its government down and it
-  notes every NEIN; ask it a direct question and ignore the answer and it will complain about being ignored.
+- **Look for allies.** Back one up and it notices and backs you in return; vote the same way often enough and
+  it starts treating you as a partner. A bot with nobody on its side says so and goes looking.
+- **Escalate, rather than start angry.** Relationships are per-player: a bot is civil with everyone until
+  somebody gives it a reason not to be, gets curt with that person, and only swears once they have really
+  earned it. Being insulted by one player changes nothing about how it treats the rest of the table.
+- **Change their mind.** Being handed a Fascist policy you had no choice about does not brand you for the
+  game. When somebody they doubted starts playing like a Liberal, they say so out loud and ease off.
 
 They also talk the way the table talks rather than the way a translation engine does: *facho* for a fascist,
 *facha* for the card, "me tocaron tres fachas", "quedar pegado", "se están cubriendo entre ellos".
