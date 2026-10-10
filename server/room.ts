@@ -257,6 +257,7 @@ export class Room {
     if (this.timer) clearTimeout(this.timer);
     if (this.botTimer) clearTimeout(this.botTimer);
     if (this.abandonTimer) clearTimeout(this.abandonTimer);
+    if (this.chatTimer) clearTimeout(this.chatTimer);
     this.stopMoodTimer();
     for (const t of this.disconnectTimers.values()) clearTimeout(t);
     for (const s of this.seats) if (s.conn) s.conn.room = null;
@@ -270,6 +271,7 @@ export class Room {
     if (this.timer) clearTimeout(this.timer);
     if (this.botTimer) clearTimeout(this.botTimer);
     if (this.abandonTimer) clearTimeout(this.abandonTimer);
+    if (this.chatTimer) clearTimeout(this.chatTimer);
     this.stopMoodTimer();
     for (const t of this.disconnectTimers.values()) clearTimeout(t);
   }
@@ -599,6 +601,7 @@ export class Room {
     const msg: ServerMsg = { t: 'chat', seat, name, text };
     for (const x of this.seats) x.conn?.send(msg);
     this.remember({ seat, name, text, at: Date.now() });
+    this.chatFreeAt = Date.now() + Room.readMs(text);
   }
 
   private remember(line: ChatLine) {
@@ -669,24 +672,64 @@ export class Room {
     return true;
   }
 
-  /** Types a line into the chat now, and lets the bot's mood settle a little for having said it. */
-  private say(seat: number, text: string) {
-    if (this.closed) return;
-    this.postChat(seat, text);
-    const mood = this.moodOf(seat);
-    mood.lastSpokeAt = Date.now();
-    cool(mood);
-    this.noteAwaiting(seat, text);
+  // ---------- one bot at a time ----------
+
+  /** Bot lines waiting their turn. Bots never talk over each other; humans are never delayed. */
+  private chatQueue: { seat: number; text: string; queuedAt: number; done: () => void }[] = [];
+  private chatTimer: NodeJS.Timeout | null = null;
+  /** No bot line is posted before this time, so people can finish reading the last line (bot or human). */
+  private chatFreeAt = 0;
+
+  /** How long people need to read a line before the next bot speaks. */
+  static readMs(text: string): number {
+    return Math.min(7000, Math.max(2500, 1800 + text.length * 50)) * config.chatPacing;
+  }
+
+  /**
+   * Queues a bot line. It is posted once the chat is free, and the bot's mood settles a little for having
+   * said it. Resolves when the line is posted (or dropped), so a reply can wait for the one before it.
+   */
+  private say(seat: number, text: string): Promise<void> {
+    return new Promise((done) => {
+      if (this.closed || !text) return done();
+      // A backlog would only deliver stale lines late; skip it rather than flood the chat.
+      if (this.chatQueue.length >= 4) return done();
+      this.chatQueue.push({ seat, text, queuedAt: Date.now(), done });
+      this.pumpChat();
+    });
+  }
+
+  private pumpChat() {
+    if (this.chatTimer || this.closed || !this.chatQueue.length) return;
+    this.chatTimer = setTimeout(() => {
+      this.chatTimer = null;
+      const item = this.chatQueue.shift();
+      if (!item) return;
+      try {
+        const g = this.game;
+        // Too old to still make sense, or the bot has died since: drop it.
+        const stale = Date.now() - item.queuedAt > 25_000;
+        const dead = !!g && g.phase !== 'gameOver' && !g.players[item.seat]?.alive;
+        if (!this.closed && !stale && !dead) {
+          this.postChat(item.seat, item.text);
+          const mood = this.moodOf(item.seat);
+          mood.lastSpokeAt = Date.now();
+          cool(mood);
+          this.noteAwaiting(item.seat, item.text);
+        }
+      } catch (e) {
+        console.error('[room] chat failed', e);
+      } finally {
+        item.done();
+        this.pumpChat();
+      }
+    }, Math.max(0, this.chatFreeAt - Date.now()));
   }
 
   /** Types a line after a human-looking pause, re-checking that the room is still alive. */
   private sayLater(seat: number, text: string, delay: number) {
     setTimeout(() => {
-      try {
-        this.say(seat, text);
-      } catch (e) {
-        console.error('[room] chat failed', e);
-      }
+      void this.say(seat, text);
     }, delay);
   }
 
@@ -719,6 +762,7 @@ export class Room {
     const msg: ServerMsg = { t: 'chat', seat, name: this.seats[seat].name, text };
     for (const s of this.seats) s.conn?.send(msg);
     this.remember({ seat, name: this.seats[seat].name, text, at: Date.now() });
+    this.chatFreeAt = Math.max(this.chatFreeAt, Date.now() + Room.readMs(text));
     this.lastActivity = Date.now();
     this.botsReactTo(seat, text);
     return null;
@@ -785,7 +829,7 @@ export class Room {
     // Reading the message, then typing the answer.
     const think = 600 + text.length * 15 + Math.random() * 1200;
     await new Promise((r) => setTimeout(r, Math.max(0, think - (Date.now() - started))));
-    this.say(seat, line);
+    await this.say(seat, line); // the next replier writes only after seeing this line
   }
 
   // ---------- impatience and unprompted accusations ----------

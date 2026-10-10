@@ -21,6 +21,11 @@ export const config = {
   reconnectGraceMs: num(process.env.SH_RECONNECT_MS, 60_000),
   /** A room with no human connected for this long is ended and deleted. */
   abandonMs: num(process.env.SH_ABANDON_MS, 60_000),
+  /**
+   * Bots speak one at a time and wait for people to read the previous line: 1.8 s + 50 ms per character,
+   * clamped to 2.5-7 s, times this factor (tests set 0 to skip the waits).
+   */
+  chatPacing: num(process.env.SH_CHAT_PACING, 1),
   maxRooms: num(process.env.SH_MAX_ROOMS, 50),
   maxConnections: num(process.env.SH_MAX_CONNECTIONS, 200),
   maxConnectionsPerIp: num(process.env.SH_MAX_PER_IP, 12),
