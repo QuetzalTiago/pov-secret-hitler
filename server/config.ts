@@ -48,7 +48,8 @@ export const config = {
     lang: (process.env.SH_BOT_LANG ?? 'es-AR') as BotLang,
     /** Bots swear like real players. Set to 0 for a family-friendly table. */
     profanity: process.env.SH_LLM_PROFANITY !== '0',
-    timeoutMs: num(process.env.SH_LLM_TIMEOUT_MS, 6000),
+    /** A chat line takes a few seconds to generate; a late answer still reads fine, a missing one does not. */
+    timeoutMs: num(process.env.SH_LLM_TIMEOUT_MS, 12_000),
     maxInflight: num(process.env.SH_LLM_MAX_INFLIGHT, 4),
     /** Hard ceiling on generated lines per game, so a long table can never run up a surprise bill. */
     maxCallsPerGame: num(process.env.SH_LLM_MAX_CALLS, 400),

@@ -9,13 +9,15 @@ import { llmEnabled, llmStats } from '../server/llm';
 import { Room, type Conn } from '../server/room';
 import { legalFromView, viewFor } from '../shared/view';
 
+// Deliberately starts friendly and turns hostile: the bots should mirror that curve rather than open
+// the game swearing at everyone.
 const PROVOCATIONS = [
-  'arranquemos, a ver quién se manda una',
-  'che a mí me parece que acá alguien está haciendo la cama',
-  'para mí el facho es el que puso la fascista, miren el historial',
-  'contestá algo, hace rato que no decís nada',
+  'buenas gente, vamos a jugar tranquilos',
+  'yo le creo a lo que dijo recién, me cierra',
+  'che y vos qué opinás de todo esto?',
+  'para mí acá hay alguien haciendo la cama',
   'sos un pelotudo, me cagaste la partida',
-  'no te creo nada, mentiroso',
+  'andá a cagar, sos lo peor, mentiroso de mierda',
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

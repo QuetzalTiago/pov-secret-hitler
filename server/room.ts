@@ -10,12 +10,14 @@ import { newMemory, observe, profiles, type Memory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
 import { heuristicTalk, planTalk, type TalkPlan } from './botchat';
 import {
-  bump, cool, newMood, readMessage, writeAccusation, writeIgnored, writeIntent, writeReply,
+  cool, newMood, offend, readMessage, relation, tension, warmTo,
+  writeAccusation, writeIgnored, writeIntent, writeReconsider, writeReply,
   type ChatLine, type Mood, type Suspicion, type Trigger,
 } from './bottalk';
+import { QUESTION, SUPPORT } from './lexicon';
 import { askChoice } from './jev';
 import { llmEnabled } from './llm';
-import { BOT_NAMES, personaFor, type Persona } from './persona';
+import { BOT_NAMES, personaFor, pickBotName, tooSimilar, type Persona } from './persona';
 import { decide, decideNow } from './brain';
 import { config } from './config';
 
@@ -95,6 +97,8 @@ export class Room {
     if (this.seats.length >= MAX_PLAYERS) return 'That room is full.';
     let unique = name;
     for (let i = 2; this.seats.some((s) => s.name === unique); i++) unique = `${name.slice(0, 13)} ${i}`;
+    // A player keeps the name they chose; any bot that is now confusable with it steps aside instead.
+    this.renameClashingBots(unique);
     const token = randomBytes(16).toString('hex');
     this.seats.push({ name: unique, token, conn, bot: false, botControl: false, disconnectedAt: null, left: false });
     this.attach(conn, this.seats.length - 1);
@@ -182,6 +186,20 @@ export class Room {
     }
     this.broadcast();
     this.checkEmpty();
+  }
+
+  /** Renames bots whose names are too close to `name`, so nobody at the table can be mixed up. */
+  private renameClashingBots(name: string) {
+    const pool = BOT_NAMES[config.llm.lang] ?? BOT_NAMES.en;
+    for (const s of this.seats) {
+      if (!s.bot || !tooSimilar(s.name, name)) continue;
+      const taken = this.seats.filter((x) => x !== s).map((x) => x.name).concat(name);
+      const next = pickBotName(taken, pool, this.seats.length);
+      // The persona is derived from the name, so renaming gives this bot a new character. In the lobby,
+      // before anyone has met it, that costs nothing.
+      this.personas.delete(this.seats.indexOf(s));
+      s.name = next;
+    }
   }
 
   private removeSeat(seat: number) {
@@ -282,9 +300,8 @@ export class Room {
     if (!this.isHost(conn)) return 'Only the host can add bots.';
     if (this.stage !== 'lobby') return 'The game has started.';
     if (this.seats.length >= MAX_PLAYERS) return 'The table is full.';
-    const used = new Set(this.seats.map((s) => s.name));
     const pool = BOT_NAMES[config.llm.lang] ?? BOT_NAMES.en;
-    const name = pool.find((n) => !used.has(n)) ?? `Bot ${this.seats.length}`;
+    const name = pickBotName(this.seats.map((s) => s.name), pool, this.seats.length);
     this.seats.push({ name, token: randomBytes(16).toString('hex'), conn: null, bot: true, botControl: true, disconnectedAt: null, left: false });
     this.broadcast();
     return null;
@@ -648,10 +665,22 @@ export class Room {
     }, delay);
   }
 
-  /** If a bot named someone in its line, it now expects an answer from them. */
+  /**
+   * A bot only expects an answer when it actually ASKED something of ONE person. Merely naming someone
+   * ("ojo Nacho, te van a hacer la cama") is a warning, not a question, and getting no reply to it is
+   * perfectly normal - sulking about that is what made the bots insufferable.
+   */
   private noteAwaiting(seat: number, text: string) {
-    const target = this.seats.findIndex((s, i) => i !== seat && new RegExp(`\\b${s.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text));
-    if (target >= 0) this.moodOf(seat).awaiting = { seat: target, at: Date.now() };
+    const mood = this.moodOf(seat);
+    if (!QUESTION.test(text.toLowerCase())) {
+      mood.awaiting = null;
+      return;
+    }
+    const named = this.seats
+      .map((s, i) => ({ i, hit: i !== seat && new RegExp(`\\b${s.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text) }))
+      .filter((x) => x.hit);
+    // Exactly one person was asked. A question thrown at the whole table is nobody's to answer.
+    mood.awaiting = named.length === 1 ? { seat: named[0].i, at: Date.now() } : null;
   }
 
   // ---------- chat ----------
@@ -685,10 +714,13 @@ export class Room {
       const mood = this.moodOf(seat);
       // Someone answering clears the "nobody listens to me" clock.
       if (mood.awaiting?.seat === from) mood.awaiting = null;
-      const r = readMessage(text, this.seatName(seat), this.personaOf(seat), mood);
+      const r = readMessage(text, this.seatName(seat), this.personaOf(seat), mood, from);
       // Taking offence happens either way: with no text model a bot cannot answer, but it still remembers.
-      if (r.trigger === 'insulted') bump(mood, from, 0.2 + this.personaOf(seat).temper * 0.3);
-      else if (r.trigger === 'accused') bump(mood, from, 0.15);
+      // Note this only touches the relation with `from` - being insulted by one player is no reason to turn
+      // on the rest of the table.
+      if (r.trigger === 'insulted') offend(mood, from, 0.18 + this.personaOf(seat).temper * 0.22);
+      else if (r.trigger === 'accused') offend(mood, from, 0.12);
+      else if (r.trigger === 'support') warmTo(mood, from, 0.3);
       if (now - (this.lastBotChat.get(seat) ?? 0) < 4000) continue;
       candidates.push({ seat, trigger: r.trigger, chance: r.chance });
     }
@@ -720,7 +752,7 @@ export class Room {
     this.written++;
     this.botStats.written++;
     const started = Date.now();
-    const line = await writeReply(this.talkContext(seat), this.seatName(from), text, trigger);
+    const line = await writeReply(this.talkContext(seat), from, text, trigger);
     if (!line) {
       this.lastBotChat.delete(seat);
       return;
@@ -764,6 +796,7 @@ export class Room {
       const mood = this.moodOf(seat);
       if (now - (this.lastBotChat.get(seat) ?? 0) < 20000) continue;
       if (this.complainIgnored(seat, mood, now)) continue;
+      if (this.maybeReconsider(seat, mood, now)) continue;
       this.maybeAccuse(seat, mood, now);
     }
   }
@@ -771,7 +804,8 @@ export class Room {
   /** Nobody answered a bot that asked a direct question. Real players take that badly. */
   private complainIgnored(seat: number, mood: Mood, now: number): boolean {
     const waiting = mood.awaiting;
-    if (!waiting || now - waiting.at < 25000) return false;
+    // A long fuse on purpose: people take a while to answer, and a bot that nags after 25s is exhausting.
+    if (!waiting || now - waiting.at < 50000) return false;
     // Did they say anything at all since?
     if (this.transcript.some((l) => l.seat === waiting.seat && l.at > waiting.at)) {
       mood.awaiting = null;
@@ -780,9 +814,9 @@ export class Room {
     mood.awaiting = null;
     if (now - mood.complainedAt < 60000) return false;
     const persona = this.personaOf(seat);
-    if (Math.random() > 0.35 + persona.temper * 0.5) return false;
+    if (Math.random() > 0.2 + persona.temper * 0.35) return false;
     mood.complainedAt = now;
-    bump(mood, waiting.seat, 0.3 + persona.temper * 0.2);
+    offend(mood, waiting.seat, 0.12 + persona.temper * 0.12);
     this.lastBotChat.set(seat, now);
     this.written++;
     this.botStats.written++;
@@ -793,6 +827,44 @@ export class Room {
         console.error('[bot] writeIgnored failed', e);
       });
     return true;
+  }
+
+  /**
+   * Somebody this bot had written off has since behaved like a Liberal. Saying so out loud is the whole
+   * difference between a player and a scoreboard: getting stuck with one Fascist policy should not brand
+   * you for the rest of the game, and a bot that never updates is the least believable thing at the table.
+   * Each player is reconsidered at most once, so it does not become a tic.
+   */
+  private maybeReconsider(seat: number, mood: Mood, now: number): boolean {
+    const g = this.game;
+    if (!g) return false;
+    const view = viewFor(g, seat);
+    const m = this.memories[seat];
+    const prof = profiles(m, view);
+    for (const p of view.players) {
+      if (p.seat === seat || !p.alive || mood.recanted.has(p.seat)) continue;
+      const rel = relation(mood, p.seat);
+      const govs = m.governments.filter((x) => x.president === p.seat || x.chancellor === p.seat);
+      const last = govs.at(-1);
+      if (!last || last.result !== 'L' || view.round - last.round > 2) continue; // nothing new in their favour
+      const wasDown = rel.rapport < -0.15 || prof[p.seat].suspicion >= 1.2 || govs.some((x) => x.result === 'F');
+      if (!wasDown) continue;
+      if (Math.random() > 0.45) continue;
+      mood.recanted.add(p.seat);
+      warmTo(mood, p.seat, 0.45);
+      this.lastBotChat.set(seat, now);
+      this.written++;
+      this.botStats.written++;
+      const why = `en la ronda ${last.round} puso una liberal ${last.chancellor === p.seat ? 'como canciller' : 'como presidente'}`;
+      writeReconsider(this.talkContext(seat), p.seat, why)
+        .then((line) => (line ? this.sayLater(seat, line, 500 + Math.random() * 1200) : this.lastBotChat.delete(seat)))
+        .catch((e) => {
+          this.lastBotChat.delete(seat);
+          console.error('[bot] writeReconsider failed', e);
+        });
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -811,7 +883,8 @@ export class Room {
       // Never hand your own team in: a Fascist knows who its teammates are.
       .filter((p) => !(fascist && view.players[p.seat].role && view.players[p.seat].role !== 'liberal'));
     if (!speakable.length) return;
-    const heatOf = (s: number) => (prof[s].suspicion ?? 0) + (mood.grudge.get(s) ?? 0) * 2;
+    // An ally gets the benefit of the doubt; someone you are at odds with gets less of it.
+    const heatOf = (s: number) => (prof[s].suspicion ?? 0) - relation(mood, s).rapport * 1.5 + relation(mood, s).heat;
     const target = speakable.sort((a, b) => heatOf(b.seat) - heatOf(a.seat))[0];
     const heat = heatOf(target.seat);
     const persona = this.personaOf(seat);
@@ -843,21 +916,47 @@ export class Room {
       });
   }
 
-  /** Game events that put a bot in a bad mood: being voted down, being shot, being investigated. */
+  /**
+   * What the game itself does to a bot's relationships. Both directions matter: a table that rejects you
+   * earns a grudge, but someone who votes with you or governs well with you earns trust, and without that
+   * second half a bot can never make an ally.
+   */
   private feel(events: GameEvent[]) {
     const g = this.game;
     if (!g) return;
     for (const e of events) {
       if (e.k === 'votes') {
         const nominee = g.nominee ?? g.chancellor;
-        if (nominee === null || e.passed || !this.seats[nominee]?.bot) continue;
-        // The table rejected this bot. It remembers every NEIN.
-        const mood = this.moodOf(nominee);
-        e.votes.forEach((v, s) => v === false && s !== nominee && bump(mood, s, 0.18));
+        for (const seat of this.talkingBots()) {
+          const mood = this.moodOf(seat);
+          const mine = e.votes[seat];
+          if (mine === null || mine === undefined) continue;
+          e.votes.forEach((v, s) => {
+            if (s === seat || v === null) return;
+            // Voting the same way, over and over, is how players find each other.
+            if (v === mine) warmTo(mood, s, 0.05);
+          });
+          // Being personally rejected stings, but a single NEIN is not a declaration of war.
+          if (seat === nominee && !e.passed) {
+            e.votes.forEach((v, s) => v === false && s !== seat && offend(mood, s, 0.1));
+          }
+        }
+      } else if (e.k === 'enacted' && !e.chaos) {
+        const gov = g.chancellor !== null ? { pres: g.president, chanc: g.chancellor } : null;
+        if (!gov) continue;
+        // A government that produced a Liberal policy makes both of them look good to everyone watching.
+        for (const seat of this.talkingBots()) {
+          if (seat === gov.pres || seat === gov.chanc) continue;
+          const mood = this.moodOf(seat);
+          if (e.policy === 'L') {
+            warmTo(mood, gov.pres, 0.12);
+            warmTo(mood, gov.chanc, 0.15);
+          }
+        }
       } else if (e.k === 'executed' && this.seats[e.target]?.bot) {
-        bump(this.moodOf(e.target), e.by, 0.9);
+        offend(this.moodOf(e.target), e.by, 0.9);
       } else if (e.k === 'investigated' && this.seats[e.target]?.bot) {
-        bump(this.moodOf(e.target), e.by, 0.1);
+        offend(this.moodOf(e.target), e.by, 0.08);
       }
     }
   }

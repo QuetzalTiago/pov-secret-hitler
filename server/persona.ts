@@ -111,3 +111,49 @@ export const BOT_NAMES: Record<BotLang, string[]> = {
   'es-AR': ['Nacho', 'Moni', 'Bruno', 'Tincho', 'Vicky', 'Gastón', 'Flor', 'Rama', 'Ceci', 'Beto', 'Pili', 'Juanma'],
   en: ['Vera', 'Otto', 'Mabel', 'Rex', 'Ingrid', 'Silas', 'Dolores', 'Hank', 'Pearl', 'Cyrus', 'Greta', 'Lou'],
 };
+
+/**
+ * Two players whose names look alike is a real problem, not a cosmetic one: a bot decides it is being
+ * spoken to by matching its own name in the chat, so "Flor" and "Flora" at the same table means replies
+ * land on the wrong person. Bots therefore keep clear of every name already seated.
+ */
+function fold(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+}
+
+/** Levenshtein distance, capped by early exit - the strings here are short names. */
+function distance(a: string, b: string): number {
+  if (a === b) return 0;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = tmp;
+    }
+  }
+  return prev[b.length];
+}
+
+/** True when two names are close enough that a player (or a bot reading the chat) could mix them up. */
+export function tooSimilar(a: string, b: string): boolean {
+  const x = fold(a);
+  const y = fold(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (x.startsWith(y) || y.startsWith(x)) return true; // Flor / Florencia, Nacho / Nachito
+  return distance(x, y) <= (Math.min(x.length, y.length) <= 4 ? 1 : 2);
+}
+
+/** Picks a bot name that cannot be confused with anyone already seated. */
+export function pickBotName(taken: string[], pool: string[], index: number): string {
+  const free = pool.find((n) => !taken.some((t) => tooSimilar(n, t)));
+  if (free) return free;
+  for (let i = index + 1; i < index + 50; i++) {
+    const fallback = `Bot ${i}`;
+    if (!taken.some((t) => tooSimilar(fallback, t))) return fallback;
+  }
+  return `Bot ${index + 1}`;
+}

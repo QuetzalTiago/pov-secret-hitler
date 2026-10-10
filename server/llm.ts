@@ -175,7 +175,13 @@ export async function write(req: LlmRequest, fetchImpl: typeof fetch = fetch): P
   llmStats.calls++;
   try {
     const call = adapter(req, url.replace(/\/$/, ''), model, config.llm.key);
-    const res = await fetchImpl(call.url, { ...call.init, signal: AbortSignal.timeout(config.llm.timeoutMs) });
+    // Free tiers answer 503 now and then. One quick retry turns most of those into a line instead of a
+    // visible drop to the template; anything worse is the breaker's problem, not this function's.
+    let res = await fetchImpl(call.url, { ...call.init, signal: AbortSignal.timeout(config.llm.timeoutMs) });
+    if (res.status >= 500 || res.status === 429) {
+      await new Promise((r) => setTimeout(r, 400));
+      res = await fetchImpl(call.url, { ...call.init, signal: AbortSignal.timeout(config.llm.timeoutMs) });
+    }
     if (res.status === 401 || res.status === 403) {
       if (++authFailures >= 3) {
         llmStats.disabled = true;
