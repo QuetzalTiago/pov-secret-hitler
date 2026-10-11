@@ -1,6 +1,11 @@
 // Renderer, bar environment, lighting, camera look/shake, and table layout math.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { disposeObject } from './dispose';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
 import {
@@ -111,6 +116,9 @@ export function yawQuat(yaw: number, extraX = 0, extraZ = 0): THREE.Quaternion {
 
 export class World {
   renderer: THREE.WebGLRenderer;
+  /** Post-processing on (bloom + vignette); off with ?fx=0 or ?perf=low. */
+  readonly fx: boolean;
+  private composer?: EffectComposer;
   scene = new THREE.Scene();
   camera: THREE.PerspectiveCamera;
   layout = new Layout(5, 0);
@@ -151,6 +159,15 @@ export class World {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
+    // Keep renderer.info covering the whole frame (scene + post passes); render() resets it.
+    this.renderer.info.autoReset = false;
+    const q = new URLSearchParams(location.search);
+    // Software GL (SwiftShader, llvmpipe) can't afford the bloom chain: seconds per frame.
+    const gl = this.renderer.getContext();
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const glName = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+    const software = /swiftshader|llvmpipe|software/i.test(glName);
+    this.fx = q.get('fx') !== '0' && q.get('perf') !== 'low' && (q.get('fx') === '1' || !software);
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const env = new RoomEnvironment();
     propEnv = markSharedTexture(pmrem.fromScene(env, 0.04).texture);
@@ -160,6 +177,7 @@ export class World {
 
     this.camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.05, 60);
     this.scene.add(this.camera);
+    if (this.fx) this.composer = this.buildComposer();
     this.scene.background = new THREE.Color(0x070504);
     this.scene.fog = new THREE.FogExp2(0x0d0907, 0.085);
 
@@ -263,6 +281,36 @@ export class World {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio());
+    this.composer?.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  private buildComposer() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    // MSAA target: the canvas antialias no longer applies once we render offscreen.
+    const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: 4 });
+    const composer = new EffectComposer(this.renderer, rt);
+    composer.setPixelRatio(this.renderer.getPixelRatio());
+    composer.setSize(w, h);
+    composer.addPass(new RenderPass(this.scene, this.camera));
+    // Threshold is in linear HDR radiance: only emissives (bulb, ember, glow sprites) exceed it.
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.4, 1.0));
+    composer.addPass(
+      new ShaderPass({
+        uniforms: { tDiffuse: { value: null }, darkness: { value: 0.45 }, offset: { value: 1.0 } },
+        vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+        fragmentShader: `uniform sampler2D tDiffuse; uniform float darkness; uniform float offset; varying vec2 vUv;
+          void main() {
+            vec4 c = texture2D(tDiffuse, vUv);
+            float d = length((vUv - 0.5) * vec2(offset));
+            c.rgb *= 1.0 - darkness * smoothstep(0.35, 0.85, d);
+            gl_FragColor = c;
+          }`,
+      }),
+    );
+    composer.addPass(new OutputPass());
+    return composer;
   }
 
   private buildRoom() {
@@ -582,6 +630,7 @@ export class World {
 
   private applyQuality(step: QualityStep) {
     this.renderer.setPixelRatio(step.pixelRatio);
+    this.composer?.setPixelRatio(step.pixelRatio);
     // Turning the light's shadow off changes the light state, so lit materials recompile without it.
     this.lamp.castShadow = step.shadows;
     this.renderer.shadowMap.enabled = step.shadows;
@@ -589,11 +638,14 @@ export class World {
 
   /** `frameMs` is the wall time since the last frame; in auto mode slow machines get a lower render scale. */
   render(frameMs = 0) {
+    this.renderer.info.reset();
     const step = this.quality.frame(frameMs);
     if (step) {
       console.info(`[render] steady frames are slow; dropping to pixel ratio ${step.pixelRatio}${step.shadows ? '' : ', no shadows'}`);
       this.applyQuality(step);
     }
-    this.renderer.render(this.scene, this.camera);
+    // The lowest step (no shadows) also skips post-processing.
+    if (this.composer && this.quality.current.shadows) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
   }
 }

@@ -1,6 +1,6 @@
 // Dev helper: renderer baseline (fps, draw calls, ...) via the client's ?perf HUD hook (window.__sh.perf()).
 // The server serves the built client from dist/client, so run `npx vite build` first.
-// Usage: tsx scripts/perf.ts [--players 5,10] [--gpu] [--seconds 5] [--leak [rounds]]
+// Usage: tsx scripts/perf.ts [--players 5,10] [--gpu] [--nofx] [--seconds 5] [--leak [rounds]]
 //   --leak:  GPU-leak check instead of the table: with the first --players value (default 7) plays `rounds` full
 //            games (default 3) with seat churn + rematch between them and prints renderer.info counts at each game over.
 //   default: swiftshader (software GL): counts are deterministic, fps/frame times are NOT meaningful.
@@ -21,6 +21,7 @@ const leakRounds = Number(argv[argv.indexOf('--leak') + 1]) || 3;
 const players = (opt('players') ?? (leak ? '7' : '5,10')).split(',').map(Number);
 const seconds = Number(opt('seconds') ?? 5);
 const gpu = argv.includes('--gpu');
+const fxQuery = argv.includes('--nofx') ? '&fx=0' : '';
 
 interface Stats {
   fps: number;
@@ -117,7 +118,7 @@ async function leakCheck(n: number) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`[${n}p] ${e.message}`));
-  await page.goto(`http://127.0.0.1:${server.port}/?perf&nolock=1`);
+  await page.goto(`http://127.0.0.1:${server.port}/?perf&nolock=1${fxQuery}`);
   await page.fill('#name', 'Perf');
   await page.click('#create');
   await page.waitForSelector('#room:not(.hidden)');
@@ -170,7 +171,7 @@ for (const n of players) {
     rows.push(
       `| ${n} | ${scene} | ${s.fps.toFixed(1)} | ${s.frameMs.toFixed(1)} | ${s.worstMs.toFixed(1)} | ${s.calls} | ${s.triangles} | ${s.programs} | ${s.geometries} | ${s.textures} |`,
     );
-  await page.goto(`http://127.0.0.1:${server.port}/?perf&nolock=1`);
+  await page.goto(`http://127.0.0.1:${server.port}/?perf&nolock=1${fxQuery}`);
   await page.fill('#name', 'Perf');
   await page.click('#create');
   await page.waitForSelector('#room:not(.hidden)');
