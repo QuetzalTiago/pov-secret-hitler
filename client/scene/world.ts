@@ -131,6 +131,7 @@ export class World {
   muzzle: THREE.PointLight;
   handLight: THREE.PointLight;
   private tableGroup = new THREE.Group();
+  private chairs = new Map<number, THREE.Group>();
   private ember: THREE.MeshStandardMaterial | null = null;
   private sleeve = new THREE.MeshStandardMaterial({ color: 0x2a2a33, roughness: 0.8 });
   private armband: THREE.Mesh | null = null;
@@ -411,6 +412,10 @@ export class World {
     }
   }
 
+  chairObject(seat: number): THREE.Group | null {
+    return this.chairs.get(seat) ?? null;
+  }
+
   /** Rebuilds table and chairs for a player count, placing your seat nearest the camera. */
   setLayout(n: number, me: number) {
     const count = Math.max(n, 5);
@@ -418,6 +423,7 @@ export class World {
     this.layout = new Layout(count, me);
     disposeObject(this.tableGroup, { keep: [this.sleeve] });
     this.tableGroup.clear();
+    this.chairs.clear();
     const L = this.layout;
     const wood = glossy(new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.55, metalness: 0.05 }), 0.15);
     const top = new THREE.Mesh(new THREE.CylinderGeometry(L.rx, L.rx, 0.07, 64), wood);
@@ -465,6 +471,7 @@ export class World {
       chair.position.copy(L.chair(s));
       chair.rotation.y = L.yaw(s);
       this.tableGroup.add(chair);
+      this.chairs.set(s, chair);
     }
     // Your own hands resting on the table edge.
     const skin = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });

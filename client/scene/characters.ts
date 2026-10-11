@@ -1,7 +1,7 @@
 // Procedural low-poly patrons. Original designs: coats, faces and hats vary by seat.
 import * as THREE from 'three';
 import { disposeObject } from './dispose';
-import { REACTION_DUR, blinkScale, mouthOpen, nextBlinkDelay, reactionPose, type Reaction, type ReactionPose } from './life';
+import { DEATH_DUR, REACTION_DUR, blinkScale, deathPose, mouthOpen, nextBlinkDelay, reactionPose, type DeathPose, type Reaction, type ReactionPose } from './life';
 import { glowTexture, textSprite } from './textures';
 import { boxLimb, glossy } from './world';
 import { handGeometry } from './hands';
@@ -28,7 +28,12 @@ export class Character {
   private lookTarget: THREE.Vector3 | null = null;
   private headYaw = 0;
   private headPitch = 0;
-  private slump = 0;
+  /** Seconds since the shot (DEATH_DUR = fully dead); null while alive. */
+  private deathT: number | null = null;
+  private deathPoseState: DeathPose = { lean: 0, drop: 0, push: 0, roll: 0, headPitch: 0, chairTip: 0, chairYaw: 0 };
+  /** This patron's chair (set by the game each frame); tipped on its rear legs during the death animation. */
+  chair: THREE.Object3D | null = null;
+  private chairBase: { obj: THREE.Object3D; yaw: number; pos: THREE.Vector3 } | null = null;
   dead = false;
   highlight = 0;
   private highlightTarget = 0;
@@ -43,6 +48,8 @@ export class Character {
   private reaction: { kind: Reaction; t: number } | null = null;
   private pose: ReactionPose = { pitch: 0, yaw: 0, lean: 0, armLift: 0 };
   private fistQuat = new THREE.Quaternion();
+  private pivot = new THREE.Vector3();
+  private baseEuler = new THREE.Euler();
   private readonly xAxis = new THREE.Vector3(1, 0, 0);
 
   /**
@@ -341,6 +348,12 @@ export class Character {
     return { pos, quat };
   }
 
+  /** Start the animated death (a room snapshot that merely shows them dead skips straight to the final pose). */
+  die() {
+    this.dead = true;
+    this.deathT = 0;
+  }
+
   recoil() {
     this.recoilKick = 1;
   }
@@ -384,6 +397,21 @@ export class Character {
     this.glowTarget = on ? 1 : 0;
   }
 
+  private updateChair(dp: DeathPose) {
+    const c = this.chair;
+    if (!c) return;
+    if (this.chairBase?.obj !== c) this.chairBase = { obj: c, yaw: c.rotation.y, pos: c.position.clone() };
+    const b = this.chairBase;
+    c.rotation.order = 'YXZ';
+    // Positive rotation.x carries the chair-local +y (top) toward +z (the back side), i.e. tips it backward.
+    c.rotation.set(dp.chairTip, b.yaw + dp.chairYaw, 0);
+    // Keep the rear-leg line (local z = 0.2, y = 0) fixed in place so the rear feet stay on the floor.
+    this.pivot.set(0, 0, 0.2).applyEuler(this.baseEuler.set(0, b.yaw, 0));
+    c.position.copy(b.pos).add(this.pivot);
+    this.pivot.set(0, 0, 0.2).applyEuler(c.rotation);
+    c.position.sub(this.pivot);
+  }
+
   update(dt: number, now: number) {
     const t = now + this.phase;
     if (this.reaction) {
@@ -395,11 +423,16 @@ export class Character {
     this.updateAim(dt);
     // Idle: breathing and a slow sway.
     const k = 1 - Math.exp(-4 * dt);
-    this.slump += ((this.dead ? 1 : 0) - this.slump) * (1 - Math.exp(-3 * dt));
-    this.body.position.y = Math.sin(t * 1.6) * 0.006 * (1 - this.slump) - this.slump * 0.12;
-    this.body.rotation.z = Math.sin(t * 0.5) * 0.02 * (1 - this.slump) + this.slump * 0.18;
-    this.body.rotation.x = this.slump * 0.75;
-    this.body.position.z = this.slump * 0.18;
+    if (!this.dead) this.deathT = null;
+    else if (this.deathT === null) this.deathT = DEATH_DUR;
+    else this.deathT = Math.min(DEATH_DUR, this.deathT + dt);
+    const dk = this.deathT === null ? 0 : this.deathT / DEATH_DUR;
+    const dp = deathPose(this.deathT ?? 0, this.deathPoseState);
+    this.body.position.y = Math.sin(t * 1.6) * 0.006 * (1 - dk) - dp.drop;
+    this.body.rotation.z = Math.sin(t * 0.5) * 0.02 * (1 - dk) + dp.roll;
+    this.body.rotation.x = dp.lean;
+    this.body.position.z = dp.push;
+    this.updateChair(dp);
 
     // Head tracking in local space.
     let yaw = Math.sin(t * 0.3) * 0.15;
@@ -411,11 +444,12 @@ export class Character {
       pitch = Math.max(-0.5, Math.min(0.4, -Math.atan2(local.y, Math.hypot(local.x, local.z))));
     }
     if (this.dead) {
-      yaw = 0.3;
-      pitch = 0.9;
+      this.headYaw = 0.3;
+      this.headPitch = dp.headPitch;
+    } else {
+      this.headYaw += (yaw - this.headYaw) * k;
+      this.headPitch += (pitch - this.headPitch) * k;
     }
-    this.headYaw += (yaw - this.headYaw) * k;
-    this.headPitch += (pitch - this.headPitch) * k;
     this.head.rotation.set(this.headPitch + this.pose.pitch, this.headYaw + this.pose.yaw, 0, 'YXZ');
     this.body.rotation.x += this.pose.lean;
     this.body.position.z += this.pose.lean * 0.25;
@@ -440,7 +474,7 @@ export class Character {
     const h = this.highlight;
     const g = this.glowAmt;
     this.mats.forEach((m, i) => {
-      m.color.copy(this.baseColors[i]).multiplyScalar(1 - this.slump * 0.55);
+      m.color.copy(this.baseColors[i]).multiplyScalar(1 - dk * 0.55);
       m.emissive.setRGB(h * 0.35 + g * 0.45, h * 0.25 + g * 0.05, h * 0.08 + g * 0.03);
     });
     const glowMat = this.glow.material as THREE.SpriteMaterial;

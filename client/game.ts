@@ -567,6 +567,7 @@ export class Game {
       case 'executed': {
         this.shot = { by: e.by, target: e.target, until: this.now + 2.8 };
         this.chars.get(e.by)?.recoil();
+        this.chars.get(e.target)?.die();
         voice.gunshot();
         voice.death();
         this.world.addShake(e.target === me ? 1.5 : 1.0);
@@ -1202,6 +1203,7 @@ export class Game {
       c.setHighlight(hovered === `seat-${seat}`);
       const role = v?.players[seat]?.role;
       c.setTeamGlow(!!knowsTeam && v?.phase === 'night' && !!role && role !== 'liberal');
+      c.chair = this.world.chairObject(seat);
       c.update(dt, this.now);
     }
   }

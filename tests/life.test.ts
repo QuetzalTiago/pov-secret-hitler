@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REACTION_DUR, blinkScale, mouthOpen, nextBlinkDelay, reactionPose, type Reaction, type ReactionPose } from '../client/scene/life';
+import { DEATH_DUR, REACTION_DUR, blinkScale, deathPose, mouthOpen, nextBlinkDelay, reactionPose, type Reaction, type ReactionPose } from '../client/scene/life';
 
 const kinds = Object.keys(REACTION_DUR) as Reaction[];
 const pose = (): ReactionPose => ({ pitch: 9, yaw: 9, lean: 9, armLift: 9 });
@@ -52,5 +52,26 @@ describe('blink and mouth', () => {
       expect(m).toBeGreaterThanOrEqual(0);
       expect(m).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe('deathPose', () => {
+  const dp = (t: number) => deathPose(t, { lean: 9, drop: 9, push: 9, roll: 9, headPitch: 9, chairTip: 9, chairYaw: 9 });
+  it('starts at rest', () => {
+    expect(dp(0)).toEqual({ lean: 0, drop: 0, push: 0, roll: 0, headPitch: 0, chairTip: 0, chairYaw: 0 });
+  });
+  it('jerks back with the chair tipped', () => {
+    const p = dp(0.1);
+    expect(p.lean).toBeLessThan(-0.3);
+    expect(p.chairTip).toBeGreaterThan(0.25);
+  });
+  it('ends exactly at the slumped pose', () => {
+    const final = { lean: 0.75, drop: 0.12, push: 0.18, roll: 0.18, headPitch: 0.9, chairTip: 0.06, chairYaw: 0.12 };
+    expect(dp(DEATH_DUR)).toEqual(final);
+    expect(dp(99)).toEqual(final);
+  });
+  it('falls forward monotonically', () => {
+    const lean = Array.from({ length: 10 }, (_, i) => dp(0.22 + (i / 9) * 0.73).lean);
+    for (let i = 1; i < lean.length; i++) expect(lean[i]).toBeGreaterThan(lean[i - 1]);
   });
 });

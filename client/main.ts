@@ -143,12 +143,15 @@ window.addEventListener('keydown', unlockAudio);
 const perf = new URLSearchParams(location.search).has('perf') ? createPerfHud(world.renderer) : null;
 
 let last = performance.now();
+let frozen = false; // test hook: sim only advances via __sh.step
 function frame(t: number) {
   const frameMs = t - last;
   const dt = Math.min(0.1, frameMs / 1000);
   last = t;
-  game.update(dt);
-  world.update(dt);
+  if (!frozen) {
+    game.update(dt);
+    world.update(dt);
+  }
   interactor.update();
   world.render(frameMs);
   perf?.tick(t);
@@ -174,6 +177,16 @@ window.__sh = {
   prompt: () => document.getElementById('prompt')?.textContent ?? '',
   settled: () => world.settled(),
   perf: () => perf?.stats() ?? null,
+  freeze: (on: boolean) => {
+    frozen = on;
+  },
+  step: (seconds: number) => {
+    for (let i = 0, n = Math.round(seconds * 60); i < n; i++) {
+      game.update(1 / 60);
+      world.update(1 / 60);
+    }
+    world.render();
+  },
   world,
 };
 

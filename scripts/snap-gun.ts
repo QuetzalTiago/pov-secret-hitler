@@ -5,6 +5,7 @@ import { config } from '../server/config';
 import { startServer } from '../server/index';
 
 config.botDelayMs = 1e7; // bots hold still
+config.timerScale = 100; // screenshots are slow: never let a turn deadline expire
 const out = process.argv[2] ?? 'gun';
 const server = await startServer(0);
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -40,14 +41,18 @@ async function shot(by: number, target: number) {
   await page.mouse.move(640, 330);
   await page.waitForTimeout(3000);
   await page.screenshot({ path: `${out}-shot-0-aim.png` });
+  // Freeze the client sim so the frames below are deterministic, then step it by hand.
+  await page.evaluate(() => (window as any).__sh.freeze(true));
   g.players[target].alive = false;
   room.broadcast([{ k: 'executed', by, target }]);
+  await page.waitForFunction((t) => (window as any).__sh.room()?.game?.players?.[t]?.alive === false, target);
   let t = 0;
-  for (const [at, name] of [[60, '1-flash'], [350, '2-jerk'], [1200, '3-fall'], [3500, '4-settled']] as const) {
-    await page.waitForTimeout(at - t);
+  for (const [at, name] of [[0.05, '1-flash'], [0.12, '2-jerk'], [0.6, '3-fall'], [1.5, '4-settled']] as const) {
+    await page.evaluate((d) => (window as any).__sh.step(d), at - t);
     t = at;
     await page.screenshot({ path: `${out}-shot-${name}.png` });
   }
+  await page.evaluate(() => (window as any).__sh.freeze(false));
 }
 await shot(3, 4);
 await force(3, 'point-bot', 'nominate');
