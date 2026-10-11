@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { disposeObject } from './dispose';
 import { glowTexture, textSprite } from './textures';
 import { boxLimb, glossy } from './world';
+import { handGeometry } from './hands';
 
 const COATS = [0x6b2f2a, 0x2f4a6b, 0x4a5a2a, 0x5a3a6b, 0x7a5a2a, 0x2a5a55, 0x6b4a3a, 0x3a3a46, 0x803a50, 0x55602f];
 const SKINS = [0xe0b090, 0xb07a55, 0x8a5a3a, 0xd9a07a, 0x6b4430, 0xf0c8a8, 0xc08860, 0x9a6a48, 0xe6b898, 0x7a4e36];
@@ -67,7 +68,7 @@ export class Character {
       const upper = boxLimb(shoulder, elbow, 0.11, 0.12, coat);
       const fore = boxLimb(elbow, wrist, 0.1, 0.1, coat);
       const dir = wrist.clone().sub(elbow).setY(0).normalize();
-      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.11), skin);
+      const hand = new THREE.Mesh(handGeometry('flat', side as 1 | -1), skin);
       hand.position.copy(wrist).addScaledVector(dir, 0.055).setY(0.815);
       hand.rotation.y = Math.atan2(dir.x, dir.z);
       this.body.add(upper, fore, hand);
@@ -289,7 +290,7 @@ export class Character {
     upper.position.z = 0.14;
     const fore = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.28), coat);
     fore.position.z = 0.41;
-    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.09, 0.09), skin);
+    const hand = new THREE.Mesh(handGeometry('fist', -1), skin);
     hand.position.z = 0.58;
     this.handAnchor.position.set(0, 0.0, 0.6);
     // Index finger, shown only when pointing (not when holding the gun).
