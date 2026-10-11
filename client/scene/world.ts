@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObject } from './dispose';
+import { AdaptiveQuality } from './quality';
 import {
   feltTexture, glowTexture, markSharedTexture, plankTexture, smokeTexture, textSprite, wallTexture, woodTexture,
 } from './textures';
@@ -137,14 +138,17 @@ export class World {
   tension = 0;
   danger = 0;
   private time = 0;
+  private quality = new AdaptiveQuality(window.devicePixelRatio);
   mouse = new THREE.Vector2(0, 0);
 
   constructor(container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    // No preserveDrawingBuffer: nothing reads the canvas back, and keeping it forces an extra copy per frame.
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(this.quality.current.pixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Plain PCF: PCFSoft samples the shadow map many more times on every shadowed pixel.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -568,7 +572,16 @@ export class World {
     for (const m of this.movers) m.update(dt);
   }
 
-  render() {
+  /** `frameMs` is the wall time since the last frame; slow machines get a lower render scale. */
+  render(frameMs = 0) {
+    const step = this.quality.frame(frameMs);
+    if (step) {
+      console.info(`[render] steady frames are slow; dropping to pixel ratio ${step.pixelRatio}${step.shadows ? '' : ', no shadows'}`);
+      this.renderer.setPixelRatio(step.pixelRatio);
+      // Turning the light's shadow off changes the light state, so lit materials recompile without it.
+      this.lamp.castShadow = step.shadows;
+      this.renderer.shadowMap.enabled = step.shadows;
+    }
     this.renderer.render(this.scene, this.camera);
   }
 }

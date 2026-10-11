@@ -103,6 +103,7 @@ export class Character {
     // Head: faceted sphere with a simple face.
     const skull = new THREE.Mesh(new THREE.IcosahedronGeometry(0.15, 1), skin);
     skull.scale.set(1, 1.12, 1);
+    const brows: THREE.Mesh[] = [];
     const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0c0806, emissive: 0x221100, roughness: 0.3 });
     for (const side of [-1, 1]) {
       const eye = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.022, 0.02), eyeMat);
@@ -111,6 +112,7 @@ export class Character {
       brow.position.set(side * 0.055, 0.065, 0.135);
       brow.rotation.z = side * (styleIndex % 3 === 0 ? 0.25 : -0.08);
       this.eyes.push(eye);
+      brows.push(brow);
       this.head.add(eye, brow);
     }
     const nose = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.07, 4), skin);
@@ -144,9 +146,11 @@ export class Character {
     this.body.add(this.head);
     this.group.add(this.body);
 
+    // Face details are too small to cast a visible shadow; skipping them keeps them out of the shadow pass.
+    const faceDetails = new Set<THREE.Object3D>([...this.eyes, ...brows, nose, mouth]);
     this.body.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) {
-        o.castShadow = true;
+        o.castShadow = !faceDetails.has(o);
         o.receiveShadow = true;
         this.hitMeshes.push(o);
       }

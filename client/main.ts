@@ -143,12 +143,13 @@ const perf = new URLSearchParams(location.search).has('perf') ? createPerfHud(wo
 
 let last = performance.now();
 function frame(t: number) {
-  const dt = Math.min(0.1, (t - last) / 1000);
+  const frameMs = t - last;
+  const dt = Math.min(0.1, frameMs / 1000);
   last = t;
   game.update(dt);
   world.update(dt);
   interactor.update();
-  world.render();
+  world.render(frameMs);
   perf?.tick(t);
   frames++;
   requestAnimationFrame(frame);
