@@ -20,7 +20,7 @@ function startGame() {
   room.join(conn, 'Human');
   for (let i = 0; i < 4; i++) expect(room.addBot(conn)).toBeNull();
   expect(room.start(conn)).toBeNull();
-  return room;
+  return { room, msgs };
 }
 
 const phaseKey = (room: Room) => `${room.game!.phase}:${room.game!.round}`;
@@ -41,7 +41,7 @@ describe('room resilience', () => {
   });
 
   it('survives apply throwing during a phase timeout and keeps progressing', async () => {
-    const room = startGame();
+    const { room } = startGame();
     const realApply = (room as any).apply.bind(room);
     (room as any).apply = () => {
       throw new Error('boom');
@@ -58,7 +58,7 @@ describe('room resilience', () => {
   });
 
   it('logs and survives a failure inside the timer callback itself', async () => {
-    const room = startGame();
+    const { room } = startGame();
     const realTimeout = (room as any).onTimeout.bind(room);
     (room as any).onTimeout = () => {
       throw new Error('timeout boom');
@@ -70,7 +70,7 @@ describe('room resilience', () => {
   });
 
   it('falls back to legal[0] when the first choice is rejected', async () => {
-    const room = startGame();
+    const { room } = startGame();
     const realApply = (room as any).apply.bind(room);
     const tried: string[] = [];
     (room as any).apply = (seat: number, body: { type: string }) => {
@@ -82,6 +82,16 @@ describe('room resilience', () => {
     expect(errorSpy).toHaveBeenCalledWith('[bot] illegal move', expect.anything(), { type: 'peekDone' }, 'nope');
     expect(tried.slice(0, 2)).toEqual(['peekDone', 'ack']);
     expect(phaseKey(room)).not.toBe(before);
+    room.close();
+  });
+
+  it('tells the human, and only the human, they timed out', async () => {
+    const { room, msgs } = startGame();
+    await sleep(80); // night timer is ~20ms
+    const events = msgs.flatMap((m) => (m.t === 'room' ? m.room.events : []));
+    const timedOut = events.filter((e) => e.k === 'timedOut');
+    expect(timedOut).toContainEqual({ k: 'timedOut', seat: 0 });
+    expect(timedOut.every((e) => e.seat === 0)).toBe(true);
     room.close();
   });
 });

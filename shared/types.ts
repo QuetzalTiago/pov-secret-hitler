@@ -84,6 +84,7 @@ export type Action = ActionBody & { seat: number };
 export type GameEvent =
   | { k: 'nightStart' }
   | { k: 'acked'; seat: number }
+  | { k: 'timedOut'; seat: number }
   | { k: 'newPresident'; seat: number; special: boolean }
   | { k: 'nominated'; president: number; target: number }
   | { k: 'voted'; seat: number }

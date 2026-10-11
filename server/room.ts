@@ -388,13 +388,13 @@ export class Room {
     return this.apply(seat, body);
   }
 
-  private apply(seat: number, body: ActionBody): string | null {
+  private apply(seat: number, body: ActionBody, extra: GameEvent[] = []): string | null {
     if (!this.game) return 'No game.';
     try {
       const res = reduce(this.game, { ...body, seat } as never);
       this.game = res.state;
       this.lastActivity = Date.now();
-      this.after(res.events);
+      this.after([...extra, ...res.events]);
       return null;
     } catch (err) {
       if (err instanceof RuleError) return 'That move is not allowed right now.';
@@ -449,12 +449,12 @@ export class Room {
     }
     for (const seat of pendingActors(this.game)) {
       if (!this.game || `${this.game.phase}:${this.game.round}:${this.game.vetoRefused}` !== key) break;
-      this.botMove(seat);
+      this.botMove(seat, this.seats[seat]?.bot ? [] : [{ k: 'timedOut', seat }]);
     }
     this.resetTimerIfNeeded();
   }
 
-  private botMove(seat: number) {
+  private botMove(seat: number, extra: GameEvent[] = []) {
     const g = this.game;
     if (!g) return;
     const legal = legalActions(g, seat);
@@ -466,18 +466,18 @@ export class Room {
       console.error('[bot] decideNow failed', e);
     }
     this.botStats.heuristic++;
-    const err = this.tryApply(seat, body);
+    const err = this.tryApply(seat, body, extra);
     if (!err) return;
     console.error('[bot] illegal move', seat, body, err);
     if (body === legal[0]) return; // the phase timer will retry
-    const err2 = this.tryApply(seat, legal[0]);
+    const err2 = this.tryApply(seat, legal[0], extra);
     if (err2) console.error('[bot] fallback move also illegal', seat, legal[0], err2);
   }
 
   /** apply() for bot moves: an unexpected exception becomes an error string instead of escaping. */
-  private tryApply(seat: number, body: ActionBody): string | null {
+  private tryApply(seat: number, body: ActionBody, extra: GameEvent[] = []): string | null {
     try {
-      return this.apply(seat, body);
+      return this.apply(seat, body, extra);
     } catch (e) {
       return String(e);
     }

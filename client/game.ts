@@ -420,6 +420,9 @@ export class Game {
         sfx.night();
         this.ui.toast('Night falls. Open your envelope.', 'night');
         break;
+      case 'timedOut':
+        if (e.seat === me) this.ui.toast('Time ran out, a move was made for you', 'bad');
+        break;
       case 'newPresident':
         sfx.slide();
         this.ui.toast(e.seat === me ? 'You are the President.' : `${this.name(e.seat)} is President.`, e.special ? 'power' : 'info');
