@@ -9,13 +9,13 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 export function handGeometry(kind: 'flat' | 'fist', side: 1 | -1 = 1): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
   const ellipsoid = (sx: number, sy: number, sz: number) => {
-    const g = new THREE.SphereGeometry(0.5, 8, 6);
+    const g = new THREE.SphereGeometry(0.5, 7, 5);
     g.scale(sx, sy, sz);
     parts.push(g);
   };
   // Capsule laid along Z (or X for knuckles), yawed by `yaw`, then placed.
   const capsule = (r: number, len: number, yaw: number, x: number, y: number, z: number, alongX = false) => {
-    const g = new THREE.CapsuleGeometry(r, len, 2, 6);
+    const g = new THREE.CapsuleGeometry(r, len, 1, 5);
     g.rotateX(Math.PI / 2);
     if (alongX) g.rotateY(Math.PI / 2);
     g.rotateY(yaw);
