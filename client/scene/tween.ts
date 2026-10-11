@@ -260,6 +260,13 @@ export class Tweens {
   }
 }
 
+/** Client-only slow-motion factor, t = real seconds since the shot: hold 0.3 for 0.25 s, ease back to 1 by 0.85 s. */
+export function slowmoScale(t: number): number {
+  if (t < 0 || t >= 0.85) return 1;
+  if (t <= 0.25) return 0.3;
+  return 0.3 + 0.7 * ease.inOutCubic((t - 0.25) / 0.6);
+}
+
 export const tweens = new Tweens();
 
 export function tween<T extends object>(target: T, to: Partial<Record<keyof T, number>>, opts: TweenOpts): Tween {

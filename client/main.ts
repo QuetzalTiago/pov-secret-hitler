@@ -149,8 +149,9 @@ function frame(t: number) {
   const dt = Math.min(0.1, frameMs / 1000);
   last = t;
   if (!frozen) {
-    game.update(dt);
-    world.update(dt);
+    const s = game.timeScale(dt);
+    game.update(dt * s);
+    world.update(dt * s);
   }
   interactor.update();
   world.render(frameMs);

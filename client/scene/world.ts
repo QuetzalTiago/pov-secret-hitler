@@ -8,6 +8,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { disposeObject } from './dispose';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
+import { ease, sequence, tween, type Tween } from './tween';
 import {
   feltTexture, glowTexture, markSharedTexture, plankTexture, smokeTexture, textSprite, wallTexture, woodTexture,
 } from './textures';
@@ -146,6 +147,16 @@ export class World {
   nightTarget = 0;
   tension = 0;
   danger = 0;
+  private dangerLevel = 0;
+  private dangerPhase = 0;
+  punch = 0;
+  private punchAt = new THREE.Vector3();
+  private punchSeq: Tween | null = null;
+  private flashSprite: THREE.Sprite;
+  private flashLife = 0;
+  private flashAge = 0;
+  private puffs: { s: THREE.Sprite; v: THREE.Vector3; spin: number; life: number; age: number; seq: number }[] = [];
+  private puffSeq = 0;
   private time = 0;
   private quality = new AdaptiveQuality(window.devicePixelRatio, readGraphicsPref());
   mouse = new THREE.Vector2(0, 0);
@@ -208,6 +219,18 @@ export class World {
 
     this.muzzle = new THREE.PointLight(0xffd8a0, 0, 8, 1.4);
     this.scene.add(this.muzzle);
+
+    // Pooled shot sprites, hidden (no draw call) until flash().
+    this.flashSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('255,220,160'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    this.flashSprite.visible = false;
+    this.scene.add(this.flashSprite);
+    const puffMat = new THREE.SpriteMaterial({ map: smokeTexture(), transparent: true, depthWrite: false, color: 0xcfc4b4 });
+    for (let i = 0; i < 6; i++) {
+      const s = new THREE.Sprite(puffMat.clone());
+      s.visible = false;
+      this.scene.add(s);
+      this.puffs.push({ s, v: new THREE.Vector3(), spin: 0, life: 0, age: 0, seq: 0 });
+    }
 
     // Hanging lamp shade + bulb.
     const shade = new THREE.Mesh(
@@ -573,9 +596,47 @@ export class World {
     this.shake = Math.min(1.5, this.shake + amount);
   }
 
-  flash(at: THREE.Vector3) {
+  flash(at: THREE.Vector3, dir?: THREE.Vector3) {
     this.muzzle.position.copy(at);
     this.muzzle.intensity = 60;
+    this.flashSprite.position.copy(at);
+    this.flashSprite.scale.setScalar(0.45);
+    this.flashSprite.material.rotation = Math.random() * Math.PI * 2;
+    this.flashSprite.material.opacity = 1;
+    this.flashSprite.visible = true;
+    this.flashLife = 0.07;
+    this.flashAge = 0;
+    for (let i = 0; i < 4; i++) {
+      // Reuse a free puff, else the oldest.
+      let p = this.puffs[0];
+      for (const q of this.puffs) if (q.age >= q.life ? p.age < p.life || q.seq < p.seq : p.age < p.life && q.seq < p.seq) p = q;
+      const sp = 0.35 + Math.random() * 0.25;
+      if (dir) p.v.copy(dir).multiplyScalar(sp);
+      else p.v.set(0, 0, 0);
+      p.v.x += (Math.random() - 0.5) * 0.1;
+      p.v.y += 0.08 + Math.random() * 0.07;
+      p.v.z += (Math.random() - 0.5) * 0.1;
+      p.s.position.copy(at);
+      p.s.scale.setScalar(0.08);
+      p.s.material.rotation = Math.random() * Math.PI * 2;
+      p.s.material.opacity = 0.55;
+      p.s.visible = true;
+      p.spin = (Math.random() - 0.5) * 0.8;
+      p.life = 1.1 + Math.random() * 0.4;
+      p.age = 0;
+      p.seq = ++this.puffSeq;
+    }
+  }
+
+  /** Brief camera push toward a point (the victim) and back. */
+  punchIn(at: THREE.Vector3) {
+    this.punchAt.copy(at);
+    this.punchSeq?.cancel();
+    this.punchSeq = sequence([
+      () => tween<World>(this, { punch: 1 }, { dur: 0.12, ease: ease.outQuad }),
+      () => tween<World>(this, { punch: 1 }, { dur: 0.35 }),
+      () => tween<World>(this, { punch: 0 }, { dur: 0.7, ease: ease.inOutCubic }),
+    ]);
   }
 
   track(m: Mover) {
@@ -595,27 +656,80 @@ export class World {
     const basePitch = -0.36;
     this.shake = Math.max(0, this.shake - dt * 1.6);
     const sh = this.shake * this.shake * 0.06;
-    this.camera.position.set(eye.x + (Math.random() - 0.5) * sh, eye.y + Math.sin(t * 0.9) * 0.004 + (Math.random() - 0.5) * sh, eye.z);
+    let camX = eye.x;
+    let camY = eye.y + Math.sin(t * 0.9) * 0.004;
+    let camZ = eye.z;
+    let camPitch = basePitch + this.pitch;
+    let camYaw = baseYaw + this.yaw;
+    let fov = 68;
+    if (this.punch > 0) {
+      const dx = this.punchAt.x - camX;
+      const dy = this.punchAt.y - camY;
+      const dz = this.punchAt.z - camZ;
+      const flat = Math.hypot(dx, dz);
+      const dist = Math.hypot(flat, dy) || 1;
+      const step = (0.22 * this.punch) / dist;
+      camX += dx * step;
+      camY += dy * step;
+      camZ += dz * step;
+      // Camera looks down -Z at yaw 0 and yaw turns it toward -X.
+      let dyaw = Math.atan2(-dx, -dz) - camYaw;
+      dyaw -= Math.PI * 2 * Math.round(dyaw / (Math.PI * 2));
+      camYaw += dyaw * 0.6 * this.punch;
+      camPitch += (Math.atan2(dy, flat) - camPitch) * 0.6 * this.punch;
+      fov = 68 - 14 * this.punch;
+    }
+    if (fov !== this.camera.fov) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
+    this.camera.position.set(camX + (Math.random() - 0.5) * sh, camY + (Math.random() - 0.5) * sh, camZ);
     this.camera.rotation.set(
-      basePitch + this.pitch + (Math.random() - 0.5) * sh * 0.8,
-      baseYaw + this.yaw + (Math.random() - 0.5) * sh * 0.8,
+      camPitch + (Math.random() - 0.5) * sh * 0.8,
+      camYaw + (Math.random() - 0.5) * sh * 0.8,
       (Math.random() - 0.5) * sh * 0.4,
       'YXZ',
     );
 
     // Lighting: night drop, tension, flicker.
     this.night += (this.nightTarget - this.night) * (1 - Math.exp(-2.5 * dt));
-    const flicker = 1 - (Math.sin(t * 13.7) * Math.sin(t * 7.3) > 0.93 ? 0.35 : 0) * (0.3 + this.danger) - Math.random() * 0.03 * (1 + this.danger * 4);
+    this.dangerLevel += (this.danger - this.dangerLevel) * (1 - Math.exp(-2 * dt));
+    this.dangerPhase += dt * (2 + 5 * this.dangerLevel);
+    const danger = this.dangerLevel;
+    const flicker = 1 - (Math.sin(t * 13.7) * Math.sin(t * 7.3) > 0.93 ? 0.35 : 0) * (0.3 + danger) - Math.random() * 0.03 * (1 + danger * 4);
     const lit = 1 - this.night * 0.93;
     this.lamp.intensity = 60 * lit * flicker;
     this.fill.intensity = 7 * lit;
     this.ambient.intensity = 0.55 * (1 - this.night * 0.85);
     this.handLight.intensity = 0.9 * (1 - this.night * 0.6);
-    this.lamp.color.copy(LAMP_WARM).lerp(LAMP_HOT, Math.min(1, this.tension * 0.6 + this.danger * 0.3));
+    this.lamp.color.copy(LAMP_WARM).lerp(LAMP_HOT, Math.min(1, this.tension * 0.6 + danger * 0.3));
     (this.lampBulb.material as THREE.MeshStandardMaterial).emissiveIntensity = 4 * lit * flicker;
     if (this.ember) this.ember.emissiveIntensity = 2.2 + Math.sin(t * 2.3) * 0.5 + Math.sin(t * 5.1) * 0.25;
-    this.redLight.intensity = this.danger * (3 + Math.sin(t * 3) * 1.5) + this.night * 0;
+    this.redLight.intensity = danger * (3 + Math.sin(this.dangerPhase) * 1.5) + this.night * 0;
     this.muzzle.intensity *= Math.exp(-dt * 14);
+
+    if (this.flashSprite.visible) {
+      this.flashAge += dt;
+      const k = this.flashAge / this.flashLife;
+      if (k >= 1) this.flashSprite.visible = false;
+      else {
+        this.flashSprite.scale.setScalar(0.45 + 0.15 * k);
+        this.flashSprite.material.opacity = 1 - k;
+      }
+    }
+    for (const p of this.puffs) {
+      if (!p.s.visible) continue;
+      p.age += dt;
+      const k = p.age / p.life;
+      if (k >= 1) {
+        p.s.visible = false;
+        continue;
+      }
+      p.s.position.addScaledVector(p.v, dt);
+      p.s.scale.setScalar(0.08 + 0.37 * ease.outQuad(k));
+      p.s.material.rotation += p.spin * dt;
+      p.s.material.opacity = 0.55 * (1 - k);
+    }
 
     for (const p of this.smoke) {
       p.s.position.addScaledVector(p.v, dt);

@@ -9,7 +9,7 @@ import { Character } from './scene/characters';
 import { disposeObject } from './scene/dispose';
 import { Board, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
 import { ballotFace, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
-import { tweens } from './scene/tween';
+import { slowmoScale, tweens } from './scene/tween';
 import { Mover, TABLE_Y, type World } from './scene/world';
 import type { UI } from './ui';
 
@@ -93,6 +93,8 @@ export class Game {
   /** Last seat the policies were passed to; the view may already have cleared its chancellor on 'enacted'. */
   private lastChancellor: number | null = null;
   private shot: { by: number; target: number; until: number } | null = null;
+  private executeSince = -1;
+  private slowmoClock = Infinity;
   private invShown: number | null = null;
   private invFlight: { by: number; target: number; until: number } | null = null;
   private speaker: { seat: number; until: number } | null = null;
@@ -572,7 +574,10 @@ export class Game {
         voice.death();
         this.world.addShake(e.target === me ? 1.5 : 1.0);
         const muzzle = new THREE.Vector3(0, 0, -0.2).applyMatrix4(this.gun.matrixWorld);
-        this.world.flash(muzzle);
+        const dir = new THREE.Vector3(0, 0, -1).transformDirection(this.gun.matrixWorld);
+        this.world.flash(muzzle, dir);
+        if (e.target !== me) this.world.punchIn(this.world.layout.head(e.target));
+        this.slowmoClock = 0;
         this.ui.flash();
         this.ui.toast(e.target === me ? 'You have been executed.' : `${this.name(e.target)} has been executed.`, 'bad');
         break;
@@ -1208,6 +1213,14 @@ export class Game {
     }
   }
 
+  /** Real-time dt in, sim speed factor out: brief slow-motion after an execution. */
+  timeScale(realDt: number): number {
+    if (this.slowmoClock === Infinity) return 1;
+    this.slowmoClock += realDt;
+    if (this.slowmoClock >= 0.85) this.slowmoClock = Infinity;
+    return slowmoScale(this.slowmoClock);
+  }
+
   update(dt: number) {
     this.now += dt;
     tweens.update(dt);
@@ -1217,7 +1230,10 @@ export class Game {
     this.world.setOwnOutfit(v?.yourRole === 'hitler');
     setMusicMood(v?.phase === 'night', !!v && (v.phase === 'execute' || (!!this.shot && this.now < this.shot.until)));
     this.world.tension = v ? v.fascist / 6 : 0;
-    this.world.danger = v && (v.phase === 'execute' || (this.shot && this.now < this.shot.until)) ? 1 : 0;
+    if (v?.phase !== 'execute') this.executeSince = -1;
+    else if (this.executeSince < 0) this.executeSince = this.now;
+    const shooting = !!this.shot && this.now < this.shot.until;
+    this.world.danger = shooting ? 1 : this.executeSince >= 0 ? 0.25 + 0.75 * Math.min(1, (this.now - this.executeSince) / 8) : 0;
     if (v?.phase === 'execute' && this.now - this.lastHeartbeat > 1.1) {
       this.lastHeartbeat = this.now;
       sfx.heartbeat();

@@ -1,7 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { Tweens, arcPoint, ease } from '../client/scene/tween';
+import { Tweens, arcPoint, ease, slowmoScale } from '../client/scene/tween';
 import { Mover } from '../client/scene/world';
+
+describe('slowmoScale', () => {
+  it('holds 0.3, then returns to 1', () => {
+    expect(slowmoScale(0)).toBe(0.3);
+    expect(slowmoScale(0.2)).toBe(0.3);
+    expect(slowmoScale(0.85)).toBe(1);
+    expect(slowmoScale(5)).toBe(1);
+    expect(slowmoScale(-1)).toBe(1);
+  });
+
+  it('is non-decreasing between 0.25 and 0.85', () => {
+    let prev = slowmoScale(0.25);
+    for (let t = 0.26; t <= 0.85; t += 0.01) {
+      const s = slowmoScale(t);
+      expect(s).toBeGreaterThanOrEqual(prev);
+      prev = s;
+    }
+  });
+});
 
 describe('ease', () => {
   for (const [name, fn] of Object.entries(ease)) {
