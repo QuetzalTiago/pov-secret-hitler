@@ -31,6 +31,25 @@ async function force(president: number, file: string, phase = 'execute') {
 }
 await force(3, 'bot'); // seat 3 sits across the table
 await force(0, 'me');
+// The shot itself: seat 3 aims, then kills seat 4; frames at the flash, the jerk, the fall and settled.
+async function shot(by: number, target: number) {
+  const g = room.game;
+  g.phase = 'execute';
+  g.president = by;
+  room.broadcast([]);
+  await page.mouse.move(640, 330);
+  await page.waitForTimeout(3000);
+  await page.screenshot({ path: `${out}-shot-0-aim.png` });
+  g.players[target].alive = false;
+  room.broadcast([{ k: 'executed', by, target }]);
+  let t = 0;
+  for (const [at, name] of [[60, '1-flash'], [350, '2-jerk'], [1200, '3-fall'], [3500, '4-settled']] as const) {
+    await page.waitForTimeout(at - t);
+    t = at;
+    await page.screenshot({ path: `${out}-shot-${name}.png` });
+  }
+}
+await shot(3, 4);
 await force(3, 'point-bot', 'nominate');
 await force(0, 'point-me', 'nominate');
 await browser.close();
