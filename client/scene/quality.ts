@@ -29,8 +29,11 @@ export interface QualityStep {
   shadows: boolean;
 }
 
-/** Frames slower than this are a hitch or a backgrounded tab, not the steady frame rate. */
-const IGNORE_MS = 250;
+/**
+ * A frame counts for at most this. A single long frame (a hitch, or the gap after a backgrounded tab
+ * returns) is capped so it can't dominate a window, while a steady run of them still counts as slow.
+ */
+const CAP_MS = 250;
 /** Shaders compile and textures upload at first: judge only after this. */
 const WARMUP_MS = 4000;
 const WINDOW_MS = 2000;
@@ -73,10 +76,11 @@ export class AdaptiveQuality {
 
   /** Feed one frame's duration; returns the new step when quality should drop, else null. */
   frame(ms: number): QualityStep | null {
-    if (this.mode !== 'auto' || ms <= 0 || ms > IGNORE_MS || this.level === this.steps.length - 1) return null;
-    this.elapsed += ms;
+    if (this.mode !== 'auto' || ms <= 0 || this.level === this.steps.length - 1) return null;
+    const m = Math.min(ms, CAP_MS);
+    this.elapsed += m;
     if (this.elapsed < WARMUP_MS) return null;
-    this.windowMs += ms;
+    this.windowMs += m;
     this.windowFrames++;
     if (this.windowMs < WINDOW_MS) return null;
     const mean = this.windowMs / this.windowFrames;

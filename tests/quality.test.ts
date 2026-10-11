@@ -35,10 +35,29 @@ describe('adaptive quality', () => {
     expect(q.current).toEqual({ pixelRatio: 0.75, shadows: false });
   });
 
-  it('ignores the warm-up and long hitches such as a backgrounded tab', () => {
+  it('ignores the warm-up and an isolated long hitch such as a backgrounded tab', () => {
     const q = new AdaptiveQuality(2);
     expect(run(q, 40, 3500)).toEqual([]);
-    for (let i = 0; i < 200; i++) q.frame(1000);
+    q.frame(1000);
+    expect(run(q, 16.7, 30_000)).toEqual([]);
+    expect(q.level).toBe(0);
+  });
+
+  it('steps a very slow machine (300 ms frames) all the way down', () => {
+    const q = new AdaptiveQuality(2);
+    let frames = 0;
+    while (q.level < q.steps.length - 1 && frames < 200) {
+      q.frame(300);
+      frames++;
+    }
+    expect(q.current).toEqual({ pixelRatio: 0.75, shadows: false });
+    expect(frames).toBeLessThan(200);
+  });
+
+  it('does not step down for a single huge hitch among fast frames', () => {
+    const q = new AdaptiveQuality(2);
+    run(q, 16.7, 5000);
+    q.frame(5000);
     expect(run(q, 16.7, 30_000)).toEqual([]);
     expect(q.level).toBe(0);
   });
