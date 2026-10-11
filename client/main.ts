@@ -146,7 +146,8 @@ let last = performance.now();
 let frozen = false; // test hook: sim only advances via __sh.step
 function frame(t: number) {
   const frameMs = t - last;
-  const dt = Math.min(0.1, frameMs / 1000);
+  // The first rAF timestamp can predate `last` (slow startup), and a negative dt runs every easing backwards.
+  const dt = Math.max(0, Math.min(0.1, frameMs / 1000));
   last = t;
   if (!frozen) {
     const s = game.timeScale(dt);
