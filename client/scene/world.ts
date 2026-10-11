@@ -28,6 +28,10 @@ export function glossy<T extends THREE.MeshStandardMaterial>(m: T, intensity = 0
   return m;
 }
 const EYE_Y = 1.27;
+/** With a free cursor the view turns toward it: yaw/pitch (rad) at the screen edge, around this resting pitch. */
+const FOLLOW_YAW = 0.7;
+const FOLLOW_PITCH = 0.32;
+const BASE_PITCH = -0.36;
 
 /** Seat geometry around an elliptical table. Your own seat is always nearest the camera. */
 export class Layout {
@@ -265,8 +269,8 @@ export class World {
       }
       this.mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
       if (this.freezeLook) return;
-      this.targetYaw = -this.mouse.x * 0.7;
-      this.targetPitch = this.mouse.y * 0.32;
+      this.targetYaw = -this.mouse.x * FOLLOW_YAW;
+      this.targetPitch = this.mouse.y * FOLLOW_PITCH;
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.renderer.domElement;
@@ -294,6 +298,23 @@ export class World {
 
   releaseLock() {
     if (this.locked) document.exitPointerLock();
+  }
+
+  /** True while the view turns toward a free cursor, so where an object appears depends on where the cursor is. */
+  get followsCursor(): boolean {
+    return !this.locked && !this.freezeLook;
+  }
+
+  private probeCam = new THREE.PerspectiveCamera();
+
+  /** Projects `p` into `out` (NDC) as seen once the view has settled on a free cursor at `ndc`; no shake. */
+  projectFollowing(p: THREE.Vector3, ndc: THREE.Vector2, out: THREE.Vector3): THREE.Vector3 {
+    const cam = this.probeCam;
+    cam.projectionMatrix.copy(this.camera.projectionMatrix);
+    cam.position.copy(this.camera.position);
+    cam.rotation.set(BASE_PITCH + ndc.y * FOLLOW_PITCH, -ndc.x * FOLLOW_YAW, 0, 'YXZ');
+    cam.updateMatrixWorld();
+    return out.copy(p).project(cam);
   }
 
   /** Where the player is aiming, in normalised device coordinates. */
@@ -653,7 +674,7 @@ export class World {
     this.pitch += (this.targetPitch - this.pitch) * k;
     const eye = this.layout.eye();
     const baseYaw = 0;
-    const basePitch = -0.36;
+    const basePitch = BASE_PITCH;
     this.shake = Math.max(0, this.shake - dt * 1.6);
     const sh = this.shake * this.shake * 0.06;
     let camX = eye.x;

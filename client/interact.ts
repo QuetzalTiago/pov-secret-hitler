@@ -150,7 +150,18 @@ export class Interactor {
     const box = new THREE.Box3();
     for (const o of item.objects) box.expandByObject(o);
     if (box.isEmpty()) return null;
-    const c = box.getCenter(new THREE.Vector3()).project(this.world.camera);
+    const centre = box.getCenter(new THREE.Vector3());
+    const c = centre.clone().project(this.world.camera);
+    if (this.world.followsCursor) {
+      // The view turns toward the cursor, sliding the object away from where it is now: find the
+      // cursor position at which the settled view puts the object right under it (damped iteration).
+      const aim = new THREE.Vector2(c.x, c.y);
+      for (let i = 0; i < 40; i++) {
+        this.world.projectFollowing(centre, aim, c);
+        aim.set(THREE.MathUtils.clamp((aim.x + c.x) / 2, -1, 1), THREE.MathUtils.clamp((aim.y + c.y) / 2, -1, 1));
+      }
+      this.world.projectFollowing(centre, aim, c);
+    }
     if (c.z > 1 || Math.abs(c.x) > 1 || Math.abs(c.y) > 1) return null;
     return { x: ((c.x + 1) / 2) * window.innerWidth, y: ((1 - c.y) / 2) * window.innerHeight };
   }
