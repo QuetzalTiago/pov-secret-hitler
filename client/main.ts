@@ -5,6 +5,7 @@ import { Game } from './game';
 import { Interactor } from './interact';
 import { Net } from './net';
 import { createPerfHud } from './perf';
+import { GRAPHICS_MODES, saveGraphicsPref } from './scene/quality';
 import { World } from './scene/world';
 import { UI } from './ui';
 
@@ -176,6 +177,19 @@ window.__sh = {
   world,
 };
 
+
+// Graphics toggle cycles auto / high / low (lobby and in-game buttons share one setting, remembered between visits).
+const graphicsButtons = [...document.querySelectorAll<HTMLButtonElement>('.graphics-toggle')];
+const showGraphics = () => graphicsButtons.forEach((b) => (b.textContent = `Graphics: ${world.graphicsMode}`));
+showGraphics();
+graphicsButtons.forEach((b) =>
+  b.addEventListener('click', () => {
+    const mode = GRAPHICS_MODES[(GRAPHICS_MODES.indexOf(world.graphicsMode) + 1) % GRAPHICS_MODES.length];
+    world.setGraphicsMode(mode);
+    saveGraphicsPref(mode);
+    showGraphics();
+  }),
+);
 
 // Music toggle (lobby and in-game buttons share one setting, remembered between visits).
 const musicButtons = [...document.querySelectorAll<HTMLButtonElement>('.music-toggle')];

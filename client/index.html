@@ -13,7 +13,10 @@
 
     <!-- Lobby -->
     <div id="lobby" class="overlay">
-      <button id="music-lobby" class="mini music-toggle">Music: on</button>
+      <div id="lobby-toggles">
+        <button class="mini graphics-toggle" title="Auto lowers resolution, then shadows, if the game runs slowly">Graphics: auto</button>
+        <button id="music-lobby" class="mini music-toggle">Music: on</button>
+      </div>
       <div class="panel" id="home">
         <h1><span>POV</span> Secret Hitler</h1>
         <p class="domain">povsecrethitler.app</p>
@@ -61,6 +64,7 @@
       <div id="top-right">
         <div id="timer"></div>
         <button id="rules-btn" class="mini">Rules</button>
+        <button class="mini graphics-toggle" title="Auto lowers resolution, then shadows, if the game runs slowly">Graphics: auto</button>
         <button id="music" class="mini music-toggle">Music: on</button>
         <button id="sound" class="mini">Sound: on</button>
         <button id="credits-btn" class="mini">Credits</button>

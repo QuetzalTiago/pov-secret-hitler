@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObject } from './dispose';
-import { AdaptiveQuality } from './quality';
+import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
 import {
   feltTexture, glowTexture, markSharedTexture, plankTexture, smokeTexture, textSprite, wallTexture, woodTexture,
 } from './textures';
@@ -138,7 +138,7 @@ export class World {
   tension = 0;
   danger = 0;
   private time = 0;
-  private quality = new AdaptiveQuality(window.devicePixelRatio);
+  private quality = new AdaptiveQuality(window.devicePixelRatio, readGraphicsPref());
   mouse = new THREE.Vector2(0, 0);
 
   constructor(container: HTMLElement) {
@@ -146,7 +146,7 @@ export class World {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(this.quality.current.pixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = this.quality.current.shadows;
     // Plain PCF: PCFSoft samples the shadow map many more times on every shadowed pixel.
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -572,15 +572,27 @@ export class World {
     for (const m of this.movers) m.update(dt);
   }
 
-  /** `frameMs` is the wall time since the last frame; slow machines get a lower render scale. */
+  get graphicsMode(): GraphicsMode {
+    return this.quality.mode;
+  }
+
+  setGraphicsMode(mode: GraphicsMode) {
+    this.applyQuality(this.quality.setMode(mode));
+  }
+
+  private applyQuality(step: QualityStep) {
+    this.renderer.setPixelRatio(step.pixelRatio);
+    // Turning the light's shadow off changes the light state, so lit materials recompile without it.
+    this.lamp.castShadow = step.shadows;
+    this.renderer.shadowMap.enabled = step.shadows;
+  }
+
+  /** `frameMs` is the wall time since the last frame; in auto mode slow machines get a lower render scale. */
   render(frameMs = 0) {
     const step = this.quality.frame(frameMs);
     if (step) {
       console.info(`[render] steady frames are slow; dropping to pixel ratio ${step.pixelRatio}${step.shadows ? '' : ', no shadows'}`);
-      this.renderer.setPixelRatio(step.pixelRatio);
-      // Turning the light's shadow off changes the light state, so lit materials recompile without it.
-      this.lamp.castShadow = step.shadows;
-      this.renderer.shadowMap.enabled = step.shadows;
+      this.applyQuality(step);
     }
     this.renderer.render(this.scene, this.camera);
   }

@@ -146,7 +146,7 @@ label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color:
 }
 #invite-banner b { letter-spacing: 3px; color: var(--gold); }
 h3 { margin: 6px 0 0; color: var(--gold); font-family: Georgia, serif; font-size: 16px; }
-#music-lobby { position: absolute; top: 12px; right: 14px; }
+#lobby-toggles { position: absolute; top: 12px; right: 14px; display: flex; gap: 6px; }
 /* Host controls: "Deal the roles" spans the full width of the + Bot / − Bot row above it. */
 #host-controls { display: flex; flex-direction: column; gap: 8px; }
 #host-controls #start { width: 100%; }

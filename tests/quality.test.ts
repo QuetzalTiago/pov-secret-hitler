@@ -50,4 +50,18 @@ describe('adaptive quality', () => {
     expect(run(q, 16.7, 20_000)).toEqual([]);
     expect(q.level).toBe(0);
   });
+
+  it('high and low pin their step and never adapt', () => {
+    const high = new AdaptiveQuality(2, 'high');
+    expect(run(high, 40, 60_000)).toEqual([]);
+    expect(high.current).toEqual({ pixelRatio: 1.5, shadows: true });
+    const low = new AdaptiveQuality(2, 'low');
+    expect(low.current).toEqual({ pixelRatio: 0.75, shadows: false });
+  });
+
+  it('switching back to auto starts over from the top', () => {
+    const q = new AdaptiveQuality(2, 'low');
+    expect(q.setMode('auto')).toEqual({ pixelRatio: 1.5, shadows: true });
+    expect(run(q, 40, 9000)).toEqual([{ pixelRatio: 1, shadows: true }]);
+  });
 });
