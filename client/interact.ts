@@ -24,6 +24,8 @@ export class Interactor {
   private ray = new THREE.Raycaster();
   private pointer = new THREE.Vector2(-9, -9);
   private havePointer = false;
+  /** Pixel position of the mouse, followed through captured (relative) movement too; tests aim from it. */
+  private cursor = new THREE.Vector2();
   private owners = new Map<THREE.Object3D, string>();
   private objs: THREE.Object3D[] = [];
   private hits: THREE.Intersection[] = [];
@@ -39,6 +41,10 @@ export class Interactor {
     world.onLockChange = () => this.refreshChrome();
     const canvas = world.renderer.domElement;
     window.addEventListener('pointermove', (e) => {
+      if (this.world.locked) {
+        this.cursor.x += e.movementX;
+        this.cursor.y += e.movementY;
+      } else this.cursor.set(e.clientX, e.clientY);
       this.pointer.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
       if (this.world.locked) return;
       this.havePointer = true;
@@ -151,6 +157,11 @@ export class Interactor {
     for (const o of item.objects) box.expandByObject(o);
     if (box.isEmpty()) return null;
     const centre = box.getCenter(new THREE.Vector3());
+    if (this.world.locked) {
+      // Captured mouse: only relative movement turns the view, so return where to move the mouse to centre the object.
+      const move = this.world.lookMovementTo(centre, new THREE.Vector2());
+      return { x: this.cursor.x + move.x, y: this.cursor.y + move.y };
+    }
     const c = centre.clone().project(this.world.camera);
     if (this.world.followsCursor) {
       // The view turns toward the cursor, sliding the object away from where it is now: find the

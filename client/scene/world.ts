@@ -32,6 +32,11 @@ const EYE_Y = 1.27;
 const FOLLOW_YAW = 0.7;
 const FOLLOW_PITCH = 0.32;
 const BASE_PITCH = -0.36;
+/** Captured mouse: radians turned per pixel of movement, and the clamped yaw/pitch range. */
+const LOOK_SENS = 0.0022;
+const YAW_LIMIT = 1.35;
+const PITCH_MIN = -0.55;
+const PITCH_MAX = 0.5;
 
 /** Seat geometry around an elliptical table. Your own seat is always nearest the camera. */
 export class Layout {
@@ -263,8 +268,8 @@ export class World {
     window.addEventListener('pointermove', (e) => {
       if (this.locked) {
         // Captured mouse: relative look, clamped like a seated head turn.
-        this.targetYaw = THREE.MathUtils.clamp(this.targetYaw - e.movementX * 0.0022, -1.35, 1.35);
-        this.targetPitch = THREE.MathUtils.clamp(this.targetPitch - e.movementY * 0.0022, -0.55, 0.5);
+        this.targetYaw = THREE.MathUtils.clamp(this.targetYaw - e.movementX * LOOK_SENS, -YAW_LIMIT, YAW_LIMIT);
+        this.targetPitch = THREE.MathUtils.clamp(this.targetPitch - e.movementY * LOOK_SENS, PITCH_MIN, PITCH_MAX);
         return;
       }
       this.mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
@@ -315,6 +320,14 @@ export class World {
     cam.rotation.set(BASE_PITCH + ndc.y * FOLLOW_PITCH, -ndc.x * FOLLOW_YAW, 0, 'YXZ');
     cam.updateMatrixWorld();
     return out.copy(p).project(cam);
+  }
+
+  /** Mouse movement (px) that, while the mouse is captured, turns the view until `p` is under the crosshair. */
+  lookMovementTo(p: THREE.Vector3, out: THREE.Vector2): THREE.Vector2 {
+    const d = p.clone().sub(this.camera.position);
+    const yaw = THREE.MathUtils.clamp(Math.atan2(-d.x, -d.z), -YAW_LIMIT, YAW_LIMIT);
+    const pitch = THREE.MathUtils.clamp(Math.atan2(d.y, Math.hypot(d.x, d.z)) - BASE_PITCH, PITCH_MIN, PITCH_MAX);
+    return out.set((this.targetYaw - yaw) / LOOK_SENS, (this.targetPitch - pitch) / LOOK_SENS);
   }
 
   /** Where the player is aiming, in normalised device coordinates. */
