@@ -20,7 +20,7 @@ import { llmEnabled } from './llm';
 import { BOT_NAMES, personaFor, pickBotName, tooSimilar, type Persona } from './persona';
 import { decide, decideNow } from './brain';
 import { config } from './config';
-import { botThinkMs } from './pacing';
+import { botThinkMs, settleMs } from './pacing';
 
 export interface Conn {
   id: number;
@@ -412,7 +412,7 @@ export class Room {
     }
     this.resetTimerIfNeeded();
     this.broadcast(events);
-    this.schedule();
+    this.schedule(settleMs(events));
   }
 
   private resetTimerIfNeeded() {
@@ -484,8 +484,8 @@ export class Room {
     }
   }
 
-  /** Gives every pending bot seat its own readyAt for this phase and arms a timer per seat; decide() starts right away. */
-  schedule() {
+  /** Gives every pending bot seat its own readyAt for this phase and arms a timer per seat; decide() starts right away. New plans wait `settle` ms (client animations) before thinking. */
+  schedule(settle = 0) {
     const g = this.game;
     // Nobody watching: pause bots until a human comes back (plans keep their readyAt).
     if (!g || g.phase === 'gameOver' || this.closed || this.connectedHumans() === 0) {
@@ -505,7 +505,7 @@ export class Room {
     for (const seat of pending) {
       if (this.botPlans.has(seat)) continue;
       const now = Date.now();
-      let readyAt = now + botThinkMs(g.phase);
+      let readyAt = now + settle + botThinkMs(g.phase);
       // Never let a bot sit on its move until the phase timer takes over.
       if (this.deadline !== null) readyAt = Math.min(readyAt, Math.max(now, this.deadline - 5000 * config.timerScale));
       this.botPlans.set(seat, { key, readyAt, timer: null, held: false, decision: this.decideFor(seat) });

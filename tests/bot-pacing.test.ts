@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Room, type Conn } from '../server/room';
 import { config } from '../server/config';
-import { THINK_SECONDS, botThinkMs } from '../server/pacing';
+import { THINK_SECONDS, botThinkMs, settleMs } from '../server/pacing';
 import { legalActions, pendingActors } from '../shared/engine';
-import { PHASES } from '../shared/types';
+import { PHASES, type GameEvent } from '../shared/types';
 import type { ServerMsg } from '../shared/protocol';
 
 const original = { timerScale: config.timerScale, botDelayMs: config.botDelayMs };
@@ -56,8 +56,8 @@ describe('per-seat bot plans', () => {
     const plans = plansOf(room);
     expect([...plans.keys()].sort()).toEqual([1, 2, 3, 4]);
     for (const p of plans.values()) {
-      expect(p.readyAt).toBeGreaterThanOrEqual(before + 4000 * u - 5);
-      expect(p.readyAt).toBeLessThanOrEqual(Date.now() + 10000 * u);
+      expect(p.readyAt).toBeGreaterThanOrEqual(before + 5000 * u - 5);
+      expect(p.readyAt).toBeLessThanOrEqual(Date.now() + 11000 * u);
       expect(p.timer).not.toBeNull();
     }
     room.close();
@@ -110,5 +110,52 @@ describe('per-seat bot plans', () => {
     } finally {
       room.close();
     }
+  });
+
+  it('a bot president does not discard before reveal settle + min think', async () => {
+    config.botDelayMs = 20;
+    config.timerScale = 1;
+    const { room, human } = startGame();
+    try {
+      const u = config.botDelayMs / 1400;
+      let opened = 0;
+      let president = -1;
+      let readyAt = 0;
+      const t0 = Date.now();
+      while (Date.now() - t0 < 20_000) {
+        const g = room.game!;
+        if (g.phase === 'legPresident' && g.president !== 0) {
+          opened = Date.now();
+          president = g.president;
+          readyAt = plansOf(room).get(president)!.readyAt;
+          break;
+        }
+        if (pendingActors(g).includes(0)) room.act(human, legalActions(g, 0)[0]);
+        await new Promise((r) => setTimeout(r, 1));
+      }
+      expect(opened).toBeGreaterThan(0);
+      expect(readyAt).toBeGreaterThanOrEqual(opened - 10 + (4500 + THINK_SECONDS.legPresident[0] * 1000) * u);
+      const t1 = Date.now();
+      while (room.game!.phase === 'legPresident' && Date.now() - t1 < 5000) await new Promise((r) => setTimeout(r, 1));
+      expect(room.game!.phase).not.toBe('legPresident');
+      expect(Date.now() - opened).toBeGreaterThanOrEqual((4500 + THINK_SECONDS.legPresident[0] * 1000) * u - 15);
+    } finally {
+      room.close();
+    }
+  });
+});
+
+describe('settleMs', () => {
+  it('takes the longest settle among the events, scaled by unitMs/1400', () => {
+    const votes: GameEvent = { k: 'votes', votes: [true], passed: true };
+    const enacted: GameEvent = { k: 'enacted', policy: 'L', chaos: false };
+    expect(settleMs([votes], 1400)).toBe(4500);
+    expect(settleMs([{ k: 'nominated', president: 0, target: 1 }], 1400)).toBe(2500);
+    expect(settleMs([{ k: 'executed', by: 0, target: 1 }], 1400)).toBe(3000);
+    expect(settleMs([enacted], 1400)).toBe(1500);
+    expect(settleMs([{ k: 'nightStart' }], 1400)).toBe(1000);
+    expect(settleMs([enacted, votes], 1400)).toBe(4500);
+    expect(settleMs([], 1400)).toBe(0);
+    expect(settleMs([votes], 700)).toBe(2250);
   });
 });
