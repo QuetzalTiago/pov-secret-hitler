@@ -59,6 +59,10 @@ async function clickObject(page: Page, id: string) {
   for (let attempt = 0; attempt < 4; attempt++) {
     const pos = await page.evaluate((i) => (window as unknown as { __sh: Hooks }).__sh.screenPos(i), id);
     if (!pos) break;
+    if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y)) {
+      console.log(`screenPos(${id}) is not finite: ${JSON.stringify(pos)}`);
+      break;
+    }
     await page.mouse.move(pos.x, pos.y, { steps: 2 });
     await waitSettled(page);
     const hovered = await page.evaluate(() => (window as unknown as { __sh: Hooks }).__sh.hovered());
@@ -140,6 +144,8 @@ test('five players complete a full game through the 3D UI', async ({ browser, ba
       const key = `${s.phase}-${s.mine ? 'acting' : 'waiting'}`;
       if (s.phase && !shotTaken.has(key) && s.phase !== 'gameOver') {
         shotTaken.add(key);
+        // Your move: the prompt switches to the gold call-to-action style.
+        if (s.mine) await expect(pages[i].locator('#prompt')).toHaveClass(/\bmine\b/);
         await pages[i].waitForTimeout(600);
         await pages[i].screenshot({ path: `${SHOTS}/${String(shotNo++).padStart(2, '0')}-${NAMES[i]}-${key}.png` });
       }
