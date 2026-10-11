@@ -110,6 +110,16 @@ describe('disposeObject', () => {
   });
 });
 
+describe('shared textures', () => {
+  it('a markSharedTexture envMap survives disposeObject while the material is disposed', () => {
+    const env = tx.markSharedTexture(plainTex());
+    const mat = new THREE.MeshStandardMaterial({ envMap: env });
+    const [cm, ct] = [count(mat), count(env)];
+    disposeObject(new THREE.Mesh(new THREE.BoxGeometry(), mat));
+    expect([cm.n, ct.n]).toEqual([1, 0]);
+  });
+});
+
 describe('texture cache LRU', () => {
   const label = (i: number) => tx.labelTexture(`lbl-${i}`, '#fff');
 

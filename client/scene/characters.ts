@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { disposeObject } from './dispose';
 import { glowTexture, textSprite } from './textures';
-import { boxLimb } from './world';
+import { boxLimb, glossy } from './world';
 
 const COATS = [0x6b2f2a, 0x2f4a6b, 0x4a5a2a, 0x5a3a6b, 0x7a5a2a, 0x2a5a55, 0x6b4a3a, 0x3a3a46, 0x803a50, 0x55602f];
 const SKINS = [0xe0b090, 0xb07a55, 0x8a5a3a, 0xd9a07a, 0x6b4430, 0xf0c8a8, 0xc08860, 0x9a6a48, 0xe6b898, 0x7a4e36];
@@ -135,6 +135,7 @@ export class Character {
     this.body.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) {
         o.castShadow = true;
+        o.receiveShadow = true;
         this.hitMeshes.push(o);
       }
     });
@@ -161,7 +162,7 @@ export class Character {
     const strap = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.5, 0.02), dark);
     strap.position.set(-0.04, 0.93, 0.225);
     strap.rotation.set(-0.12, 0, -0.55);
-    const brass = mat(0xc8a050, 0.35);
+    const brass = glossy(mat(0xc8a050, 0.35), 0.5);
     brass.metalness = 0.8;
     const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.02), brass);
     buckle.position.set(0, 0.7, 0.245);

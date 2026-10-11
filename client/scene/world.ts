@@ -1,11 +1,25 @@
 // Renderer, bar environment, lighting, camera look/shake, and table layout math.
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObject } from './dispose';
 import {
-  feltTexture, glowTexture, plankTexture, smokeTexture, textSprite, wallTexture, woodTexture,
+  feltTexture, glowTexture, markSharedTexture, plankTexture, smokeTexture, textSprite, wallTexture, woodTexture,
 } from './textures';
 
 export const TABLE_Y = 0.78;
+const LAMP_WARM = new THREE.Color(0xffa65a);
+const LAMP_HOT = new THREE.Color(0xff5a3a);
+
+let propEnv: THREE.Texture | null = null;
+
+// Low-intensity reflections for metal/glossy props only; we do NOT set scene.environment because it would flat-light the whole dark bar.
+export function glossy<T extends THREE.MeshStandardMaterial>(m: T, intensity = 0.3): T {
+  if (propEnv) {
+    m.envMap = propEnv;
+    m.envMapIntensity = intensity;
+  }
+  return m;
+}
 const EYE_Y = 1.27;
 
 /** Seat geometry around an elliptical table. Your own seat is always nearest the camera. */
@@ -108,6 +122,7 @@ export class World {
   muzzle: THREE.PointLight;
   handLight: THREE.PointLight;
   private tableGroup = new THREE.Group();
+  private ember: THREE.MeshStandardMaterial | null = null;
   private sleeve = new THREE.MeshStandardMaterial({ color: 0x2a2a33, roughness: 0.8 });
   private armband: THREE.Mesh | null = null;
   private hitlerOutfit = false;
@@ -132,6 +147,11 @@ export class World {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const env = new RoomEnvironment();
+    propEnv = markSharedTexture(pmrem.fromScene(env, 0.04).texture);
+    env.dispose();
+    pmrem.dispose();
     container.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.05, 60);
@@ -139,10 +159,10 @@ export class World {
     this.scene.background = new THREE.Color(0x070504);
     this.scene.fog = new THREE.FogExp2(0x0d0907, 0.085);
 
-    this.ambient = new THREE.HemisphereLight(0x8a6a50, 0x1a0f08, 0.55);
+    this.ambient = new THREE.HemisphereLight(0x9a6848, 0x1c0e06, 0.55);
     this.scene.add(this.ambient);
 
-    this.lamp = new THREE.SpotLight(0xffb46a, 60, 9, Math.PI / 3.2, 0.55, 1.6);
+    this.lamp = new THREE.SpotLight(0xffa65a, 60, 9, Math.PI / 3.2, 0.55, 1.6);
     this.lamp.position.set(0, 2.55, 0);
     this.lamp.target.position.set(0, TABLE_Y, 0);
     this.lamp.castShadow = true;
@@ -150,7 +170,7 @@ export class World {
     this.lamp.shadow.bias = -0.0008;
     this.scene.add(this.lamp, this.lamp.target);
 
-    this.fill = new THREE.PointLight(0xff8a4a, 6, 12, 1.6);
+    this.fill = new THREE.PointLight(0xff7a3a, 7, 12, 1.6);
     this.fill.position.set(-3.2, 2.2, -3.4);
     this.scene.add(this.fill);
 
@@ -169,12 +189,12 @@ export class World {
     // Hanging lamp shade + bulb.
     const shade = new THREE.Mesh(
       new THREE.ConeGeometry(0.42, 0.32, 18, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0x1d3a26, side: THREE.DoubleSide, metalness: 0.4, roughness: 0.5 }),
+      glossy(new THREE.MeshStandardMaterial({ color: 0x1d3a26, side: THREE.DoubleSide, metalness: 0.4, roughness: 0.5 }), 0.4),
     );
     shade.position.set(0, 2.62, 0);
     this.lampBulb = new THREE.Mesh(
       new THREE.SphereGeometry(0.08, 12, 8),
-      new THREE.MeshStandardMaterial({ color: 0xffe0a8, emissive: 0xffc070, emissiveIntensity: 3 }),
+      new THREE.MeshStandardMaterial({ color: 0xffe0a8, emissive: 0xffb060, emissiveIntensity: 4 }),
     );
     this.lampBulb.position.set(0, 2.52, 0);
     const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 1.2), new THREE.MeshBasicMaterial({ color: 0x111111 }));
@@ -258,6 +278,7 @@ export class World {
       const wall = new THREE.Mesh(new THREE.PlaneGeometry(W, H), wallMat);
       wall.position.set(Math.sin((i * Math.PI) / 2) * (W / 2), H / 2, Math.cos((i * Math.PI) / 2) * (W / 2));
       wall.rotation.y = (i * Math.PI) / 2 + Math.PI;
+      wall.receiveShadow = true;
       room.add(wall);
     }
     const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(W, W), new THREE.MeshStandardMaterial({ color: 0x140c08, roughness: 1 }));
@@ -266,7 +287,7 @@ export class World {
     room.add(ceiling);
 
     // Back bar: counter, shelves, bottles, neon sign.
-    const counterWood = new THREE.MeshStandardMaterial({ map: woodTexture('#3b2210', '#1c0e05', 'counter', 2), roughness: 0.6 });
+    const counterWood = glossy(new THREE.MeshStandardMaterial({ map: woodTexture('#3b2210', '#1c0e05', 'counter', 2), roughness: 0.6 }), 0.15);
     const counter = new THREE.Mesh(new THREE.BoxGeometry(6, 1.05, 0.7), counterWood);
     counter.position.set(0, 0.52, -4.2);
     counter.castShadow = counter.receiveShadow = true;
@@ -282,7 +303,7 @@ export class World {
         const h = 0.22 + ((b * 13 + row) % 5) * 0.04;
         const bottle = new THREE.Mesh(
           new THREE.CylinderGeometry(0.035, 0.045, h, 8),
-          new THREE.MeshStandardMaterial({
+          glossy(new THREE.MeshStandardMaterial({
             color: bottleColors[(b + row) % bottleColors.length],
             roughness: 0.15,
             metalness: 0.1,
@@ -290,14 +311,14 @@ export class World {
             opacity: 0.85,
             emissive: bottleColors[(b + row) % bottleColors.length],
             emissiveIntensity: 0.15,
-          }),
+          }), 0.35),
         );
         bottle.position.set(-2.6 + b * 0.25, 1.48 + row * 0.55 + h / 2, -4.85);
         room.add(bottle);
       }
     }
     const neon = textSprite('povsecrethitler.app', { color: '#ff6fae', size: 64 });
-    const neonMat = new THREE.SpriteMaterial({ map: neon.texture, transparent: true, depthWrite: false });
+    const neonMat = new THREE.SpriteMaterial({ map: neon.texture, color: new THREE.Color(2.2, 2.2, 2.2), transparent: true, depthWrite: false });
     const sign = new THREE.Sprite(neonMat);
     sign.scale.set(2.2, 2.2 / neon.aspect, 1);
     sign.position.set(0, 2.95, -4.6);
@@ -310,7 +331,7 @@ export class World {
       const stool = new THREE.Group();
       const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 12), new THREE.MeshStandardMaterial({ color: 0x5a1f18, roughness: 0.6 }));
       seat.position.y = 0.78;
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.78, 6), new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.7, roughness: 0.4 }));
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.78, 6), glossy(new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.7, roughness: 0.4 }), 0.5));
       leg.position.y = 0.39;
       stool.add(seat, leg);
       stool.position.set(-2.4 + i * 1.2, 0, -3.5);
@@ -346,7 +367,7 @@ export class World {
     disposeObject(this.tableGroup, { keep: [this.sleeve] });
     this.tableGroup.clear();
     const L = this.layout;
-    const wood = new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.55, metalness: 0.05 });
+    const wood = glossy(new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.55, metalness: 0.05 }), 0.15);
     const top = new THREE.Mesh(new THREE.CylinderGeometry(L.rx, L.rx, 0.07, 64), wood);
     top.scale.z = L.rz / L.rx;
     top.position.y = TABLE_Y - 0.035;
@@ -366,10 +387,11 @@ export class World {
     // Ashtray with a smouldering cigar glow.
     const ash = new THREE.Mesh(
       new THREE.CylinderGeometry(0.09, 0.075, 0.035, 14),
-      new THREE.MeshStandardMaterial({ color: 0x4a4f55, metalness: 0.6, roughness: 0.3 }),
+      glossy(new THREE.MeshStandardMaterial({ color: 0x4a4f55, metalness: 0.6, roughness: 0.3 }), 0.5),
     );
     ash.position.set(L.rx * 0.62, TABLE_Y + 0.017, -L.rz * 0.15);
-    const ember = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff5a1a }));
+    this.ember = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xff5a1a, emissiveIntensity: 2.5 });
+    const ember = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), this.ember);
     ember.position.set(L.rx * 0.62 + 0.05, TABLE_Y + 0.045, -L.rz * 0.15);
     this.tableGroup.add(ash, ember);
 
@@ -527,12 +549,12 @@ export class World {
     const flicker = 1 - (Math.sin(t * 13.7) * Math.sin(t * 7.3) > 0.93 ? 0.35 : 0) * (0.3 + this.danger) - Math.random() * 0.03 * (1 + this.danger * 4);
     const lit = 1 - this.night * 0.93;
     this.lamp.intensity = 60 * lit * flicker;
-    this.fill.intensity = 6 * lit;
+    this.fill.intensity = 7 * lit;
     this.ambient.intensity = 0.55 * (1 - this.night * 0.85);
     this.handLight.intensity = 0.9 * (1 - this.night * 0.6);
-    const warm = new THREE.Color(0xffb46a);
-    this.lamp.color.copy(warm.lerp(new THREE.Color(0xff5a3a), Math.min(1, this.tension * 0.6 + this.danger * 0.3)));
-    (this.lampBulb.material as THREE.MeshStandardMaterial).emissiveIntensity = 3 * lit * flicker;
+    this.lamp.color.copy(LAMP_WARM).lerp(LAMP_HOT, Math.min(1, this.tension * 0.6 + this.danger * 0.3));
+    (this.lampBulb.material as THREE.MeshStandardMaterial).emissiveIntensity = 4 * lit * flicker;
+    if (this.ember) this.ember.emissiveIntensity = 2.2 + Math.sin(t * 2.3) * 0.5 + Math.sin(t * 5.1) * 0.25;
     this.redLight.intensity = this.danger * (3 + Math.sin(t * 3) * 1.5) + this.night * 0;
     this.muzzle.intensity *= Math.exp(-dt * 14);
 

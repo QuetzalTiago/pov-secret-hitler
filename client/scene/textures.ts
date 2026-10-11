@@ -5,10 +5,17 @@ const SERIF = '"Georgia", "Times New Roman", serif';
 const SANS = '"Trebuchet MS", "Segoe UI", system-ui, sans-serif';
 const cache = new Map<string, THREE.CanvasTexture>();
 const owned = new WeakSet<THREE.Texture>();
+const shared = new WeakSet<THREE.Texture>();
 const CACHE_MAX = 64;
 
 export function isCachedTexture(t: THREE.Texture): boolean {
-  return owned.has(t);
+  return owned.has(t) || shared.has(t);
+}
+
+/** Marks a texture as shared so disposeObject never disposes it. */
+export function markSharedTexture(t: THREE.Texture): THREE.Texture {
+  shared.add(t);
+  return t;
 }
 
 export const COLORS = {
