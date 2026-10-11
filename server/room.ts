@@ -20,6 +20,7 @@ import { llmEnabled } from './llm';
 import { BOT_NAMES, personaFor, pickBotName, tooSimilar, type Persona } from './persona';
 import { decide, decideNow } from './brain';
 import { config } from './config';
+import { botThinkMs } from './pacing';
 
 export interface Conn {
   id: number;
@@ -62,14 +63,14 @@ export class Room {
   private timer: NodeJS.Timeout | null = null;
   private timerKey = '';
   private deadline: number | null = null;
-  private botTimer: NodeJS.Timeout | null = null;
+  /** One plan per pending bot seat: when it acts (readyAt), its timer, and its already-running brain call. */
+  private botPlans = new Map<number, { key: string; readyAt: number; timer: NodeJS.Timeout | null; decision: Promise<ActionBody | null> }>();
   private disconnectTimers = new Map<string, NodeJS.Timeout>();
   /** Running while no human is connected; ends the room when it fires. */
   private abandonTimer: NodeJS.Timeout | null = null;
   private closed = false;
   /** Per-seat memory built from that seat's own view (bots read it; it never leaves the server). */
   private memories: Memory[] = [];
-  private thinking = new Set<number>();
   private lastBotChat = new Map<number, number>();
   /** What the table has said recently. Bots read it so their replies follow the conversation. */
   private transcript: ChatLine[] = [];
@@ -255,7 +256,7 @@ export class Room {
     if (this.closed) return;
     this.closed = true;
     if (this.timer) clearTimeout(this.timer);
-    if (this.botTimer) clearTimeout(this.botTimer);
+    this.clearBotPlans();
     if (this.abandonTimer) clearTimeout(this.abandonTimer);
     if (this.chatTimer) clearTimeout(this.chatTimer);
     this.stopMoodTimer();
@@ -269,7 +270,7 @@ export class Room {
     if (this.closed) return;
     this.closed = true;
     if (this.timer) clearTimeout(this.timer);
-    if (this.botTimer) clearTimeout(this.botTimer);
+    this.clearBotPlans();
     if (this.abandonTimer) clearTimeout(this.abandonTimer);
     if (this.chatTimer) clearTimeout(this.chatTimer);
     this.stopMoodTimer();
@@ -354,7 +355,7 @@ export class Room {
     this.stage = 'game';
     this.game = createGame(this.seats.map((s) => s.name), randomInt(0, 2 ** 32));
     this.memories = this.seats.map((_, i) => newMemory(i, this.seats.length));
-    this.thinking.clear();
+    this.clearBotPlans();
     this.resetTalk();
     this.startMoodTimer();
     this.after([{ k: 'nightStart' }]);
@@ -417,7 +418,7 @@ export class Room {
   private resetTimerIfNeeded() {
     const g = this.game;
     if (!g) return;
-    const key = `${g.phase}:${g.round}:${g.vetoRefused}`;
+    const key = this.phaseKey(g);
     if (key === this.timerKey) return;
     this.timerKey = key;
     this.clearTimer();
@@ -448,7 +449,7 @@ export class Room {
       return;
     }
     for (const seat of pendingActors(this.game)) {
-      if (!this.game || `${this.game.phase}:${this.game.round}:${this.game.vetoRefused}` !== key) break;
+      if (!this.game || this.phaseKey(this.game) !== key) break;
       this.botMove(seat, this.seats[seat]?.bot ? [] : [{ k: 'timedOut', seat }]);
     }
     this.resetTimerIfNeeded();
@@ -483,58 +484,81 @@ export class Room {
     }
   }
 
-  /** Schedules the next bot move if a bot-driven seat owes an action. */
+  /** Gives every pending bot seat its own readyAt for this phase and arms a timer per seat; decide() starts right away. */
   schedule() {
-    if (this.botTimer) clearTimeout(this.botTimer);
-    this.botTimer = null;
     const g = this.game;
-    // Nobody watching: pause bots until a human comes back.
-    if (!g || g.phase === 'gameOver' || this.closed || this.connectedHumans() === 0) return;
-    const botSeats = pendingActors(g).filter((seat) => this.seats[seat]?.botControl && !this.thinking.has(seat));
-    if (botSeats.length === 0) return;
-    const quick = g.phase === 'vote' || g.phase === 'night';
-    const base = config.botDelayMs * (quick ? 0.4 : 1);
-    const delay = base + Math.random() * base * 0.8;
-    this.botTimer = setTimeout(() => {
-      this.botTimer = null;
-      try {
-        const now = this.game;
-        if (!now) return;
-        const seat = pendingActors(now).find((s) => this.seats[s]?.botControl && !this.thinking.has(s));
-        if (seat !== undefined) this.think(seat).catch((e) => console.error('[bot] think failed', e));
-        this.schedule(); // let other bots (e.g. voters) start thinking too
-      } catch (e) {
-        console.error('[room] botTimer failed', e);
+    // Nobody watching: pause bots until a human comes back (plans keep their readyAt).
+    if (!g || g.phase === 'gameOver' || this.closed || this.connectedHumans() === 0) {
+      for (const plan of this.botPlans.values()) {
+        if (plan.timer) clearTimeout(plan.timer);
+        plan.timer = null;
       }
-    }, delay);
-  }
-
-  /** Asks the brain (Jev, falling back to the built-in strategy) and plays the move if still relevant. */
-  private async think(seat: number) {
-    const g = this.game;
-    if (!g) return;
-    const key = `${g.phase}:${g.round}:${g.vetoRefused}`;
-    const legal = legalActions(g, seat);
-    if (!legal.length) return;
-    this.thinking.add(seat);
-    let action: ActionBody;
-    try {
-      const r = await decide(viewFor(g, seat), legal, this.memories[seat], (s) => this.seatName(s));
-      action = r.action;
-      this.botStats[r.source]++;
-    } catch (e) {
-      console.error('[bot] brain error', e);
-      action = legal[0];
-    } finally {
-      this.thinking.delete(seat);
-    }
-    const now = this.game;
-    // The world may have moved on while we were thinking (timer, reconnect, game over).
-    if (this.closed || !now || `${now.phase}:${now.round}:${now.vetoRefused}` !== key || !pendingActors(now).includes(seat) || !this.seats[seat]?.botControl) {
-      this.schedule();
       return;
     }
-    if (this.tryApply(seat, action)) this.botMove(seat); // stale or illegal: fall back to an immediate legal move
+    const key = this.phaseKey(g);
+    const pending = pendingActors(g).filter((seat) => this.seats[seat]?.botControl);
+    for (const [seat, plan] of this.botPlans) {
+      if (pending.includes(seat) && plan.key === key) continue;
+      if (plan.timer) clearTimeout(plan.timer);
+      this.botPlans.delete(seat);
+    }
+    for (const seat of pending) {
+      if (this.botPlans.has(seat)) continue;
+      const now = Date.now();
+      let readyAt = now + botThinkMs(g.phase);
+      // Never let a bot sit on its move until the phase timer takes over.
+      if (this.deadline !== null) readyAt = Math.min(readyAt, Math.max(now, this.deadline - 5000 * config.timerScale));
+      this.botPlans.set(seat, { key, readyAt, timer: null, decision: this.decideFor(seat) });
+    }
+    for (const [seat, plan] of this.botPlans) {
+      if (plan.timer) continue;
+      try {
+        plan.timer = setTimeout(() => {
+          this.fire(seat, key).catch((e) => console.error('[bot] think failed', e));
+        }, Math.max(0, plan.readyAt - Date.now()));
+      } catch (e) {
+        console.error('[room] bot timer failed', e);
+      }
+    }
+  }
+
+  private phaseKey(g: GameState): string {
+    return `${g.phase}:${g.round}:${g.vetoRefused}`;
+  }
+
+  private clearBotPlans() {
+    for (const plan of this.botPlans.values()) if (plan.timer) clearTimeout(plan.timer);
+    this.botPlans.clear();
+  }
+
+  /** Asks the brain (Jev, falling back to the built-in strategy) for this seat's move. Never rejects. */
+  private async decideFor(seat: number): Promise<ActionBody | null> {
+    const g = this.game;
+    if (!g) return null;
+    const legal = legalActions(g, seat);
+    if (!legal.length) return null;
+    try {
+      const r = await decide(viewFor(g, seat), legal, this.memories[seat], (s) => this.seatName(s));
+      this.botStats[r.source]++;
+      return r.action;
+    } catch (e) {
+      console.error('[bot] brain error', e);
+      return legal[0];
+    }
+  }
+
+  /** The seat's readyAt arrived: play its decided move if the plan is still relevant. */
+  private async fire(seat: number, key: string) {
+    const plan = this.botPlans.get(seat);
+    if (!plan || plan.key !== key) return;
+    plan.timer = null;
+    const action = await plan.decision;
+    const now = this.game;
+    // The world may have moved on while we were thinking (timer, reconnect, game over); the next state change reschedules.
+    if (this.closed || !now || this.phaseKey(now) !== key || !pendingActors(now).includes(seat) || !this.seats[seat]?.botControl || this.botPlans.get(seat) !== plan) return;
+    this.botPlans.delete(seat);
+    if (action === null) this.botMove(seat);
+    else if (this.tryApply(seat, action)) this.botMove(seat); // stale or illegal: fall back to an immediate legal move
   }
 
   private seatName(seat: number): string {

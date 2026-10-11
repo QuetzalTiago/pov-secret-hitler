@@ -20,6 +20,8 @@ function startGame() {
   room.join(conn, 'Human');
   for (let i = 0; i < 4; i++) expect(room.addBot(conn)).toBeNull();
   expect(room.start(conn)).toBeNull();
+  // Bot plans are capped just before the phase deadline, which would let bots beat the 20ms timer; drop them.
+  (room as any).clearBotPlans();
   return { room, msgs };
 }
 
