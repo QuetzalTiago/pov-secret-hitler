@@ -9,6 +9,7 @@ import { Character } from './scene/characters';
 import { disposeObject } from './scene/dispose';
 import { Board, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
 import { ballotFace, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
+import { tweens } from './scene/tween';
 import { Mover, TABLE_Y, type World } from './scene/world';
 import type { UI } from './ui';
 
@@ -1196,6 +1197,7 @@ export class Game {
 
   update(dt: number) {
     this.now += dt;
+    tweens.update(dt);
     if (this.inFlight && this.now - this.inFlight.at > 5) this.actionRejected();
     const v = this.view;
     this.world.setNight(v?.phase === 'night');

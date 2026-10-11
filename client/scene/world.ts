@@ -52,6 +52,8 @@ export class Mover {
   visible = true;
   speed = 9;
   hideOnArrive = false;
+  /** Held (> 0) while a tween owns the object; see tween.ts. */
+  hold = 0;
   constructor(public obj: THREE.Object3D) {
     this.pos.copy(obj.position);
     this.quat.copy(obj.quaternion);
@@ -68,6 +70,7 @@ export class Mover {
     this.obj.scale.setScalar(this.scale);
   }
   update(dt: number) {
+    if (this.hold > 0) return; // a running tween owns the object
     const k = 1 - Math.exp(-this.speed * dt);
     this.obj.position.lerp(this.pos, k);
     this.obj.quaternion.slerp(this.quat, k);
