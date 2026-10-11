@@ -90,6 +90,8 @@ export class Game {
   private myVote: boolean | null = null;
   private reveal: { votes: (boolean | null)[]; until: number } | null = null;
   private pendingIndex: number | null = null;
+  /** Last seat the policies were passed to; the view may already have cleared its chancellor on 'enacted'. */
+  private lastChancellor: number | null = null;
   private shot: { by: number; target: number; until: number } | null = null;
   private invShown: number | null = null;
   private invFlight: { by: number; target: number; until: number } | null = null;
@@ -426,6 +428,7 @@ export class Game {
         sfx.slide();
         this.pointAt = { by: e.president, target: e.target, until: this.now + 2.5 };
         this.ui.toast(`${this.subj(e.president, 'nominate')} ${this.name(e.target)} for Chancellor.`);
+        this.chars.get(e.target)?.react('recoil', 0.15);
         break;
       case 'voted':
         sfx.slap();
@@ -440,6 +443,9 @@ export class Game {
         // One shout for the table, decided by the group: JA! if the government passed, NEIN! if it failed.
         setTimeout(() => voice.vote(e.passed), 300);
         this.ui.toast(e.passed ? `JA! ${ja} to ${nein}. The government is elected.` : `NEIN. ${ja} to ${nein}. The election fails.`, e.passed ? 'good' : 'bad');
+        e.votes.forEach((vote, i) => {
+          if (vote !== null) this.chars.get(i)?.react(vote ? 'nod' : 'shake', 0.35 + 0.08 * i);
+        });
         break;
       }
       case 'tracker':
@@ -471,6 +477,7 @@ export class Game {
         break;
       }
       case 'passedToChancellor':
+        this.lastChancellor = e.to;
         sfx.slide();
         if (e.to === me) this.dropIntoHand();
         this.pool.filter((p) => p.where === 'held').forEach((p) => {
@@ -510,6 +517,7 @@ export class Game {
           `${e.chaos ? 'Chaos! The top policy is enacted: ' : ''}${e.policy === 'L' ? 'Liberal' : 'Fascist'} policy enacted.`,
           e.policy === 'L' ? 'liberal' : 'fascist',
         );
+        if (!e.chaos && this.lastChancellor !== null) this.chars.get(this.lastChancellor)?.react('fist', 0);
         break;
       }
       case 'reshuffled':

@@ -1,6 +1,7 @@
 // Procedural low-poly patrons. Original designs: coats, faces and hats vary by seat.
 import * as THREE from 'three';
 import { disposeObject } from './dispose';
+import { REACTION_DUR, blinkScale, mouthOpen, nextBlinkDelay, reactionPose, type Reaction, type ReactionPose } from './life';
 import { glowTexture, textSprite } from './textures';
 import { boxLimb, glossy } from './world';
 import { handGeometry } from './hands';
@@ -35,6 +36,14 @@ export class Character {
   private glowAmt = 0;
   private glowTarget = 0;
   hitMeshes: THREE.Object3D[] = [];
+  private eyes: THREE.Mesh[] = [];
+  private mouth!: THREE.Mesh;
+  private blinkAt = 0;
+  private blinkStart = -1;
+  private reaction: { kind: Reaction; t: number } | null = null;
+  private pose: ReactionPose = { pitch: 0, yaw: 0, lean: 0, armLift: 0 };
+  private fistQuat = new THREE.Quaternion();
+  private readonly xAxis = new THREE.Vector3(1, 0, 0);
 
   /**
    * `hitler` is only ever used when the server has revealed this seat's role to the viewer
@@ -101,6 +110,7 @@ export class Character {
       const brow = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.014, 0.02), dark);
       brow.position.set(side * 0.055, 0.065, 0.135);
       brow.rotation.z = side * (styleIndex % 3 === 0 ? 0.25 : -0.08);
+      this.eyes.push(eye);
       this.head.add(eye, brow);
     }
     const nose = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.07, 4), skin);
@@ -108,6 +118,7 @@ export class Character {
     nose.position.set(0, -0.005, 0.16);
     const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.012, 0.01), dark);
     mouth.position.set(0, -0.07, 0.135);
+    this.mouth = mouth;
     this.head.add(skull, nose, mouth);
     if (hitler) {
       // Short square moustache and a dark fringe swept across the forehead.
@@ -330,14 +341,26 @@ export class Character {
     this.recoilKick = 1;
   }
 
+  /** One-shot gesture starting `delay` seconds from now; replaces any running one. */
+  react(kind: Reaction, delay = 0) {
+    if (this.dead) return;
+    this.reaction = { kind, t: -delay };
+  }
+
   private updateAim(dt: number) {
     const k = 1 - Math.exp(-5 * dt);
     this.aimAmount += ((this.aimTarget && !this.dead ? 1 : 0) - this.aimAmount) * k;
     this.recoilKick = Math.max(0, this.recoilKick - dt * 4);
+    // Fist slam reuses the aim arm when not aiming: rest pose rotated about local X (-angle raises the hand).
+    const fist = !this.aimTarget && this.aimAmount <= 0.02 && !this.dead && this.reaction?.kind === 'fist' && this.reaction.t > 0;
     const aiming = this.aimAmount > 0.02;
-    this.aimArm.visible = aiming;
-    this.finger.visible = this.aimMode === 'point';
-    for (const m of this.restArm) m.visible = !aiming;
+    this.aimArm.visible = aiming || fist;
+    this.finger.visible = this.aimMode === 'point' && !fist;
+    for (const m of this.restArm) m.visible = !(aiming || fist);
+    if (fist) {
+      this.aimArm.quaternion.copy(this.restQuat).multiply(this.fistQuat.setFromAxisAngle(this.xAxis, -this.pose.armLift));
+      return;
+    }
     if (!aiming) return;
     let aimQuat = this.restQuat;
     if (this.aimTarget) {
@@ -359,6 +382,12 @@ export class Character {
 
   update(dt: number, now: number) {
     const t = now + this.phase;
+    if (this.reaction) {
+      this.reaction.t += dt;
+      if (this.reaction.t >= REACTION_DUR[this.reaction.kind]) this.reaction = null;
+    }
+    if (this.reaction) reactionPose(this.reaction.kind, Math.max(0, this.reaction.t), this.pose);
+    else this.pose.pitch = this.pose.yaw = this.pose.lean = this.pose.armLift = 0;
     this.updateAim(dt);
     // Idle: breathing and a slow sway.
     const k = 1 - Math.exp(-4 * dt);
@@ -383,7 +412,23 @@ export class Character {
     }
     this.headYaw += (yaw - this.headYaw) * k;
     this.headPitch += (pitch - this.headPitch) * k;
-    this.head.rotation.set(this.headPitch, this.headYaw, 0, 'YXZ');
+    this.head.rotation.set(this.headPitch + this.pose.pitch, this.headYaw + this.pose.yaw, 0, 'YXZ');
+    this.body.rotation.x += this.pose.lean;
+    this.body.position.z += this.pose.lean * 0.25;
+
+    // Blink (eyes stay shut when dead).
+    if (!this.blinkAt) this.blinkAt = now + nextBlinkDelay(Math.random());
+    if (!this.dead && now >= this.blinkAt) {
+      this.blinkStart = now;
+      this.blinkAt = now + nextBlinkDelay(Math.random());
+    }
+    const eyeY = this.dead ? 0.1 : blinkScale(now - this.blinkStart);
+    for (const eye of this.eyes) eye.scale.y = eyeY;
+
+    // Mouth flaps while the bubble is up (not while it fades out).
+    const talking = this.bubble !== null && this.bubbleUntil - now > 1 && !this.dead;
+    const mouthY = talking ? 1 + 3.5 * mouthOpen(t) : 1;
+    this.mouth.scale.y += (mouthY - this.mouth.scale.y) * (talking ? 0.6 : k);
 
     // Highlight / death tint.
     this.highlight += (this.highlightTarget - this.highlight) * (1 - Math.exp(-12 * dt));
