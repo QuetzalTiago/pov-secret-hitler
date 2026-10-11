@@ -134,10 +134,10 @@ export function readMessage(text: string, botName: string, persona: Persona, moo
   if (named && QUESTION.test(t)) return { trigger: 'addressed', chance: 0.9 };
   if (named) return { trigger: 'addressed', chance: 0.75 + heat };
   // Not named: an insult, an accusation or a cry of "they set me up" still pulls in the loud ones.
-  if (insult) return { trigger: 'insulted', chance: 0.2 + persona.temper * 0.3 + heat };
-  if (setup) return { trigger: 'setup', chance: 0.3 + persona.paranoia * 0.35 + heat };
-  if (accuse) return { trigger: 'accused', chance: 0.15 + persona.paranoia * 0.35 + heat };
-  return { trigger: 'general', chance: persona.chattiness * 0.12 + heat * 0.5 };
+  if (insult) return { trigger: 'insulted', chance: 0.1 + persona.temper * 0.15 + heat };
+  if (setup) return { trigger: 'setup', chance: 0.15 + persona.paranoia * 0.2 + heat };
+  if (accuse) return { trigger: 'accused', chance: 0.08 + persona.paranoia * 0.2 + heat };
+  return { trigger: 'general', chance: persona.chattiness * 0.05 + heat * 0.25 };
 }
 
 // ---------- prompts ----------

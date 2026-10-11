@@ -613,14 +613,17 @@ export class Room {
   private botTalk(events: GameEvent[]) {
     const g = this.game;
     if (!g) return;
+    // At most two bots comment on any one batch of events, so the table does not all pipe up at once.
+    let spoke = 0;
     this.seats.forEach((s, seat) => {
-      if (!s.bot || (!g.players[seat]?.alive && g.phase !== 'gameOver')) return;
+      if (spoke >= 2 || !s.bot || (!g.players[seat]?.alive && g.phase !== 'gameOver')) return;
       const now = Date.now();
-      if (now - (this.lastBotChat.get(seat) ?? 0) < 6000) return;
+      if (now - (this.lastBotChat.get(seat) ?? 0) < 15000) return;
       const view = viewFor(g, seat);
       for (const e of events) {
         const plan = planTalk(e, view, this.memories[seat], (x) => this.seatName(x), Math.random);
         if (!plan) continue;
+        spoke++;
         const prev = this.lastBotChat.get(seat);
         this.lastBotChat.set(seat, now);
         // The throttle holds while speak runs, but only a posted line keeps it.
@@ -790,7 +793,7 @@ export class Room {
       if (r.trigger === 'insulted') offend(mood, from, 0.18 + this.personaOf(seat).temper * 0.22);
       else if (r.trigger === 'accused') offend(mood, from, 0.12);
       else if (r.trigger === 'support') warmTo(mood, from, 0.3);
-      if (now - (this.lastBotChat.get(seat) ?? 0) < 4000) continue;
+      if (now - (this.lastBotChat.get(seat) ?? 0) < 10000) continue;
       candidates.push({ seat, trigger: r.trigger, chance: r.chance });
     }
     // Without a model nobody can reply, and claiming the chat throttle here would only mute the
@@ -799,7 +802,7 @@ export class Room {
     const replying = candidates
       .filter((c) => Math.random() < c.chance)
       .sort((a, b) => b.chance - a.chance)
-      .slice(0, 2);
+      .slice(0, 1);
     for (const c of replying) this.lastBotChat.set(c.seat, now);
     // One at a time, not in parallel: a bot that writes while the other's line is still in flight cannot
     // see it in the transcript, and the two end up saying the same thing in different words.
@@ -863,7 +866,7 @@ export class Room {
     const now = Date.now();
     for (const seat of this.talkingBots()) {
       const mood = this.moodOf(seat);
-      if (now - (this.lastBotChat.get(seat) ?? 0) < 20000) continue;
+      if (now - (this.lastBotChat.get(seat) ?? 0) < 45000) continue;
       if (this.complainIgnored(seat, mood, now)) continue;
       if (this.maybeReconsider(seat, mood, now)) continue;
       this.maybeAccuse(seat, mood, now);
@@ -972,7 +975,7 @@ export class Room {
     } else if (heat >= 0.7) kind = 'read';
     else return;
 
-    const chance = kind === 'accusation' ? 0.12 + persona.paranoia * 0.3 : 0.08 + persona.chattiness * 0.22;
+    const chance = kind === 'accusation' ? 0.06 + persona.paranoia * 0.15 : 0.04 + persona.chattiness * 0.11;
     if (Math.random() > chance) return;
     this.lastBotChat.set(seat, now);
     this.written++;

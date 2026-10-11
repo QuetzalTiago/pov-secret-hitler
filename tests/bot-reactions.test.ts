@@ -72,7 +72,7 @@ describe('reading the room', () => {
     // Shouted at the table rather than at one player: still worth weighing in on.
     const loose = readMessage('me estan haciendo la cama chicos', 'Nacho', persona, mood());
     expect(loose.trigger).toBe('setup');
-    expect(loose.chance).toBeGreaterThan(0.3);
+    expect(loose.chance).toBeGreaterThan(readMessage('que lindo dia chicos', 'Nacho', persona, mood()).chance);
   });
 
   it('does not see an insult in ordinary table talk', () => {
