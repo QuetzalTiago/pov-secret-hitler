@@ -64,7 +64,7 @@ export class Room {
   private timerKey = '';
   private deadline: number | null = null;
   /** One plan per pending bot seat: when it acts (readyAt), its timer, and its already-running brain call. */
-  private botPlans = new Map<number, { key: string; readyAt: number; timer: NodeJS.Timeout | null; decision: Promise<ActionBody | null> }>();
+  private botPlans = new Map<number, { key: string; readyAt: number; timer: NodeJS.Timeout | null; held: boolean; decision: Promise<ActionBody | null> }>();
   private disconnectTimers = new Map<string, NodeJS.Timeout>();
   /** Running while no human is connected; ends the room when it fires. */
   private abandonTimer: NodeJS.Timeout | null = null;
@@ -508,7 +508,7 @@ export class Room {
       let readyAt = now + botThinkMs(g.phase);
       // Never let a bot sit on its move until the phase timer takes over.
       if (this.deadline !== null) readyAt = Math.min(readyAt, Math.max(now, this.deadline - 5000 * config.timerScale));
-      this.botPlans.set(seat, { key, readyAt, timer: null, decision: this.decideFor(seat) });
+      this.botPlans.set(seat, { key, readyAt, timer: null, held: false, decision: this.decideFor(seat) });
     }
     for (const [seat, plan] of this.botPlans) {
       if (plan.timer) continue;
@@ -520,6 +520,11 @@ export class Room {
         console.error('[room] bot timer failed', e);
       }
     }
+  }
+
+  /** How long a bot may hold its move for its queued chat line. */
+  private chatHoldMs() {
+    return (5000 * config.botDelayMs) / 1400;
   }
 
   private phaseKey(g: GameState): string {
@@ -556,6 +561,14 @@ export class Room {
     const now = this.game;
     // The world may have moved on while we were thinking (timer, reconnect, game over); the next state change reschedules.
     if (this.closed || !now || this.phaseKey(now) !== key || !pendingActors(now).includes(seat) || !this.seats[seat]?.botControl || this.botPlans.get(seat) !== plan) return;
+    // Its line is still queued: wait for it to be posted, but never past the cap.
+    if (this.chatQueue.some((c) => c.seat === seat) && Date.now() < plan.readyAt + this.chatHoldMs()) {
+      plan.held = true;
+      plan.timer = setTimeout(() => {
+        this.fire(seat, key).catch((e) => console.error('[bot] think failed', e));
+      }, Math.max(0, plan.readyAt + this.chatHoldMs() - Date.now()));
+      return;
+    }
     this.botPlans.delete(seat);
     if (action === null) this.botMove(seat);
     else if (this.tryApply(seat, action)) this.botMove(seat); // stale or illegal: fall back to an immediate legal move
@@ -748,6 +761,15 @@ export class Room {
         console.error('[room] chat failed', e);
       } finally {
         item.done();
+        let released = false;
+        for (const [seat, plan] of this.botPlans) {
+          if (!plan.held || this.chatQueue.some((c) => c.seat === seat)) continue;
+          if (plan.timer) clearTimeout(plan.timer);
+          plan.timer = null;
+          plan.held = false;
+          released = true;
+        }
+        if (released) this.schedule();
         this.pumpChat();
       }
     }, Math.max(0, this.chatFreeAt - Date.now()));

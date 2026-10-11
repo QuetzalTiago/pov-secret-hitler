@@ -51,7 +51,13 @@ async function table() {
   send({ t: 'start' });
   await until(() => (room as RoomView | null)?.stage === 'game');
   // Reach into the room to queue bot lines directly (say() is what every bot line goes through).
-  const r = server.rooms.get(code)! as unknown as { say(seat: number, text: string): Promise<void>; game: { players: { alive: boolean }[] } };
+  const r = server.rooms.get(code)! as unknown as {
+    say(seat: number, text: string): Promise<void>;
+    game: { players: { alive: boolean }[] };
+    botPlans: Map<number, { readyAt: number; timer: NodeJS.Timeout | null }>;
+    schedule(): void;
+    chatFreeAt: number;
+  };
   return { ws, heard, send, until, room: r };
 }
 
@@ -94,5 +100,62 @@ describe('bot chat pacing', () => {
     expect(texts.length).toBeLessThanOrEqual(4); // never more than 4 waiting
     expect(texts[0]).toBe('línea 0');
     t.ws.terminate();
+  });
+
+  // Bot 1 has a pending move (night ack) and a queued line; its move is forced due right now.
+  async function dueBot(blockChat: boolean) {
+    const t = await table();
+    const seat = 1;
+    const plan = t.room.botPlans.get(seat)!;
+    if (blockChat) t.room.chatFreeAt = Date.now() + 10_000;
+    else void t.room.say(2, 'x'.repeat(120)); // posts at once, then holds the chat while it is read
+    void t.room.say(seat, 'Hola, ya voy.');
+    const start = Date.now();
+    let actedAt = 0;
+    const watch = setInterval(() => {
+      if (!actedAt && !t.room.botPlans.has(seat)) actedAt = Date.now();
+    }, 2);
+    clearTimeout(plan.timer!);
+    plan.timer = null;
+    plan.readyAt = start;
+    t.room.schedule();
+    const acted = async () => {
+      try {
+        await t.until(() => actedAt > 0);
+      } finally {
+        clearInterval(watch);
+      }
+      return actedAt - start;
+    };
+    return { t, seat, acted };
+  }
+
+  it('a bot finishes its queued line before acting', async () => {
+    config.botDelayMs = 140; // hold cap 500 ms
+    try {
+      const { t, seat, acted } = await dueBot(false);
+      const after = await acted();
+      await new Promise((r) => setTimeout(r, 30)); // let the line reach us
+      const spoke = t.heard.find((h) => h.seat === seat);
+      expect(spoke).toBeDefined();
+      expect(after).toBeGreaterThanOrEqual(100); // waited for the blocker to be read, then spoke
+      t.ws.terminate();
+    } finally {
+      config.botDelayMs = 1e7;
+    }
+  });
+
+  it('the hold is capped when the line cannot be posted', async () => {
+    config.botDelayMs = 140;
+    try {
+      const { t, seat, acted } = await dueBot(true);
+      const after = await acted();
+      expect(after).toBeGreaterThanOrEqual(450);
+      expect(after).toBeLessThan(2000);
+      expect(t.heard.some((h) => h.seat === seat)).toBe(false);
+      t.ws.terminate();
+    } finally {
+      config.botDelayMs = 1e7;
+    }
   });
 });
