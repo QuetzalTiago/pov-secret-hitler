@@ -56,9 +56,13 @@ const stats = { real: 0, fallback: 0 };
 
 /** Moves the real mouse onto a 3D object, waits for the camera to settle, and clicks it. */
 async function clickObject(page: Page, id: string) {
+  let why = 'no attempt';
   for (let attempt = 0; attempt < 4; attempt++) {
     const pos = await page.evaluate((i) => (window as unknown as { __sh: Hooks }).__sh.screenPos(i), id);
-    if (!pos) break;
+    if (!pos) {
+      why = `off-screen after ${attempt} attempts`;
+      break;
+    }
     if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y)) {
       console.log(`screenPos(${id}) is not finite: ${JSON.stringify(pos)}`);
       break;
@@ -72,9 +76,14 @@ async function clickObject(page: Page, id: string) {
       stats.real++;
       return;
     }
+    const settled = await page.evaluate(() => (window as unknown as { __sh: Hooks }).__sh.settled());
+    why = `hovered ${hovered} at (${Math.round(pos.x)}, ${Math.round(pos.y)}), settled=${settled}`;
   }
   const ok = await page.evaluate((i) => (window as unknown as { __sh: Hooks }).__sh.click(i), id);
-  if (ok) stats.fallback++;
+  if (ok) {
+    stats.fallback++;
+    console.log(`fallback ${id}: ${why}`);
+  }
 }
 
 function choose(s: PageState, rand: () => number): string | null {
