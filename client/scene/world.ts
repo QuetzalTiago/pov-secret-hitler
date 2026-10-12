@@ -20,6 +20,7 @@ import { CigaretteSmoke } from './smoke';
 import { WAITER_SPOT, Waiter } from './waiter';
 import { ease } from './tween';
 import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles } from './look';
+import { LIGHTING, POSTER_TINT } from './lighting';
 import {
   feltTexture, glowTexture, markSharedTexture, plankTexture, posterAtlas, signTexture, smokeTexture, wallTexture, woodTexture,
 } from './textures';
@@ -45,12 +46,6 @@ export function glossy<T extends THREE.MeshStandardMaterial>(m: T, intensity = 0
   }
   return m;
 }
-/** Strength of the HDRI image-based light: kept faint so the bar stays dark and the pendant lamp is the key light. */
-const ENV_INTENSITY = 0.06;
-/** Strength of the hemisphere ambient light before the night dimming. */
-const AMBIENT_INTENSITY = 0.12;
-/** Strength of the warm fill point light before the lit factor. */
-const FILL_INTENSITY = 1.5;
 const EYE_Y = 1.27;
 /** Your own hands read small up close next to the patrons' at a distance; scale them up a little. */
 const OWN_HAND_SCALE = 1.2;
@@ -206,7 +201,7 @@ export class World {
     // Plain PCF: PCFSoft samples the shadow map many more times on every shadowed pixel.
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.75;
+    this.renderer.toneMappingExposure = LIGHTING.exposure;
     // Keep renderer.info covering the whole frame (scene + post passes); render() resets it.
     this.renderer.info.autoReset = false;
     const q = new URLSearchParams(location.search);
@@ -230,10 +225,10 @@ export class World {
     this.scene.background = new THREE.Color(0x070504);
     this.scene.fog = new THREE.FogExp2(0x100a06, 0.085);
 
-    this.ambient = new THREE.HemisphereLight(0x9a6848, 0x1c0e06, AMBIENT_INTENSITY);
+    this.ambient = new THREE.HemisphereLight(0x9a6848, 0x1c0e06, LIGHTING.ambient);
     this.scene.add(this.ambient);
 
-    this.lamp = new THREE.SpotLight(0xffa65a, 60, 6, Math.PI / 3.2, 0.55, 1.6);
+    this.lamp = new THREE.SpotLight(0xffa65a, LIGHTING.lamp.intensity, LIGHTING.lamp.distance, LIGHTING.lamp.angle, LIGHTING.lamp.penumbra, LIGHTING.lamp.decay);
     this.lamp.position.set(0, 2.55, 0);
     this.lamp.target.position.set(0, TABLE_Y, 0);
     this.lamp.castShadow = true;
@@ -241,7 +236,7 @@ export class World {
     this.lamp.shadow.bias = -0.0008;
     this.scene.add(this.lamp, this.lamp.target);
 
-    this.fill = new THREE.PointLight(0xff7a3a, FILL_INTENSITY, 12, 1.6);
+    this.fill = new THREE.PointLight(0xff7a3a, LIGHTING.fill, 12, 1.6);
     this.fill.position.set(-3.2, 2.2, -3.4);
     this.scene.add(this.fill);
 
@@ -422,7 +417,7 @@ export class World {
     composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.4, BLOOM_THRESHOLD));
     composer.addPass(
       new ShaderPass({
-        uniforms: { tDiffuse: { value: null }, darkness: { value: 0.6 }, offset: { value: 1.0 } },
+        uniforms: { tDiffuse: { value: null }, darkness: { value: LIGHTING.vignette }, offset: { value: 1.0 } },
         vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
         fragmentShader: `uniform sampler2D tDiffuse; uniform float darkness; uniform float offset; varying vec2 vUv;
           void main() {
@@ -443,7 +438,7 @@ export class World {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     // Image-based light for everything lit; props keep the RoomEnvironment propEnv via glossy().
     this.scene.environment = markSharedTexture(pmrem.fromEquirectangular(a.environment).texture);
-    this.scene.environmentIntensity = ENV_INTENSITY;
+    this.scene.environmentIntensity = LIGHTING.env;
     pmrem.dispose();
 
     this.refreshOwnHands();
@@ -522,7 +517,7 @@ export class World {
       this.waiter.group.position.set(WAITER_SPOT.x, 0, WAITER_SPOT.z);
       room.add(this.waiter.group);
       // A dim bare bulb on a cord over the waiter, so he reads in the dark behind the counter. No shadow: one is enough.
-      const waiterLight = new THREE.SpotLight(0xffc080, 8, 3.6, Math.PI / 4.5, 0.8, 1.6);
+      const waiterLight = new THREE.SpotLight(0xffc080, LIGHTING.waiterSpot, 3.6, Math.PI / 4.5, 0.8, 1.6);
       waiterLight.position.set(WAITER_SPOT.x, 3.2, WAITER_SPOT.z + 0.15);
       waiterLight.target.position.set(WAITER_SPOT.x, 1.1, WAITER_SPOT.z + 0.1);
       const waiterBulb = new THREE.Mesh(
@@ -540,7 +535,7 @@ export class World {
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshStandardMaterial({ map: signTexture(), roughness: 0.45, metalness: 0.2 }));
     sign.position.set(0, 2.95, -4.97 + 0.02);
     room.add(sign);
-    const neonLight = new THREE.PointLight(0xffb060, 0.6, 5, 1.5);
+    const neonLight = new THREE.PointLight(0xffb060, LIGHTING.neon, 5, 1.5);
     neonLight.position.set(0, 3.0, -4.5);
     room.add(neonLight);
     // A few empty stools and a dartboard-ish clock on the side wall.
@@ -581,7 +576,7 @@ export class World {
     props.castShadow = false;
     props.receiveShadow = true;
     const glow = new THREE.Mesh(hallGlowGeometry(), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 2.2, 1.2), toneMapped: false }));
-    const posters = new THREE.Mesh(posterGeometry(), new THREE.MeshStandardMaterial({ map: posterAtlas(), roughness: 0.9 }));
+    const posters = new THREE.Mesh(posterGeometry(), new THREE.MeshStandardMaterial({ map: posterAtlas(), color: POSTER_TINT, roughness: 0.9 }));
     posters.receiveShadow = true;
     const bunting = new THREE.Mesh(buntingGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide }));
     room.add(props, glow, posters, bunting);
@@ -982,9 +977,9 @@ export class World {
     const danger = this.dangerLevel;
     const flicker = 1 - (Math.sin(t * 13.7) * Math.sin(t * 7.3) > 0.93 ? 0.35 : 0) * (0.3 + danger) - Math.random() * 0.03 * (1 + danger * 4);
     const lit = 1 - this.night * 0.93;
-    this.lamp.intensity = 60 * lit * flicker;
-    this.fill.intensity = FILL_INTENSITY * lit;
-    this.ambient.intensity = AMBIENT_INTENSITY * (1 - this.night * 0.85);
+    this.lamp.intensity = LIGHTING.lamp.intensity * lit * flicker;
+    this.fill.intensity = LIGHTING.fill * lit;
+    this.ambient.intensity = LIGHTING.ambient * (1 - this.night * 0.85);
     this.handLight.intensity = 0.9 * (1 - this.night * 0.6);
     this.lamp.color.copy(LAMP_WARM).lerp(LAMP_HOT, Math.min(1, this.tension * 0.6 + danger * 0.3));
     // Boost only while the bloom pass runs (render() skips the composer on steps without shadows).

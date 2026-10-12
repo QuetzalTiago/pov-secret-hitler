@@ -6,6 +6,7 @@ import {
 import { revolverGeometry } from './gun';
 import { ease, tween, type Tween } from './tween';
 import { TABLE_Y } from './world';
+import { PRINT_TINT } from './lighting';
 
 export const CARD_W = 0.13;
 export const CARD_H = 0.18;
@@ -17,8 +18,8 @@ export class Card {
   private backMat: THREE.MeshStandardMaterial;
   constructor(face: THREE.Texture | null, back: THREE.Texture, scale = 1) {
     const edge = new THREE.MeshStandardMaterial({ color: 0xd8ccb0, roughness: 0.8 });
-    this.faceMat = new THREE.MeshStandardMaterial({ map: face ?? back, roughness: 0.7 });
-    this.backMat = new THREE.MeshStandardMaterial({ map: back, roughness: 0.7 });
+    this.faceMat = new THREE.MeshStandardMaterial({ map: face ?? back, color: PRINT_TINT, roughness: 0.7 });
+    this.backMat = new THREE.MeshStandardMaterial({ map: back, color: PRINT_TINT, roughness: 0.7 });
     this.mesh = new THREE.Mesh(new THREE.BoxGeometry(CARD_W * scale, 0.003, CARD_H * scale), [
       edge, edge, this.faceMat, this.backMat, edge, edge,
     ]);
@@ -50,7 +51,7 @@ export class Placard {
   constructor(title: string, color: string) {
     const t = placardTexture(title, color);
     const side = new THREE.MeshStandardMaterial({ color: 0x1c130c });
-    const face = new THREE.MeshStandardMaterial({ map: t, roughness: 0.5, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.25 });
+    const face = new THREE.MeshStandardMaterial({ map: t, color: PRINT_TINT, roughness: 0.6 });
     this.mesh = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.085, 0.03), [side, side, side, side, face, face]);
     this.mesh.castShadow = true;
   }
@@ -205,8 +206,8 @@ export class Board {
       t.anisotropy = 16;
       const side = new THREE.MeshStandardMaterial({ color: 0x1c130c });
       for (const m of new Set([this.surface.material].flat())) m.dispose();
-      // Matte printed card, slightly darkened: the art is bright and flat, and under the hot lamp plus ACES it washed out pale.
-      const face = new THREE.MeshStandardMaterial({ map: t, color: 0xd0d0d0, roughness: 0.9, metalness: 0, envMapIntensity: 0.2 });
+      // Matte printed card tinted to aged stock: the art is bright and flat, and under the hot lamp plus ACES it washed out pale.
+      const face = new THREE.MeshStandardMaterial({ map: t, color: PRINT_TINT, roughness: 0.9, metalness: 0, envMapIntensity: 0.2 });
       this.surface.material = [side, side, face, side, side, side];
     }
   }
