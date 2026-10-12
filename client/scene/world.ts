@@ -10,6 +10,7 @@ import { disposeObject } from './dispose';
 import { handGeometry } from './hands';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
 import { ease, sequence, tween, type Tween } from './tween';
+import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles } from './look';
 import {
   feltTexture, glowTexture, markSharedTexture, plankTexture, smokeTexture, textSprite, wallTexture, woodTexture,
 } from './textures';
@@ -36,14 +37,13 @@ const EYE_Y = 1.27;
 /** Your own hands read small up close next to the patrons' at a distance; scale them up a little. */
 const OWN_HAND_SCALE = 1.2;
 /** With a free cursor the view turns toward it: yaw/pitch (rad) at the screen edge, around this resting pitch. */
-const FOLLOW_YAW = 0.7;
+const FOLLOW_YAW = 1.05;
 const FOLLOW_PITCH = 0.32;
-const BASE_PITCH = -0.36;
-/** Captured mouse: radians turned per pixel of movement, and the clamped yaw/pitch range. */
+/** Captured mouse: radians turned per pixel of movement (the clamped range lives in look.ts). */
 const LOOK_SENS = 0.0022;
-const YAW_LIMIT = 1.35;
-const PITCH_MIN = -0.55;
-const PITCH_MAX = 0.5;
+/** Keyboard look speed (rad/s). */
+const KEY_LOOK = 1.6;
+const clampLook = THREE.MathUtils.clamp;
 
 /** Seat geometry around an elliptical table. Your own seat is always nearest the camera. */
 export class Layout {
@@ -275,21 +275,65 @@ export class World {
 
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('pointermove', (e) => {
+      const real = e.movementX !== 0 || e.movementY !== 0 || Math.hypot(e.clientX - this.lastX, e.clientY - this.lastY) > 4;
+      if (real) {
+        this.lastX = e.clientX;
+        this.lastY = e.clientY;
+      }
       if (this.locked) {
+        if (real) this.cancelGlance();
         // Captured mouse: relative look, clamped like a seated head turn.
-        this.targetYaw = THREE.MathUtils.clamp(this.targetYaw - e.movementX * LOOK_SENS, -YAW_LIMIT, YAW_LIMIT);
-        this.targetPitch = THREE.MathUtils.clamp(this.targetPitch - e.movementY * LOOK_SENS, PITCH_MIN, PITCH_MAX);
+        this.targetYaw = clampLook(this.targetYaw - e.movementX * LOOK_SENS, -YAW_LIMIT, YAW_LIMIT);
+        this.targetPitch = clampLook(this.targetPitch - e.movementY * LOOK_SENS, PITCH_MIN, PITCH_MAX);
         return;
       }
       this.mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
-      if (this.freezeLook) return;
+      if (real) this.cancelGlance();
+      if (this.freezeLook || this.glanceUntil > 0) return;
       this.targetYaw = -this.mouse.x * FOLLOW_YAW;
       this.targetPitch = this.mouse.y * FOLLOW_PITCH;
     });
+    window.addEventListener('keydown', (e) => {
+      const k = this.lookKey(e);
+      if (!k) return;
+      if (k.startsWith('Arrow')) e.preventDefault();
+      this.keys.add(k);
+      this.cancelGlance();
+    });
+    window.addEventListener('keyup', (e) => this.keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key));
+    window.addEventListener('blur', () => this.keys.clear());
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.renderer.domElement;
       this.onLockChange(this.locked);
     });
+  }
+
+  private keys = new Set<string>();
+  private lastX = 0;
+  private lastY = 0;
+  private glanceUntil = 0;
+  private glancePrev = { yaw: 0, pitch: 0 };
+
+  /** The normalised look key for `e` (A/D/W/S/arrows), or null when it is not one or typing elsewhere. */
+  private lookKey(e: KeyboardEvent): string | null {
+    if (e.ctrlKey || e.metaKey || e.altKey) return null;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return null;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    return ['a', 'd', 'w', 's', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k) ? k : null;
+  }
+
+  /** Briefly turns the view toward `p`, then back; any mouse movement or look key cancels it. */
+  glanceAt(p: THREE.Vector3, secs = 2.2) {
+    if (this.glanceUntil <= 0) this.glancePrev = { yaw: this.targetYaw, pitch: this.targetPitch };
+    const a = lookAngles(this.camera.position, p);
+    this.targetYaw = a.yaw;
+    this.targetPitch = a.pitch;
+    this.glanceUntil = this.time + secs;
+  }
+
+  private cancelGlance() {
+    this.glanceUntil = 0;
   }
 
   /** True while the mouse is captured (cursor hidden, aiming with the centre crosshair). */
@@ -333,9 +377,7 @@ export class World {
 
   /** Mouse movement (px) that, while the mouse is captured, turns the view until `p` is under the crosshair. */
   lookMovementTo(p: THREE.Vector3, out: THREE.Vector2): THREE.Vector2 {
-    const d = p.clone().sub(this.camera.position);
-    const yaw = THREE.MathUtils.clamp(Math.atan2(-d.x, -d.z), -YAW_LIMIT, YAW_LIMIT);
-    const pitch = THREE.MathUtils.clamp(Math.atan2(d.y, Math.hypot(d.x, d.z)) - BASE_PITCH, PITCH_MIN, PITCH_MAX);
+    const { yaw, pitch } = lookAngles(this.camera.position, p);
     return out.set((this.targetYaw - yaw) / LOOK_SENS, (this.targetPitch - pitch) / LOOK_SENS);
   }
 
@@ -690,7 +732,7 @@ export class World {
 
   /** True once the camera has caught up with the cursor (used by tests before clicking). */
   settled(): boolean {
-    return Math.abs(this.targetYaw - this.yaw) < 0.002 && Math.abs(this.targetPitch - this.pitch) < 0.002;
+    return this.glanceUntil <= 0 && Math.abs(this.targetYaw - this.yaw) < 0.002 && Math.abs(this.targetPitch - this.pitch) < 0.002;
   }
 
   /** Your own first-person sleeves: uniform and armband when you are Hitler (only your client knows). */
@@ -760,6 +802,15 @@ export class World {
   update(dt: number) {
     this.time += dt;
     const t = this.time;
+    if (this.glanceUntil > 0 && t >= this.glanceUntil) {
+      this.glanceUntil = 0;
+      this.targetYaw = this.glancePrev.yaw;
+      this.targetPitch = this.glancePrev.pitch;
+    }
+    const h = (+this.keys.has('a') || +this.keys.has('ArrowLeft')) - (+this.keys.has('d') || +this.keys.has('ArrowRight'));
+    const v = (+this.keys.has('w') || +this.keys.has('ArrowUp')) - (+this.keys.has('s') || +this.keys.has('ArrowDown'));
+    if (h) this.targetYaw = clampLook(this.targetYaw + h * KEY_LOOK * dt, -YAW_LIMIT, YAW_LIMIT);
+    if (v) this.targetPitch = clampLook(this.targetPitch + v * KEY_LOOK * dt, PITCH_MIN, PITCH_MAX);
     // Camera look with clamped yaw/pitch, plus shake.
     const k = 1 - Math.exp(-6 * dt);
     this.yaw += (this.targetYaw - this.yaw) * k;
