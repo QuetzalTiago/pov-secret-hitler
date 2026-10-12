@@ -334,12 +334,14 @@ describe('table talk', () => {
     lib.known.set(4, 'fascist');
     const libPlan = planTalk({ k: 'investigated', by: 0, target: 4 }, viewFor(s, 0), lib, name, Math.random)!;
     if (libPlan.kind !== 'choice') throw new Error('expected a choice');
+    expect(libPlan.must).toBe(true);
     for (let i = 0; i < 20; i++) expect(heuristicTalk(libPlan.options, Math.random)).toBe('fascist');
 
     const fas = newMemory(5, 7);
     fas.known.set(1, 'liberal');
     const fasPlan = planTalk({ k: 'investigated', by: 5, target: 1 }, viewFor(s, 5), fas, name, Math.random)!;
     if (fasPlan.kind !== 'choice') throw new Error('expected a choice');
+    expect(fasPlan.must).toBe(true);
     expect(fasPlan.instructions).toMatch(/may lie/);
     expect(Object.keys(fasPlan.options).sort()).toEqual(['fascist', 'liberal']);
   });

@@ -4,7 +4,7 @@ import type { ServerMsg } from '../shared/protocol';
 import type { GameEvent, GameState } from '../shared/types';
 import { profiles, type Memory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
-import { heuristicTalk, planTalk, talkReads, type TalkPlan } from './botchat';
+import { heuristicTalk, mustTalk, planTalk, talkReads, type TalkPlan } from './botchat';
 import {
   cool, newMood, offend, readMessage, relation, warmTo,
   writeAccusation, writeIgnored, writeIntent, writeReconsider, writeReply,
@@ -173,31 +173,34 @@ export class TableTalk {
     // At most two bots comment on any one batch of events, so the table does not all pipe up at once.
     let spoke = 0;
     this.host.seats().forEach((s, seat) => {
-      if (spoke >= 2 || !s.bot || (!g.players[seat]?.alive && g.phase !== 'gameOver')) return;
+      if (!s.bot || (!g.players[seat]?.alive && g.phase !== 'gameOver')) return;
       const now = Date.now();
-      if (now - (this.lastBotChat.get(seat) ?? 0) < 15000) return;
       const view = viewFor(g, seat);
-      for (const e of events) {
-        const plan = planTalk(e, view, this.host.memories()[seat], (x) => this.host.seatName(x), Math.random);
-        if (!plan) continue;
+      const planFor = (e: GameEvent) => planTalk(e, view, this.host.memories()[seat], (x) => this.host.seatName(x), Math.random);
+      // A must plan (an investigation result) ignores the throttle and the cap, and does not count toward the cap.
+      const mustEvent = events.find((e) => mustTalk(e, seat));
+      let plan = mustEvent ? planFor(mustEvent) : null;
+      if (!plan) {
+        if (spoke >= 2 || now - (this.lastBotChat.get(seat) ?? 0) < 15000) return;
+        for (const e of events) if ((plan = planFor(e))) break;
+        if (!plan) return;
         spoke++;
-        const prev = this.lastBotChat.get(seat);
-        this.lastBotChat.set(seat, now);
-        // The throttle holds while speak runs, but only a posted line keeps it.
-        const gen = this.talkGen;
-        const release = () => {
-          if (gen !== this.talkGen) return;
-          if (prev === undefined) this.lastBotChat.delete(seat);
-          else this.lastBotChat.set(seat, prev);
-        };
-        this.speak(seat, plan)
-          .then((said) => said || release())
-          .catch((e) => {
-            release();
-            console.error('[bot] speak failed', e);
-          });
-        break;
       }
+      const prev = this.lastBotChat.get(seat);
+      this.lastBotChat.set(seat, now);
+      // The throttle holds while speak runs, but only a posted line keeps it.
+      const gen = this.talkGen;
+      const release = () => {
+        if (gen !== this.talkGen) return;
+        if (prev === undefined) this.lastBotChat.delete(seat);
+        else this.lastBotChat.set(seat, prev);
+      };
+      this.speak(seat, plan)
+        .then((said) => said || release())
+        .catch((e) => {
+          release();
+          console.error('[bot] speak failed', e);
+        });
     });
   }
 
@@ -234,14 +237,14 @@ export class TableTalk {
       if (gen !== this.talkGen) return false;
     }
     const delay = Math.max(0, 900 + Math.random() * 1800 - (Date.now() - started));
-    this.sayLater(seat, line, delay, gen);
+    this.sayLater(seat, line, delay, gen, plan.must);
     return true;
   }
 
   // ---------- one bot at a time ----------
 
   /** Bot lines waiting their turn. Bots never talk over each other; humans are never delayed. */
-  private chatQueue: { seat: number; text: string; queuedAt: number; gen: number; done: () => void }[] = [];
+  private chatQueue: { seat: number; text: string; queuedAt: number; gen: number; must?: boolean; done: () => void }[] = [];
   private chatTimer: NodeJS.Timeout | null = null;
   /** Seats shift when a redeal drops players, so lines are tagged with the deal they were meant for. */
   private talkGen = 0;
@@ -258,12 +261,12 @@ export class TableTalk {
    * Queues a bot line. It is posted once the chat is free, and the bot's mood settles a little for having
    * said it. Resolves when the line is posted (or dropped), so a reply can wait for the one before it.
    */
-  private say(seat: number, text: string, gen = this.talkGen): Promise<void> {
+  private say(seat: number, text: string, gen = this.talkGen, must = false): Promise<void> {
     return new Promise((done) => {
       if (this.host.closed() || !text || gen !== this.talkGen) return done();
       // A backlog would only deliver stale lines late; skip it rather than flood the chat.
-      if (this.chatQueue.length >= 4) return done();
-      this.chatQueue.push({ seat, text, queuedAt: Date.now(), gen, done });
+      if (this.chatQueue.length >= 4 && !must) return done();
+      this.chatQueue.push({ seat, text, queuedAt: Date.now(), gen, must, done });
       this.pumpChat();
     });
   }
@@ -277,7 +280,7 @@ export class TableTalk {
       try {
         const g = this.host.game();
         // Too old to still make sense, or the bot has died since: drop it.
-        const stale = Date.now() - item.queuedAt > 25_000;
+        const stale = !item.must && Date.now() - item.queuedAt > 25_000;
         const dead = !!g && g.phase !== 'gameOver' && !g.players[item.seat]?.alive;
         if (!this.host.closed() && !stale && !dead && item.gen === this.talkGen) {
           this.postChat(item.seat, item.text);
@@ -297,10 +300,10 @@ export class TableTalk {
   }
 
   /** Types a line after a human-looking pause, re-checking that the room is still alive. */
-  private sayLater(seat: number, text: string, delay: number, gen = this.talkGen) {
+  private sayLater(seat: number, text: string, delay: number, gen = this.talkGen, must = false) {
     const t = setTimeout(() => {
       this.talkTimers.delete(t);
-      void this.say(seat, text, gen);
+      void this.say(seat, text, gen, must);
     }, delay);
     this.talkTimers.add(t);
   }

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { beliefs } from '../shared/belief';
 import { newMemory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
-import { talkReads } from '../server/botchat';
+import { planTalk, talkReads } from '../server/botchat';
 import { writeAccusation, writeIgnored, writeReconsider } from '../server/bottalk';
 import { Room, type Conn } from '../server/room';
 import { roles, setup } from './helpers';
@@ -187,6 +187,90 @@ describe('silence complaints', () => {
       vi.spyOn(Date, 'now').mockRestore();
       vi.spyOn(Math, 'random').mockRestore();
       room.close();
+    }
+  });
+});
+
+describe('must-post plans', () => {
+  const mustPlan = { kind: 'line', line: 'P1 is a FASCIST.', situation: 'x', must: true } as const;
+  const started = () => {
+    vi.useFakeTimers();
+    const conn: Conn = { id: 1, room: null, seat: -1, send: () => {} };
+    const room = new Room('ABCD', () => {});
+    room.join(conn, 'Human');
+    for (let i = 0; i < 4; i++) room.addBot(conn);
+    expect(room.start(conn)).toBeNull();
+    const talk = (room as any).talk;
+    const posted = vi.spyOn(talk, 'postChat');
+    // Only seat 1 has anything to say, once (the bots would otherwise answer each other forever).
+    let used = false;
+    vi.mocked(planTalk).mockImplementation(((_e: unknown, v: { you: number }) => {
+      if (v.you !== 1 || used) return null;
+      used = true;
+      return mustPlan;
+    }) as never);
+    return { room, talk, posted };
+  };
+  const finish = (room: Room) => {
+    vi.mocked(planTalk).mockImplementation(() => ({ kind: 'line', line: '', situation: 'nothing happened' }));
+    vi.useRealTimers();
+    room.close();
+  };
+  const said = (posted: { mock: { calls: unknown[][] } }) => posted.mock.calls.filter((c) => c[1] === mustPlan.line);
+
+  it('posts even when the bot spoke a moment ago', async () => {
+    const { room, talk, posted } = started();
+    try {
+      talk.lastBotChat.set(1, Date.now());
+      talk.botTalk([{ k: 'investigated', by: 1, target: 2 }]);
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(said(posted)).toHaveLength(1);
+    } finally {
+      finish(room);
+    }
+  });
+
+  it('posts even when two other bots already spoke on the batch', async () => {
+    const { room, talk, posted } = started();
+    try {
+      const seen = new Set<number>();
+      vi.mocked(planTalk).mockImplementation(((_e: unknown, v: { you: number }) => {
+        if (seen.has(v.you)) return null;
+        seen.add(v.you);
+        return v.you === 1 ? mustPlan : { kind: 'line', line: `hi ${v.you}`, situation: 'x' };
+      }) as never);
+      talk.botTalk([{ k: 'investigated', by: 1, target: 2 }]);
+      await vi.advanceTimersByTimeAsync(30000);
+      expect(said(posted)).toHaveLength(1);
+    } finally {
+      finish(room);
+    }
+  });
+
+  it('is not dropped when the chat queue already holds four lines', async () => {
+    const { room, talk, posted } = started();
+    try {
+      for (let i = 0; i < 4; i++) talk.chatQueue.push({ seat: 2, text: `filler ${i}`, queuedAt: Date.now(), gen: talk.talkGen, done: () => {} });
+      talk.botTalk([{ k: 'investigated', by: 1, target: 2 }]);
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(said(posted)).toHaveLength(1);
+    } finally {
+      finish(room);
+    }
+  });
+
+  it('is not dropped as stale after waiting past 25 s, unlike an ordinary line', async () => {
+    const { room, talk, posted } = started();
+    try {
+      vi.mocked(planTalk).mockImplementation(() => null);
+      talk.chatFreeAt = Date.now() + 40000;
+      void talk.say(1, mustPlan.line, talk.talkGen, true);
+      void talk.say(1, 'ordinary', talk.talkGen);
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(said(posted)).toHaveLength(1);
+      expect(posted.mock.calls.some((c: unknown[]) => c[1] === 'ordinary')).toBe(false);
+    } finally {
+      finish(room);
     }
   });
 });

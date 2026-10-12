@@ -69,10 +69,14 @@ export interface TalkOption {
 }
 
 /** Either a fixed line, or a choice for Jev to make. `situation` describes what just happened, in plain
- *  prose, and is reused by bottalk.ts when it writes the words. */
+ *  prose, and is reused by bottalk.ts when it writes the words. `must`: never throttled or dropped as stale,
+ *  e.g. an investigation result the table is waiting for. */
 export type TalkPlan =
-  | { kind: 'line'; line: string; situation: string }
-  | { kind: 'choice'; situation: string; instructions: string; options: Record<string, TalkOption>; state: unknown };
+  | { kind: 'line'; line: string; situation: string; must?: boolean }
+  | { kind: 'choice'; situation: string; instructions: string; options: Record<string, TalkOption>; state: unknown; must?: boolean };
+
+/** Events whose plan for `seat` is `must`: the table is waiting for this bot's investigation result. */
+export const mustTalk = (e: GameEvent, seat: number) => e.k === 'investigated' && e.by === seat;
 
 function honesty(fasc: boolean): string {
   return fasc
@@ -188,10 +192,10 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
       if (!truth) return null;
       const t = name(e.target);
       const teammate = role(e.target) && role(e.target) !== 'liberal';
-      return choice(`You investigated ${t}${teammate ? ' (your teammate)' : ''}. Their party card says ${truth.toUpperCase()}. You must announce a result.`, {
+      return { ...choice(`You investigated ${t}${teammate ? ' (your teammate)' : ''}. Their party card says ${truth.toUpperCase()}. You must announce a result.`, {
         liberal: { line: say(`${t} es liberal.`, `${t} is a Liberal.`), description: `Announce that ${t} is a Liberal`, score: truth === 'liberal' ? (fasc ? 0.5 : 3) : fasc ? 3 : -3 },
         fascist: { line: say(`${t} es FACHO.`, `${t} is a FASCIST.`), description: `Announce that ${t} is a Fascist`, score: truth === 'fascist' ? (fasc ? -3 : 3) : fasc ? 1.2 : -3 },
-      });
+      }), must: true };
     }
     case 'votes': {
       const el = m.elections.at(-1);
