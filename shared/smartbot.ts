@@ -25,6 +25,16 @@ export type Rand = () => number;
 /** 'old' scores from suspicion heuristics; 'new' scores Liberal choices from the belief model. */
 export type Strategy = 'old' | 'new';
 
+export type BotLevel = 'casual' | 'normal' | 'sharp';
+export const BOT_LEVELS: readonly BotLevel[] = ['casual', 'normal', 'sharp'];
+
+/** Difficulty: which strategy scores the options and how much noise blurs the pick (0 = always the best). */
+export const LEVELS: Record<BotLevel, { strategy: Strategy; noise: number }> = {
+  casual: { strategy: 'old', noise: 1.5 },
+  normal: { strategy: 'new', noise: 0.6 },
+  sharp: { strategy: 'new', noise: 0 },
+};
+
 /** Tunable weights for the belief-based Liberal strategy. */
 export const LIB = {
   nomFas: 4, // nominate / special election: penalty per P(Fascist)
@@ -362,11 +372,11 @@ export function buildDecision(v: GameView, legal: ActionBody[], m: Memory, name:
 }
 
 /** Built-in strategy: best-scoring option, with a little noise so bots are not robotic. */
-export function heuristicChoice(d: Decision, rand: Rand): string {
+export function heuristicChoice(d: Decision, rand: Rand, noise = 0.6): string {
   let best = '';
   let bestScore = -Infinity;
   for (const [key, o] of Object.entries(d.options)) {
-    const s = o.score + rand() * 0.6;
+    const s = o.score + rand() * noise;
     if (s > bestScore) {
       bestScore = s;
       best = key;

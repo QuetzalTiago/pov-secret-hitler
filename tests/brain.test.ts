@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { decide, JEV_MARGIN } from '../server/brain';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { decide, decideNow, JEV_MARGIN } from '../server/brain';
 import { askChoice, jevStats } from '../server/jev';
 import { config } from '../server/config';
 import { legalActions, reduce } from '../shared/engine';
-import { buildDecision } from '../shared/smartbot';
+import * as smartbot from '../shared/smartbot';
+import { buildDecision, heuristicChoice } from '../shared/smartbot';
 import { newMemory, observe, profiles } from '../shared/tracker';
 import type { GameState } from '../shared/types';
 import { viewFor } from '../shared/view';
@@ -290,5 +291,69 @@ describe('table talk', () => {
     expect(planTalk({ k: 'executed', by: 2, target: 1 }, viewFor(s, 2), newMemory(2, 5), name, () => 0)).toMatchObject({ line: 'perdón, P1.' });
     // The situation travels with the plan so bottalk.ts can write the line in character.
     expect((plan as { situation: string }).situation).toContain('P1');
+  });
+});
+
+describe('bot levels', () => {
+  const seeded = (seed: number) => {
+    let x = seed;
+    return () => (x = (x * 1664525 + 1013904223) % 4294967296) / 4294967296;
+  };
+  const topKey = (d: ReturnType<typeof buildDecision>) => Object.entries(d.options).reduce((a, b) => (b[1].score > a[1].score ? b : a))[0];
+
+  /** Opening nomination: P0 knows P3 is Fascist, so the other three candidates score about equally. */
+  const nomination = () => {
+    const s = setup(5, { president: 0, roles: roles(5, 4, [3]) });
+    const m = newMemory(0, 5);
+    m.known.set(3, 'fascist');
+    return { v: viewFor(s, 0), legal: legalActions(s, 0), m };
+  };
+
+  it('heuristicChoice with noise 0 picks the top score whatever rand says', () => {
+    const { v, legal, m } = nomination();
+    const d = buildDecision(v, legal, m, name, { strategy: 'new' });
+    for (const seed of [1, 2, 3, 4, 5]) expect(heuristicChoice(d, seeded(seed), 0)).toBe(topKey(d));
+    expect(heuristicChoice(d, () => 0.999, 0)).toBe(topKey(d));
+  });
+
+  it('decideNow at sharp always plays the best-scoring option', () => {
+    const { v, legal, m } = nomination();
+    const d = buildDecision(v, legal, m, name, { strategy: 'new' });
+    const top = d.options[topKey(d)].action;
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) expect(decideNow(v, legal, m, name, seeded(seed), 'sharp')).toEqual(top);
+  });
+
+  it('normal is the default level and stays noisy', () => {
+    const { v, legal, m } = nomination();
+    for (const seed of [1, 2, 3]) {
+      expect(decideNow(v, legal, m, name, seeded(seed))).toEqual(decideNow(v, legal, m, name, seeded(seed), 'normal'));
+    }
+    const picks = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => JSON.stringify(decideNow(v, legal, m, name, seeded(i * 7), 'normal'))));
+    expect(picks.size).toBeGreaterThan(1);
+  });
+
+  it('decide at casual builds from the old strategy and matches decideNow', async () => {
+    const { v, legal, m } = nomination();
+    const spy = vi.spyOn(smartbot, 'buildDecision');
+    try {
+      const r = await decide(v, legal, m, name, seeded(9), async () => null, 'casual');
+      expect(spy.mock.calls.at(-1)![4]).toEqual({ strategy: 'old' });
+      expect(r.action).toEqual(decideNow(v, legal, m, name, seeded(9), 'casual'));
+      await decide(v, legal, m, name, seeded(9), async () => null, 'sharp');
+      expect(spy.mock.calls.at(-1)![4]).toEqual({ strategy: 'new' });
+      await decide(v, legal, m, name, seeded(9), async () => null);
+      expect(spy.mock.calls.at(-1)![4]).toEqual({ strategy: 'new' });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('at sharp, decide takes the top Jev pick even when rand would pick an alternative', async () => {
+    const { v, legal, m } = nomination();
+    const ask = async () => ({ choice: 'p2', probabilities: { p2: 0.6, p1: 0.4 }, confidence: 0.6 });
+    const sharp = await decide(v, legal, m, name, () => 0.95, ask, 'sharp');
+    expect(sharp.action).toEqual({ type: 'nominate', target: 2 });
+    const normal = await decide(v, legal, m, name, () => 0.95, ask);
+    expect(normal.action).not.toEqual({ type: 'nominate', target: 2 });
   });
 });
