@@ -12,6 +12,7 @@ import { bottlesGeometry, buntingGeometry, hallGlowGeometry, hallPropsGeometry, 
 import { handGeometry } from './hands';
 import { cuffGeometry, pointingFingerGeometry, sleeveGeometry, unitSleeveGeometry } from './ownbody';
 import { cylinderBetween, limbGeometry, mergeParts } from './patron';
+import { seatColors } from './palette';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
 import { buildBackBar, chairModel, lampModel, stoolModel } from './roomprops';
 import { CigaretteSmoke } from './smoke';
@@ -157,6 +158,8 @@ export class World {
   private chairProto: THREE.Group | null = null;
   private lampParts: { shade: THREE.Mesh; cord: THREE.Mesh; model: THREE.Group | null };
   private ember: THREE.MeshStandardMaterial | null = null;
+  /** One skin material for all your hands, tinted to your seat. */
+  private skinMat = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
   private sleeve = new THREE.MeshStandardMaterial({ color: 0x2a2a33, roughness: 0.8 });
   /** Shirt cuffs at the end of your sleeves (shared by every arm mesh). */
   private cuff = new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.8 });
@@ -597,7 +600,7 @@ export class World {
     if (!force && this.layout.n === count && this.layout.me === me && this.tableGroup.children.length) return;
     this.layout = new Layout(count, me);
     const shared = this.chairProto ? this.chairProto.children.flatMap((m) => [(m as THREE.Mesh).geometry, (m as THREE.Mesh).material as THREE.Material]) : [];
-    disposeObject(this.tableGroup, { keep: [this.sleeve, this.cuff, ...shared] });
+    disposeObject(this.tableGroup, { keep: [this.sleeve, this.cuff, this.skinMat, ...shared] });
     this.tableGroup.clear();
     this.chairs.clear();
     const L = this.layout;
@@ -652,7 +655,7 @@ export class World {
       this.chairs.set(s, chair);
     }
     // Your own hands resting on the table edge.
-    const skin = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
+    const skin = this.skinMat;
     const sleeve = this.sleeve;
     for (const side of [-1, 1]) {
       // Shoulder (just out of view) -> elbow (off the table edge) -> wrist resting on the table.
@@ -682,6 +685,7 @@ export class World {
       if (side === 1) this.restRightArm = [sleeveMesh, cuff, hand]; // your right (+X): the gun hand
       else this.restLeftArm = [sleeveMesh, cuff, hand];
     }
+    this.applyOwnColors();
     this.camera.position.copy(L.eye());
   }
 
@@ -723,7 +727,7 @@ export class World {
    */
   setOwnArm(pose: { gun: THREE.Object3D } | { point: THREE.Vector3 } | null) {
     if (!this.ownArm) {
-      const skin = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
+      const skin = this.skinMat;
       const { fore, cuff } = this.raisedArm();
       const handGeo = handGeometry('fist', -1); // a right fist, knuckles at +Z; turned to look down -Z
       handGeo.rotateY(Math.PI);
@@ -782,7 +786,7 @@ export class World {
   private updateOwnHandsUp(dt: number) {
     this.handsUpAmount += (this.handsUpTarget - this.handsUpAmount) * (1 - Math.exp(-7 * dt));
     if (this.handsUpAmount > 0.02 && !this.handsUp) {
-      const skin = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
+      const skin = this.skinMat;
       this.handsUp = ([-1, 1] as const).map((side) => {
         const { fore, cuff } = this.raisedArm();
         const hand = new THREE.Mesh(handGeometry('flat', -side as 1 | -1), skin); // thumb toward the midline once turned palm-out
@@ -822,8 +826,15 @@ export class World {
   setOwnOutfit(hitler: boolean) {
     if (hitler === this.hitlerOutfit) return;
     this.hitlerOutfit = hitler;
-    this.sleeve.color.set(hitler ? 0x7a6844 : 0x2a2a33);
+    this.applyOwnColors();
     if (this.armband) this.armband.visible = hitler;
+  }
+
+  /** Sleeves and hands match the patron other players see in your seat. */
+  private applyOwnColors() {
+    const { coat, skin } = seatColors(this.layout.me, this.hitlerOutfit);
+    this.sleeve.color.set(coat);
+    this.skinMat.color.set(skin);
   }
 
   setNight(on: boolean) {

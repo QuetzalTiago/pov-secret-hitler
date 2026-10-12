@@ -36,8 +36,8 @@ import {
   uniformGeometry,
 } from './patron';
 
-export const COATS = [0x6b2f2a, 0x2f4a6b, 0x4a5a2a, 0x5a3a6b, 0x7a5a2a, 0x2a5a55, 0x6b4a3a, 0x3a3a46, 0x803a50, 0x55602f];
-export const SKINS = [0xe0b090, 0xb07a55, 0x8a5a3a, 0xd9a07a, 0x6b4430, 0xf0c8a8, 0xc08860, 0x9a6a48, 0xe6b898, 0x7a4e36];
+import { COATS, SKINS } from './palette';
+export { COATS, SKINS };
 export const HATS = ['fedora', 'cap', 'bowler', 'none', 'beret', 'tophat', 'none', 'fedora', 'bowler', 'cap'] as const;
 const DARK = 0x1a1410;
 
