@@ -20,19 +20,31 @@ export function markSharedTexture(t: THREE.Texture): THREE.Texture {
 }
 
 export const COLORS = {
-  liberal: '#608CB3',
-  liberalDeep: '#324869',
-  liberalLight: '#d6e4ef',
-  fascist: '#F2654A',
-  fascistDeep: '#9c2f1f',
-  fascistLight: '#f9d2c4',
-  hitler: '#BE0804',
-  paper: '#F7E1C3',
-  ochre: '#FBB969',
-  ink: '#231F20',
-  kraft: '#C59257',
-  gold: '#FDDF50',
+  liberal: '#2f4f6f',
+  liberalDeep: '#1b2f45',
+  liberalLight: '#7f97ab',
+  fascist: '#8a2a1e',
+  fascistDeep: '#4e140d',
+  fascistLight: '#b0806f',
+  hitler: '#6e0b07',
+  paper: '#b9a37c',
+  ochre: '#8f7448',
+  ink: '#1a1512',
+  kraft: '#7a5f3a',
+  gold: '#b8913f',
+  brass: '#b8913f',
+  stock: '#b9a37c',
 };
+
+/** WCAG relative luminance of a #rrggbb colour (0 black .. 1 white). */
+export function relLuminance(hex: string): number {
+  const v = parseInt(hex.slice(1, 7), 16);
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin((v >> 16) & 255) + 0.7152 * lin((v >> 8) & 255) + 0.0722 * lin(v & 255);
+}
 
 function canvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement('canvas');
@@ -103,6 +115,23 @@ function grain(g: CanvasRenderingContext2D, w: number, h: number, amount: number
     img.data[i + 2] += n;
   }
   g.putImageData(img, 0, 0);
+}
+
+/** Worn-card finish: edge vignette, a few tea stains, then grain. Deterministic per seed. */
+function age(g: CanvasRenderingContext2D, w: number, h: number, seed: number) {
+  const v = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.25, w / 2, h / 2, Math.hypot(w, h) / 2);
+  v.addColorStop(0, 'rgba(20,12,5,0)');
+  v.addColorStop(1, 'rgba(20,12,5,0.45)');
+  g.fillStyle = v;
+  g.fillRect(0, 0, w, h);
+  const r = rand(seed * 31 + 5);
+  g.fillStyle = 'rgba(70,42,16,0.07)';
+  for (let i = 0; i < 4; i++) {
+    g.beginPath();
+    g.ellipse(r() * w, r() * h, w * (0.08 + r() * 0.14), h * (0.05 + r() * 0.1), r() * Math.PI, 0, Math.PI * 2);
+    g.fill();
+  }
+  grain(g, w, h, 14, seed);
 }
 
 export function woodTexture(base = '#4a2c18', dark = '#2a170b', key = 'wood', repeat = 1) {
@@ -342,53 +371,61 @@ function inkEdge(g: CanvasRenderingContext2D, w: number, h: number, width = 6) {
   frame(g, w, h, COLORS.ink, width / 2, width);
 }
 
-/** A cream panel inset from the card edge with an ink outline. */
+/** An aged-stock panel inset from the card edge with an ink outline and a thin brass rule. */
 function panel(g: CanvasRenderingContext2D, w: number, h: number, inset: number, outline = 3) {
-  g.fillStyle = COLORS.paper;
+  g.fillStyle = COLORS.stock;
   g.fillRect(inset, inset, w - inset * 2, h - inset * 2);
   frame(g, w, h, COLORS.ink, inset, outline);
+  frame(g, w, h, COLORS.brass, inset + 6, 1.5);
 }
 
 export function policyFace(p: 'L' | 'F') {
   return tex(`policy-${p}`, 256, 360, (g, w, h) => {
     const lib = p === 'L';
-    g.fillStyle = lib ? COLORS.liberal : COLORS.fascist;
+    const deep = lib ? COLORS.liberalDeep : COLORS.fascistDeep;
+    g.fillStyle = deep;
     g.fillRect(0, 0, w, h);
     inkEdge(g, w, h);
     panel(g, w, h, 20);
-    emblem(g, p, w / 2, h * 0.4, 66, lib ? COLORS.liberal : COLORS.fascist);
-    centerText(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.74, `800 40px ${DISPLAY}`, lib ? COLORS.liberalDeep : COLORS.fascistDeep);
+    emblem(g, p, w / 2, h * 0.4, 66, deep);
+    centerText(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.74, `800 40px ${DISPLAY}`, deep);
     centerText(g, 'P O L I C Y', w / 2, h * 0.84, `bold 16px ${MONO}`, COLORS.ink);
-    grain(g, w, h, 12, p === 'L' ? 2 : 4);
+    age(g, w, h, p === 'L' ? 2 : 4);
   });
 }
 
 export function cardBack(label = 'POLICY') {
   return tex(`back-${label}`, 256, 360, (g, w, h) => {
-    g.fillStyle = COLORS.ochre;
+    g.fillStyle = COLORS.ink;
     g.fillRect(0, 0, w, h);
-    g.strokeStyle = COLORS.kraft;
-    g.lineWidth = 4;
-    for (let i = -h; i < w + h; i += 18) {
+    // Fine brass diagonal lattice, low alpha.
+    g.strokeStyle = 'rgba(184,145,63,0.2)';
+    g.lineWidth = 1;
+    for (let i = -h; i < w + h; i += 12) {
       g.beginPath();
       g.moveTo(i, 0);
       g.lineTo(i + h, h);
+      g.moveTo(i + h, 0);
+      g.lineTo(i, h);
       g.stroke();
     }
-    inkEdge(g, w, h);
+    frame(g, w, h, COLORS.brass, 12, 2);
+    frame(g, w, h, COLORS.brass, 18, 1);
     g.fillStyle = COLORS.ink;
     g.fillRect(30, h / 2 - 38, w - 60, 76);
-    g.strokeStyle = COLORS.ochre;
+    g.strokeStyle = COLORS.brass;
     g.lineWidth = 2;
+    g.strokeRect(30, h / 2 - 38, w - 60, 76);
+    g.lineWidth = 1;
     g.strokeRect(36, h / 2 - 32, w - 72, 64);
-    centerText(g, label, w / 2, h / 2 + 1, `800 30px ${DISPLAY}`, COLORS.ochre);
-    grain(g, w, h, 12, 8);
+    centerText(g, label, w / 2, h / 2 + 1, `800 30px ${DISPLAY}`, COLORS.brass);
+    age(g, w, h, 8);
   });
 }
 
 export function ballotFace(ja: boolean) {
   return tex(`ballot-${ja}`, 256, 360, (g, w, h) => {
-    g.fillStyle = COLORS.paper;
+    g.fillStyle = COLORS.stock;
     g.fillRect(0, 0, w, h);
     inkEdge(g, w, h);
     frame(g, w, h, COLORS.ink, 14, 2);
@@ -401,14 +438,18 @@ export function ballotFace(ja: boolean) {
     } else {
       g.fillRect(28, 32, 24, 24);
     }
-    // The vote word, tilted like a rubber stamp.
+    // The vote word, tilted like a rubber stamp: a faded double impression.
     g.save();
     g.translate(w / 2, h / 2);
     g.rotate(((ja ? -6 : 6) * Math.PI) / 180);
-    centerText(g, ja ? 'JA!' : 'NEIN!', 0, 0, `800 ${ja ? 104 : 80}px ${DISPLAY}`, COLORS.ink);
+    const font = `800 ${ja ? 104 : 80}px ${DISPLAY}`;
+    g.globalAlpha = 0.45;
+    centerText(g, ja ? 'JA!' : 'NEIN!', 3, 2, font, COLORS.ink);
+    g.globalAlpha = 0.75;
+    centerText(g, ja ? 'JA!' : 'NEIN!', 0, 0, font, COLORS.ink);
     g.restore();
     centerText(g, 'BALLOT', w / 2, h * 0.88, `bold 18px ${MONO}`, COLORS.ink);
-    grain(g, w, h, 12, ja ? 1 : 6);
+    age(g, w, h, ja ? 1 : 6);
   });
 }
 
@@ -416,31 +457,36 @@ export function roleCard(role: 'liberal' | 'fascist' | 'hitler') {
   return tex(`role-${role}`, 256, 360, (g, w, h) => {
     const lib = role === 'liberal';
     const hit = role === 'hitler';
-    g.fillStyle = lib ? COLORS.liberal : hit ? COLORS.hitler : COLORS.fascist;
+    const deep = lib ? COLORS.liberalDeep : COLORS.fascistDeep;
+    g.fillStyle = lib ? COLORS.liberalDeep : hit ? COLORS.hitler : COLORS.fascistDeep;
     g.fillRect(0, 0, w, h);
     inkEdge(g, w, h);
     panel(g, w, h, 18);
     centerText(g, 'SECRET ROLE', w / 2, 50, `bold 16px ${MONO}`, COLORS.ink);
-    emblem(g, lib ? 'L' : 'F', w / 2, h * 0.43, 58, lib ? COLORS.liberal : hit ? COLORS.hitler : COLORS.fascist);
+    emblem(g, lib ? 'L' : 'F', w / 2, h * 0.43, 58, hit ? COLORS.hitler : deep);
     const title = hit ? 'HITLER' : role.toUpperCase();
-    centerText(g, title, w / 2, h * 0.71, `800 ${hit ? 48 : 40}px ${DISPLAY}`, lib ? COLORS.liberalDeep : hit ? COLORS.hitler : COLORS.fascistDeep);
+    centerText(g, title, w / 2, h * 0.71, `800 ${hit ? 48 : 40}px ${DISPLAY}`, hit ? COLORS.hitler : deep);
     centerText(g, lib ? 'Liberal party' : 'Fascist party', w / 2, h * 0.81, `bold 16px ${MONO}`, COLORS.ink);
-    centerText(g, 'click to close your eyes', w / 2, h * 0.91, `13px ${MONO}`, '#7a5a32');
+    centerText(g, 'click to close your eyes', w / 2, h * 0.91, `13px ${MONO}`, COLORS.kraft);
+    age(g, w, h, 10 + role.length);
   });
 }
 
 export function membershipCard(name: string, party: 'liberal' | 'fascist') {
   return tex(`member-${name}-${party}`, 256, 360, (g, w, h) => {
     const lib = party === 'liberal';
-    g.fillStyle = COLORS.paper;
+    const deep = lib ? COLORS.liberalDeep : COLORS.fascistDeep;
+    g.fillStyle = COLORS.stock;
     g.fillRect(0, 0, w, h);
     inkEdge(g, w, h);
-    frame(g, w, h, lib ? COLORS.liberal : COLORS.fascist, 10, 4);
+    frame(g, w, h, deep, 10, 4);
+    frame(g, w, h, COLORS.brass, 17, 1.5);
     centerText(g, 'PARTY MEMBERSHIP', w / 2, 44, `bold 17px ${MONO}`, COLORS.ink);
     centerText(g, name, w / 2, 86, `700 26px ${DISPLAY}`, COLORS.ink);
-    emblem(g, lib ? 'L' : 'F', w / 2, h * 0.5, 50, lib ? COLORS.liberal : COLORS.fascist);
-    centerText(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.75, `800 40px ${DISPLAY}`, lib ? COLORS.liberalDeep : COLORS.fascistDeep);
-    centerText(g, 'click to put it away', w / 2, h * 0.9, `13px ${MONO}`, '#7a5a32');
+    emblem(g, lib ? 'L' : 'F', w / 2, h * 0.5, 50, deep);
+    centerText(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.75, `800 40px ${DISPLAY}`, deep);
+    centerText(g, 'click to put it away', w / 2, h * 0.9, `13px ${MONO}`, COLORS.kraft);
+    age(g, w, h, 20 + name.length);
   });
 }
 
@@ -448,7 +494,7 @@ export function envelopeTexture() {
   return tex('envelope', 360, 256, (g, w, h) => {
     g.fillStyle = COLORS.kraft;
     g.fillRect(0, 0, w, h);
-    g.strokeStyle = '#8c6a3c';
+    g.strokeStyle = '#4f3a1f';
     g.lineWidth = 3;
     g.lineJoin = 'round';
     g.beginPath();
@@ -456,24 +502,30 @@ export function envelopeTexture() {
     g.lineTo(w / 2, h * 0.55);
     g.lineTo(w, 0);
     g.stroke();
-    // Wax seal.
-    g.fillStyle = COLORS.hitler;
+    // Oxblood wax seal.
+    g.fillStyle = COLORS.fascistDeep;
     g.strokeStyle = COLORS.ink;
     g.beginPath();
     g.arc(w / 2, h * 0.55, 22, 0, Math.PI * 2);
     g.fill();
     g.stroke();
-    // Red rubber stamp, slightly crooked.
+    g.strokeStyle = 'rgba(176,128,111,0.35)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(w / 2, h * 0.55, 14, 0, Math.PI * 2);
+    g.stroke();
+    // Oxblood rubber stamp, slightly crooked.
     g.save();
     g.translate(w / 2, h * 0.85);
     g.rotate((-4 * Math.PI) / 180);
+    g.globalAlpha = 0.85;
     centerText(g, 'CONFIDENTIAL', 0, 1, `800 24px ${DISPLAY}`, COLORS.hitler);
     const tw = g.measureText('CONFIDENTIAL').width;
     g.strokeStyle = COLORS.hitler;
     g.lineWidth = 3;
     g.strokeRect(-tw / 2 - 12, -20, tw + 24, 40);
     g.restore();
-    grain(g, w, h, 16, 12);
+    age(g, w, h, 12);
   });
 }
 
@@ -481,8 +533,8 @@ export function placardTexture(title: string, color: string) {
   return tex(`placard-${title}`, 512, 128, (g, w, h) => {
     g.fillStyle = COLORS.ink;
     g.fillRect(0, 0, w, h);
-    frame(g, w, h, color, 8, 3);
-    frame(g, w, h, color, 14, 1);
+    frame(g, w, h, COLORS.brass, 8, 3);
+    frame(g, w, h, COLORS.brass, 14, 1);
     centerText(g, title, w / 2, h / 2 + 2, `800 56px ${DISPLAY}`, color);
   });
 }
@@ -491,8 +543,8 @@ export function labelTexture(text: string, color: string, bg = '#1c130c') {
   return tex(`label-${text}-${color}-${bg}`, 256, 128, (g, w, h) => {
     g.fillStyle = bg;
     g.fillRect(0, 0, w, h);
-    frame(g, w, h, color, 6, 3);
-    frame(g, w, h, color, 12, 1);
+    frame(g, w, h, COLORS.brass, 6, 3);
+    frame(g, w, h, COLORS.brass, 12, 1);
     const size = text.length > 8 ? 30 : 44;
     centerText(g, text, w / 2, h / 2 + 2, `800 ${size}px ${DISPLAY}`, color);
   });
