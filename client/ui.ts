@@ -5,7 +5,7 @@ import type { GameView } from '../shared/view';
 import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
 import { isMuted, setMuted } from './audio';
 import { ENACT_BANNER_MS, enactBanner } from './enact';
-import { REASONS } from './victory';
+import { REASONS, VICTORY_MS, victoryParticles, type VictoryBanner } from './victory';
 
 export { enactBanner };
 
@@ -34,6 +34,8 @@ export class UI {
   private copyTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private errorTimer: ReturnType<typeof setTimeout> | undefined;
   private enactTimer: ReturnType<typeof setTimeout> | undefined;
+  private victoryTimers: ReturnType<typeof setTimeout>[] = [];
+  private victoryDone: (() => void) | null = null;
   private rosterKey = '';
   private markers = new Map<string, { key: string; label: string; w: number; h: number }>();
   /** Set by the game: a roster row was clicked, turn the camera to that seat. */
@@ -130,6 +132,14 @@ export class UI {
     $('copy-code').onclick = () => this.copy(this.room?.code ?? '', 'copy-code', 'copied');
     $('copy-invite').onclick = () => this.copy(UI.inviteLink(this.room?.code ?? ''), 'copy-invite', 'Link copied!');
     $('invite-link').onclick = () => $<HTMLInputElement>('invite-link').select();
+
+    $('victory').onclick = () => this.finishVictory();
+    window.addEventListener('keydown', (e) => {
+      if (this.victoryDone && (e.key === 'Escape' || e.key === ' ')) {
+        e.preventDefault();
+        this.finishVictory();
+      }
+    });
 
     const input = $<HTMLInputElement>('chat-input');
     window.addEventListener('keydown', (e) => {
@@ -543,6 +553,53 @@ export class UI {
     void el.offsetWidth;
     el.classList.add('on');
     this.enactTimer = setTimeout(() => el.classList.add('hidden'), ENACT_BANNER_MS);
+  }
+
+  /** Full-screen win ceremony; onDone fires once after VICTORY_MS or when skipped, never after cancelVictory(). */
+  victory(b: VictoryBanner, onDone: () => void) {
+    this.cancelVictory();
+    const el = $('victory');
+    $('victory-title').textContent = b.title;
+    $('victory-reason').textContent = b.reason;
+    const stamp = $('victory-stamp');
+    stamp.textContent = b.stamp;
+    stamp.className = b.stamp === 'VICTORY' ? 'victory' : b.stamp === 'DEFEAT' ? 'defeat' : '';
+    $('victory-particles').replaceChildren(
+      ...victoryParticles(b.cls, 48, Date.now() & 0xffff).map((p) => {
+        const s = document.createElement('span');
+        s.className = 'vp';
+        s.style.setProperty('--x', `${p.x}%`);
+        s.style.setProperty('--d', `${p.delay}s`);
+        s.style.setProperty('--t', `${p.dur}s`);
+        s.style.setProperty('--s', `${p.size}px`);
+        s.style.setProperty('--dx', `${p.drift}vw`);
+        s.style.setProperty('--h', `${p.hue}`);
+        return s;
+      }),
+    );
+    el.classList.remove('hidden', 'liberal', 'fascist', 'out');
+    el.classList.add(b.cls);
+    void el.offsetWidth;
+    this.victoryDone = onDone;
+    this.victoryTimers = [
+      setTimeout(() => el.classList.add('out'), VICTORY_MS - 600),
+      setTimeout(() => this.finishVictory(), VICTORY_MS),
+    ];
+  }
+
+  private finishVictory() {
+    const done = this.victoryDone;
+    this.cancelVictory();
+    done?.();
+  }
+
+  /** Hide the win ceremony without calling its onDone. */
+  cancelVictory() {
+    this.victoryTimers.forEach(clearTimeout);
+    this.victoryTimers = [];
+    this.victoryDone = null;
+    $('victory').classList.add('hidden');
+    $('victory-particles').replaceChildren();
   }
 
   addChat(name: string, text: string, self: boolean) {
