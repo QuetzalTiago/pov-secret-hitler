@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Room, type Conn } from '../server/room';
 import { config } from '../server/config';
-import { THINK_SECONDS, botThinkMs, settleMs } from '../server/pacing';
+import { THINK_SECONDS, SETTLE_SECONDS, botTempo, botThinkMs, choiceFactor, settleMs } from '../server/pacing';
 import { legalActions, pendingActors } from '../shared/engine';
 import { PHASES, type GameEvent } from '../shared/types';
 import type { ServerMsg } from '../shared/protocol';
+
+const TEMPO_MIN = 0.75;
+const TEMPO_MAX = 1.35;
+const CHOICE_MIN = 0.6;
 
 const original = { timerScale: config.timerScale, botDelayMs: config.botDelayMs };
 
@@ -56,8 +60,8 @@ describe('per-seat bot plans', () => {
     const plans = plansOf(room);
     expect([...plans.keys()].sort()).toEqual([1, 2, 3, 4]);
     for (const p of plans.values()) {
-      expect(p.readyAt).toBeGreaterThanOrEqual(before + 5000 * u - 5);
-      expect(p.readyAt).toBeLessThanOrEqual(Date.now() + 11000 * u);
+      expect(p.readyAt).toBeGreaterThanOrEqual(before + (SETTLE_SECONDS.other + THINK_SECONDS.night[0] * TEMPO_MIN) * 1000 * u - 5);
+      expect(p.readyAt).toBeLessThanOrEqual(Date.now() + (SETTLE_SECONDS.other + THINK_SECONDS.night[1] * TEMPO_MAX) * 1000 * u);
       expect(p.timer).not.toBeNull();
     }
     room.close();
@@ -94,8 +98,8 @@ describe('per-seat bot plans', () => {
       expect(voteOpened).toBeGreaterThan(0);
       const u = config.botDelayMs / 1400;
       for (const r of readyAts) {
-        expect(r).toBeGreaterThanOrEqual(voteOpened - 50 + 3000 * u);
-        expect(r).toBeLessThanOrEqual(voteOpened + 50 + 9000 * u);
+        expect(r).toBeGreaterThanOrEqual(voteOpened - 50 + THINK_SECONDS.vote[0] * TEMPO_MIN * 1000 * u);
+        expect(r).toBeLessThanOrEqual(voteOpened + 50 + THINK_SECONDS.vote[1] * TEMPO_MAX * 1000 * u);
       }
       expect(new Set(readyAts).size).toBeGreaterThan(1);
       // The human votes now; the phase then ends when the slowest bot's own timer fires (not after the sum of all delays).
@@ -134,11 +138,12 @@ describe('per-seat bot plans', () => {
         await new Promise((r) => setTimeout(r, 1));
       }
       expect(opened).toBeGreaterThan(0);
-      expect(readyAt).toBeGreaterThanOrEqual(opened - 10 + (4500 + THINK_SECONDS.legPresident[0] * 1000) * u);
+      const minWait = (SETTLE_SECONDS.votes + THINK_SECONDS.legPresident[0] * TEMPO_MIN * CHOICE_MIN) * 1000 * u;
+      expect(readyAt).toBeGreaterThanOrEqual(opened - 10 + minWait);
       const t1 = Date.now();
       while (room.game!.phase === 'legPresident' && Date.now() - t1 < 5000) await new Promise((r) => setTimeout(r, 1));
       expect(room.game!.phase).not.toBe('legPresident');
-      expect(Date.now() - opened).toBeGreaterThanOrEqual((4500 + THINK_SECONDS.legPresident[0] * 1000) * u - 15);
+      expect(Date.now() - opened).toBeGreaterThanOrEqual(minWait - 15);
     } finally {
       room.close();
     }
@@ -152,10 +157,62 @@ describe('settleMs', () => {
     expect(settleMs([votes], 1400)).toBe(4500);
     expect(settleMs([{ k: 'nominated', president: 0, target: 1 }], 1400)).toBe(2500);
     expect(settleMs([{ k: 'executed', by: 0, target: 1 }], 1400)).toBe(3000);
-    expect(settleMs([enacted], 1400)).toBe(1500);
+    expect(settleMs([enacted], 1400)).toBe(4000);
     expect(settleMs([{ k: 'nightStart' }], 1400)).toBe(1000);
     expect(settleMs([enacted, votes], 1400)).toBe(4500);
+    expect(settleMs([enacted, { k: 'nightStart' }], 1400)).toBe(4000);
     expect(settleMs([], 1400)).toBe(0);
     expect(settleMs([votes], 700)).toBe(2250);
+  });
+});
+
+describe('botTempo', () => {
+  it('stays within range, is deterministic and differs across names', () => {
+    const names = Array.from({ length: 500 }, (_, i) => `Bot ${i}`);
+    for (const n of names) {
+      const t = botTempo(n);
+      expect(t).toBeGreaterThanOrEqual(TEMPO_MIN);
+      expect(t).toBeLessThanOrEqual(TEMPO_MAX);
+      expect(botTempo(n)).toBe(t);
+    }
+    expect(new Set(['Ada', 'Bruno', 'Chen', 'Dara', 'Eli'].map(botTempo)).size).toBeGreaterThanOrEqual(3);
+    expect(new Set(names.map(botTempo)).size).toBeGreaterThan(100);
+  });
+});
+
+describe('choiceFactor', () => {
+  it('speeds up only hands with no real choice', () => {
+    expect(choiceFactor(['L', 'L', 'L'])).toBe(0.6);
+    expect(choiceFactor(['F', 'F'])).toBe(0.6);
+    expect(choiceFactor(['L', 'F', 'F'])).toBe(1);
+    expect(choiceFactor([])).toBe(1);
+    expect(choiceFactor(undefined)).toBe(1);
+    expect(choiceFactor(null)).toBe(1);
+  });
+});
+
+describe('bot plans after an enactment', () => {
+  afterEach(() => {
+    config.timerScale = original.timerScale;
+    config.botDelayMs = original.botDelayMs;
+  });
+
+  it('wait out the enacted ceremony before thinking', () => {
+    config.timerScale = 1e4; // keep the deadline cap out of the way
+    config.botDelayMs = 1_000_000;
+    const { room } = startGame();
+    try {
+      const u = config.botDelayMs / 1400;
+      const r = room as unknown as { schedule(settle?: number): void; game: { phase: keyof typeof THINK_SECONDS } };
+      plansOf(room).clear();
+      const now = Date.now();
+      r.schedule(settleMs([{ k: 'enacted', policy: 'L', chaos: false }]));
+      expect(plansOf(room).size).toBeGreaterThan(0);
+      const choice = r.game.phase === 'legPresident' || r.game.phase === 'legChancellor' ? CHOICE_MIN : 1;
+      const floor = now + SETTLE_SECONDS.enacted * 1000 * u + THINK_SECONDS[r.game.phase][0] * 1000 * u * TEMPO_MIN * choice - 5;
+      for (const p of plansOf(room).values()) expect(p.readyAt).toBeGreaterThanOrEqual(floor);
+    } finally {
+      room.close();
+    }
   });
 });
