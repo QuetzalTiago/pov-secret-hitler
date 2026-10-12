@@ -311,13 +311,13 @@ export class World {
       }
       this.mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
       if (real) this.cancelGlance();
-      if (this.freezeLook || this.glanceUntil > 0) return;
+      if (this.freezeLook || this.stillView || this.glanceUntil > 0) return;
       this.targetYaw = -this.mouse.x * FOLLOW_YAW;
       this.targetPitch = this.mouse.y * FOLLOW_PITCH;
     });
     window.addEventListener('keydown', (e) => {
       const k = this.lookKey(e);
-      if (!k || this.freezeLook) return;
+      if (!k || this.freezeLook || this.stillView) return;
       if (k.startsWith('Arrow')) e.preventDefault();
       this.keys.add(k);
       this.cancelGlance();
@@ -349,7 +349,7 @@ export class World {
 
   /** Briefly turns the view toward `p`, then back; any mouse movement or look key cancels it. */
   glanceAt(p: THREE.Vector3, secs = 2.2) {
-    if (this.freezeLook) return;
+    if (this.freezeLook || this.stillView) return;
     if (this.glanceUntil <= 0) this.glancePrev = { yaw: this.targetYaw, pitch: this.targetPitch };
     const a = lookAngles(this.camera.position, p);
     this.targetYaw = a.yaw;
@@ -369,6 +369,8 @@ export class World {
   onLockChange: (locked: boolean) => void = () => {};
   /** Holds the view completely still (no cursor follow, look keys, glances or head bob) while a card is picked. */
   freezeLook = false;
+  /** Holds the view at rest, centred (no cursor follow, look keys or glances), on the home screen and in the lobby. */
+  stillView = true;
 
   requestLock() {
     if (!this.lockAllowed || this.locked) return;
@@ -386,7 +388,7 @@ export class World {
 
   /** True while the view turns toward a free cursor, so where an object appears depends on where the cursor is. */
   get followsCursor(): boolean {
-    return !this.locked && !this.freezeLook;
+    return !this.locked && !this.freezeLook && !this.stillView;
   }
 
   private probeCam = new THREE.PerspectiveCamera();
@@ -931,12 +933,17 @@ export class World {
       this.targetYaw = this.yaw;
       this.targetPitch = this.pitch;
     }
+    if (this.stillView) {
+      this.glanceUntil = 0;
+      this.targetYaw = 0;
+      this.targetPitch = 0;
+    }
     if (this.glanceUntil > 0 && t >= this.glanceUntil) {
       this.glanceUntil = 0;
       this.targetYaw = this.glancePrev.yaw;
       this.targetPitch = this.glancePrev.pitch;
     }
-    const frozen = this.freezeLook;
+    const frozen = this.freezeLook || this.stillView;
     const h = frozen ? 0 : (+this.keys.has('a') || +this.keys.has('ArrowLeft')) - (+this.keys.has('d') || +this.keys.has('ArrowRight'));
     const v = frozen ? 0 : (+this.keys.has('w') || +this.keys.has('ArrowUp')) - (+this.keys.has('s') || +this.keys.has('ArrowDown'));
     if (h) this.targetYaw = clampLook(this.targetYaw + h * KEY_LOOK * dt, -YAW_LIMIT, YAW_LIMIT);

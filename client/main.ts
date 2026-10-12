@@ -112,6 +112,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'room':
       if (leaving) break;
       room = m.room;
+      world.stillView = m.room.stage !== 'game';
       ui.showRoom(m.room);
       game.onRoom(m.room);
       interactor.setLockable(m.room.stage === 'game' && m.room.game?.phase !== 'gameOver');
@@ -155,6 +156,7 @@ void Promise.race([loadAssets(), new Promise<null>((r) => setTimeout(r, 10_000))
 const showHome = ui.showHome.bind(ui);
 ui.showHome = () => {
   interactor.setLockable(false);
+  world.stillView = true;
   showHome();
 };
 
