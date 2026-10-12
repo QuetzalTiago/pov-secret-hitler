@@ -619,7 +619,7 @@ describe('Rioplatense card wording', () => {
     m.governments.push({ round: 1, president: 0, chancellor: 3, result: 'F' });
     m.passed.push({ round: 1, to: 3, gave: ['L', 'F'], drew: ['L', 'F', 'F'] });
     const s = setup(5, { president: 1, roles: roles(5, 4, [3]) });
-    const plan = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 0), m, (x) => `P${x}`, () => 0.5);
+    const plan = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 0), m, (x) => `P${x}`, () => 0);
     if (plan?.kind !== 'choice') throw new Error('expected a choice');
     // What players read is Rioplatense; what Jev reads stays English.
     expect(plan.options.truth.line).toBe('me tocaron 1 liberal y 2 fachas y pasé una liberal y una facha.');

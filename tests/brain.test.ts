@@ -244,7 +244,7 @@ describe('Fascist card claims', () => {
     m.governments.push({ round: 1, president: 0, chancellor: 3, result: 'F' });
     m.passed.push({ round: 1, to: 3, gave, drew });
     const s = setup(5, { president: 1, roles: roles(5, 4, [0, 3]) });
-    const plan = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 0), m, name, () => 0.5)!;
+    const plan = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 0), m, name, () => 0)!;
     if (plan.kind !== 'choice') throw new Error('expected a choice');
     return { plan, heuristicTalk };
   };
@@ -254,7 +254,7 @@ describe('Fascist card claims', () => {
     m.governments.push({ round: 1, president: 0, chancellor: 3, result: 'F' });
     m.received.push({ round: 1, from: 0, got });
     const s = setup(5, { president: 1, roles: roles(5, 4, [0, 3]) });
-    const plan = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 3), m, name, () => 0.5)!;
+    const plan = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 3), m, name, () => 0)!;
     if (plan.kind !== 'choice') throw new Error('expected a choice');
     return { plan, heuristicTalk };
   };
@@ -311,7 +311,7 @@ describe('table talk', () => {
     m.governments.push({ round: 1, president: 0, chancellor: 3, result: 'F' });
     m.passed.push({ round: 1, to: 3, gave: ['L', 'F'], drew: ['L', 'F', 'F'] });
     const s = setup(5, { president: 1, roles: roles(5, 4, [3]) });
-    const plan = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 0), m, name, () => 0.5)!;
+    const plan = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 0), m, name, () => 0)!;
     expect(plan.kind).toBe('choice');
     if (plan.kind !== 'choice') return;
     expect(Object.keys(plan.options).sort()).toEqual(['blame_partner', 'silent', 'three_fascists', 'truth']);
@@ -319,7 +319,7 @@ describe('table talk', () => {
     expect(plan.options.blame_partner.line).toBe('I passed P3 a Liberal. They chose Fascist. Remember that.');
     // The same plan at a Rioplatense table: the player-facing line changes, the strategy does not.
     config.llm.lang = 'es-AR';
-    const es = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 0), m, name, () => 0.5)!;
+    const es = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 0), m, name, () => 0)!;
     if (es.kind !== 'choice') throw new Error('expected a choice');
     expect(es.options.blame_partner.line).toBe('a P3 le pasé una liberal y eligió la facha. Acordate de esto.');
     expect(es.options.blame_partner.description).toBe(plan.options.blame_partner.description);

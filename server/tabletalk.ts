@@ -4,6 +4,7 @@ import type { ServerMsg } from '../shared/protocol';
 import type { GameEvent, GameState } from '../shared/types';
 import { profiles, type Memory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
+import { LinePicker } from './botlines';
 import { heuristicTalk, mustTalk, planTalk, talkReads, type TalkPlan } from './botchat';
 import {
   cool, newMood, offend, readMessage, relation, warmTo,
@@ -38,6 +39,8 @@ export interface TalkHost {
 export class TableTalk {
   constructor(private host: TalkHost) {}
 
+  /** One per room, kept across games, so offline lines don't repeat until a pool is used up. */
+  private lines = new LinePicker();
   private lastBotChat = new Map<number, number>();
   /** What the table has said recently. Bots read it so their replies follow the conversation. */
   private transcript: ChatLine[] = [];
@@ -178,7 +181,8 @@ export class TableTalk {
       if (!s.bot || (!g.players[seat]?.alive && g.phase !== 'gameOver')) return;
       const now = Date.now();
       const view = viewFor(g, seat);
-      const planFor = (e: GameEvent) => planTalk(e, view, this.host.memories()[seat], (x) => this.host.seatName(x), Math.random, this.host.lang());
+      const planFor = (e: GameEvent) =>
+        planTalk(e, view, this.host.memories()[seat], (x) => this.host.seatName(x), Math.random, this.host.lang(), this.lines);
       // A must plan (an investigation result) ignores the throttle and the cap, and does not count toward the cap.
       const mustEvent = events.find((e) => mustTalk(e, seat));
       let plan = mustEvent ? planFor(mustEvent) : null;

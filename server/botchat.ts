@@ -1,6 +1,7 @@
 // Table talk for bots. On strategic moments (claims about cards, investigation results, accusations) the bot
-// asks Jev WHAT to say: tell the truth, lie, accuse, or keep quiet. The wording comes from templates.
-// Small talk stays template-only. Everything is built from the bot's own view and memory.
+// asks Jev WHAT to say: tell the truth, lie, accuse, or keep quiet. The wording comes from the role-neutral
+// pools in botlines.ts, drawn with a per-room no-repeat picker. Small talk stays template-only. Everything is
+// built from the bot's own view and memory.
 //
 // Two audiences for the strings here. `description` and `instructions` are read by Jev and stay in English.
 // `line` is read by players, so it follows the table's language (Room.lang, from the host's client language;
@@ -13,11 +14,7 @@ import { profiles, type Memory } from '../shared/tracker';
 import type { GameEvent, Policy } from '../shared/types';
 import type { GameView } from '../shared/view';
 import { config, type BotLang } from './config';
-
-const pick = <T>(xs: T[], rand: Rand) => xs[Math.floor(rand() * xs.length)];
-
-/** Picks the player-facing wording for a table language. */
-const sayIn = (lang: BotLang) => (es: string, en: string) => (lang === 'es-AR' ? es : en);
+import { poolLine, type LinePicker, type POOLS } from './botlines';
 
 /** Card wording for a table language. */
 function cardsIn(lang: BotLang) {
@@ -88,8 +85,10 @@ function honesty(fasc: boolean): string {
     : 'You are a Liberal. Liberals win by sharing accurate information, so tell the truth; accuse only when you have real evidence.';
 }
 
-export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number) => string, rand: Rand, lang: BotLang = config.llm.lang): TalkPlan | null {
-  const say = sayIn(lang);
+export function planTalk(
+  e: GameEvent, v: GameView, m: Memory, name: (s: number) => string, rand: Rand, lang: BotLang = config.llm.lang, picker?: LinePicker,
+): TalkPlan | null {
+  const say = (key: keyof typeof POOLS, vars: Record<string, string> = {}) => poolLine(key, lang, vars, rand, picker);
   const cards = cardsIn(lang);
   const me = v.you!;
   const fasc = v.yourRole !== 'liberal';
@@ -107,10 +106,7 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
     case 'enacted': {
       if (e.chaos) {
         const sit = `Three elections failed in a row, so the top card was enacted automatically: a ${e.policy === 'L' ? 'Liberal' : 'Fascist'} policy. Nobody is to blame for it.`;
-        const lines = say('es', 'en') === 'es'
-          ? ['caos, joya.', 'bueno, esto pasa cuando no nos ponemos de acuerdo.']
-          : ['Chaos. Great.', "Well, that's what happens when we can't agree."];
-        return rand() < 0.2 ? line(sit, pick(lines, rand)) : null;
+        return rand() < 0.2 ? line(sit, say('chaos')) : null;
       }
       const g = m.governments.at(-1);
       if (!g || g.result !== e.policy) return null;
@@ -127,9 +123,7 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
         const options: Record<string, TalkOption> = {};
         if (!hide) {
           options.truth = {
-            line: p.drew
-              ? say(`me tocaron ${cards(p.drew)} y pasé ${cards(p.gave)}.`, `I drew ${cards(p.drew)} and passed ${cards(p.gave)}.`)
-              : say(`pasé ${cards(p.gave)}.`, `I passed ${cards(p.gave)}.`),
+            line: p.drew ? say('presDrew', { drew: cards(p.drew), gave: cards(p.gave) }) : say('presPassed', { gave: cards(p.gave) }),
             description: 'Tell the truth about the cards you drew and passed',
             score: fasc ? 0.5 : 2,
           };
@@ -137,7 +131,7 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
           // Claim the passed cards plus one Fascist that was "discarded".
           const claimed: Policy[] = [...p.gave, 'F'];
           options.cover = {
-            line: say(`me tocaron ${cards(claimed)} y pasé ${cards(p.gave)}.`, `I drew ${cards(claimed)} and passed ${cards(p.gave)}.`),
+            line: say('presDrew', { drew: cards(claimed), gave: cards(p.gave) }),
             description: `Claim you drew ${cardsEn(claimed)} and passed ${cardsEn(p.gave)} (hides that you discarded a Liberal)`,
             score: 2,
           };
@@ -145,14 +139,12 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
         options.silent = { line: null, description: 'Say nothing', score: 0.3 };
         if (e.policy === 'F') {
           options.three_fascists = {
-            line: pick(say('es', 'en') === 'es'
-              ? ['me tocaron tres fachas, no podía hacer nada.', `eran las tres fachas, te lo juro. ${partner} lo puede confirmar.`]
-              : ['I drew three Fascists. Nothing I could do.', `All Fascist cards, I swear. ${partner} can confirm.`], rand),
+            line: say('threeFascists', { partner }),
             description: 'Claim you drew three Fascist policies, so nothing could be done',
             score: fasc ? 2 : p.drew?.every((c) => c === 'F') ? 2.5 : -2,
           };
           options.blame_partner = {
-            line: say(`a ${partner} le pasé una liberal y eligió la facha. Acordate de esto.`, `I passed ${partner} a Liberal. They chose Fascist. Remember that.`),
+            line: say('presBlame', { partner }),
             description: `Claim you gave ${partner} a Liberal policy and they chose Fascist anyway (accuses them)`,
             score: !fasc && p.gave.includes('L') ? 3 : fasc && !teammate ? 1.5 : -2,
           };
@@ -168,12 +160,10 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
         const hide = fasc && r.got.includes('L') && e.policy === 'F';
         const options: Record<string, TalkOption> = {};
         if (!hide) {
-          options.truth = { line: say(`me llegaron ${cards(r.got)}.`, `I got ${cards(r.got)}.`), description: 'Tell the truth about the two cards you received', score: fasc ? 0.5 : 2 };
+          options.truth = { line: say('chanGot', { got: cards(r.got) }), description: 'Tell the truth about the two cards you received', score: fasc ? 0.5 : 2 };
         } else {
           options.two_fascists = {
-            line: pick(say('es', 'en') === 'es'
-              ? ['me llegaron dos fachas, no podía hacer nada.', 'dos fachas. ¿Qué querían que haga?']
-              : ['I got two Fascists. Nothing I could do.', 'Two Fascists. What was I supposed to do?'], rand),
+            line: say('twoFascists'),
             description: 'Claim you received two Fascist policies, so you had no choice (does not accuse the President)',
             score: teammate ? 2.5 : 1.5,
           };
@@ -181,9 +171,7 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
         options.silent = { line: null, description: 'Say nothing', score: 0.4 };
         if (e.policy === 'F') {
           options.blame_partner = {
-            line: pick(say('es', 'en') === 'es'
-              ? [`${partner} me pasó dos fachas.`, `dos fachas. No me miren a mí, pregúntenle a ${partner}.`]
-              : [`${partner} gave me two Fascists.`, `Two Fascists. Don't look at me, ask ${partner}.`], rand),
+            line: say('chanBlame', { partner }),
             description: `Claim President ${partner} handed you two Fascist policies (shifts blame to them)`,
             score: !fasc && r.got.every((c) => c === 'F') ? 3 : fasc && !teammate ? 2 : -2,
           };
@@ -199,8 +187,8 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
       const t = name(e.target);
       const teammate = role(e.target) && role(e.target) !== 'liberal';
       return { ...choice(`You investigated ${t}${teammate ? ' (your teammate)' : ''}. Their party card says ${truth.toUpperCase()}. You must announce a result.`, {
-        liberal: { line: say(`${t} es liberal.`, `${t} is a Liberal.`), description: `Announce that ${t} is a Liberal`, score: truth === 'liberal' ? (fasc ? 0.5 : 3) : fasc ? 3 : -3 },
-        fascist: { line: say(`${t} es FACHO.`, `${t} is a FASCIST.`), description: `Announce that ${t} is a Fascist`, score: truth === 'fascist' ? (fasc ? -3 : 3) : fasc ? 1.2 : -3 },
+        liberal: { line: say('invLiberal', { target: t }), description: `Announce that ${t} is a Liberal`, score: truth === 'liberal' ? (fasc ? 0.5 : 3) : fasc ? 3 : -3 },
+        fascist: { line: say('invFascist', { target: t }), description: `Announce that ${t} is a Fascist`, score: truth === 'fascist' ? (fasc ? -3 : 3) : fasc ? 1.2 : -3 },
       }), must: true };
     }
     case 'votes': {
@@ -222,7 +210,7 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
               `If ${pres} is a Fascist they can hand you two Fascist policies, leaving you no choice and no way to prove it was not you.`,
             {
               warn: {
-                line: say(`che, ¿${pres} me va a hacer la cama o qué?`, `Is ${pres} setting me up here or what?`),
+                line: say('warnSelf', { pres }),
                 description: `Say out loud, before you get the cards, that ${pres} may be setting you up to take the blame`,
                 score: presSus - 0.3,
               },
@@ -237,7 +225,7 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
               `policies and leave ${nom} carrying the blame for them.`,
             {
               warn: {
-                line: say(`ojo ${nom}, te van a hacer la cama.`, `Careful ${nom}, they are setting you up.`),
+                line: say('warnOther', { nom }),
                 description: `Warn ${nom} out loud that ${pres} may be setting them up to take the blame`,
                 score: presSus - 0.8,
               },
@@ -249,44 +237,34 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
       if (el.votes[me] !== false || rand() > 0.5) return null;
       return choice(`You voted NEIN on President ${pres} with Chancellor ${nom}. The government ${el.passed ? 'passed anyway' : 'was rejected'}.`, {
         accuse_chancellor: {
-          line: pick(say('es', 'en') === 'es'
-            ? [`ni en pedo confío en ${nom}.`, `¿${nom}? ¿con ese historial? nein.`]
-            : [`No way I'm trusting ${nom}.`, `${nom}? After that record? Nein.`], rand),
+          line: say('accuseChancellor', { nom }),
           description: `Explain you don't trust Chancellor ${nom}`,
           score: nomSus - 1,
         },
-        accuse_president: { line: say(`no me cierran las elecciones de ${pres}.`, `I don't trust ${pres}'s picks.`), description: `Explain you don't trust President ${pres}`, score: presSus - 1.2 },
+        accuse_president: { line: say('accusePresident', { pres }), description: `Explain you don't trust President ${pres}`, score: presSus - 1.2 },
         silent: { line: null, description: 'Say nothing', score: 0.5 },
       });
     }
     // Small talk: fixed lines, no Jev call.
     case 'nominated':
       if (e.target === me && rand() < 0.35) {
-        const lines = say('es', 'en') === 'es'
-          ? (fasc ? ['confíen en mí.', 'no se van a arrepentir.'] : ['no los voy a defraudar.', 'al fin alguien con criterio.'])
-          : (fasc ? ['Trust me.', "You won't regret it."] : ["I won't let you down.", 'Finally, some sense.']);
-        return line(`President ${name(e.president)} just nominated YOU as Chancellor. The table is about to vote on you.`, pick(lines, rand));
+        return line(`President ${name(e.president)} just nominated YOU as Chancellor. The table is about to vote on you.`, say('nominated'));
       }
       return null;
     case 'executed':
       return e.by === me
         ? line(`You just shot ${name(e.target)} dead in front of everyone. They are out of the game.`,
-            pick(say('es', 'en') === 'es'
-              ? [`perdón, ${name(e.target)}.`, 'había que hacerlo.']
-              : [`Sorry, ${name(e.target)}.`, 'It had to be done.'], rand))
+            say('executed', { target: name(e.target) }))
         : null;
     case 'vetoProposed':
       return e.seat === me
         ? line('You are Chancellor and you just proposed a veto, which means asking the President to bin both policies.',
-            say('las dos son fachas. quiero vetar.', 'Both Fascist. I want to veto.'))
+            say('veto'))
         : null;
     case 'gameOver': {
       const won = (e.winner === 'liberal') === !fasc;
       const sit = `The game is over: the ${e.winner === 'liberal' ? 'Liberals' : 'Fascists'} won. ${won ? 'Your team won.' : 'You lost.'} Everyone's role is now public.`;
-      const lines = say('es', 'en') === 'es'
-        ? (won ? ['gg!', 'te lo dije.'] : ['bien jugado.', 'la próxima.'])
-        : (won ? ['GG!', 'Told you.'] : ['Well played.', 'Next time.']);
-      return rand() < 0.4 ? line(sit, pick(lines, rand)) : null;
+      return rand() < 0.4 ? line(sit, say(won ? 'won' : 'lost')) : null;
     }
     default:
       return null;
