@@ -21,6 +21,7 @@ It rewrites every file below (deterministic) and prints each one with its size a
 | Files | Size |
 |---|---|
 | `policy-L`, `policy-F`, `policy-back`, `ballot-ja`, `ballot-nein`, `ballot-back`, `role-liberal`, `role-fascist`, `role-hitler`, `role-back`, `member-liberal`, `member-fascist`, `member-back` (all `.webp`) | 512x720 |
+| `seal-liberal`, `seal-fascist` | 256x256, the membership card's seal, circle-masked with transparent corners |
 | `placard-president`, `placard-chancellor` | 1024 px wide, transparent outside the outline, rotated upright (the PDF prints them upside down) |
 | `board-liberal`, `board-fascist-56`, `board-fascist-78`, `board-fascist-910` | about 2000 px wide, dark bleed frame and crop marks trimmed |
 | `logo` | 1024 px wide, transparent background |

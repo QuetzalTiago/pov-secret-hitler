@@ -1,8 +1,15 @@
 import { drawPortrait } from './scene/portraits';
 import { drawSeal } from './scene/seals';
 import { COLORS } from './scene/textures';
+import { artForcedOld } from './scene/officialart';
+import roleLiberalUrl from './art/role-liberal.webp?url';
+import roleFascistUrl from './art/role-fascist.webp?url';
+import roleHitlerUrl from './art/role-hitler.webp?url';
+import sealLiberalUrl from './art/seal-liberal.webp?url';
+import sealFascistUrl from './art/seal-fascist.webp?url';
 
-// HUD <img> sources drawn with the same canvas painters as the 3D cards; memoised so each is drawn once.
+// HUD <img> sources: the official art files first; with ?art=old the same canvas painters as the 3D cards,
+// memoised so each is drawn once.
 const cache = new Map<string, string>();
 
 function render(key: string, w: number, h: number, draw: (g: CanvasRenderingContext2D) => void): string {
@@ -18,11 +25,15 @@ function render(key: string, w: number, h: number, draw: (g: CanvasRenderingCont
   return url;
 }
 
+const ROLE_URLS = { liberal: roleLiberalUrl, fascist: roleFascistUrl, hitler: roleHitlerUrl };
+
 export function portraitUrl(kind: 'liberal' | 'fascist' | 'hitler', seed: number, w = 96, h = 120): string {
+  if (!artForcedOld()) return ROLE_URLS[kind];
   return render(`p:${kind}:${seed}:${w}:${h}`, w, h, (g) => drawPortrait(g, kind, seed, 0, 0, w, h));
 }
 
 export function sealUrl(party: 'L' | 'F' | null, size = 64): string {
+  if (party && !artForcedOld()) return party === 'L' ? sealLiberalUrl : sealFascistUrl;
   const field = party === 'L' ? COLORS.liberalDeep : party === 'F' ? COLORS.fascistDeep : COLORS.ink;
   return render(`s:${party}:${size}`, size, size, (g) => drawSeal(g, party, size / 2, size / 2, size / 2 - 2, field));
 }

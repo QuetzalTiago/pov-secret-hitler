@@ -45,9 +45,11 @@ describe('gameOverRow', () => {
       const imgs = li.children.filter((c) => c.tag === 'img' && c.className === 'portrait');
       expect(imgs).toHaveLength(1);
       expect(imgs[0].width).toBe(48);
-      expect(imgs[0].height).toBe(60);
-      expect(String(imgs[0].src)).toMatch(/^data:image\/png/);
+      expect(imgs[0].height).toBe(68);
+      expect(String(imgs[0].src)).not.toMatch(/^data:/);
     }
+    expect(String(rows[0].children[0].src)).toMatch(/role-liberal\.webp/);
+    expect(String(rows[1].children[0].src)).toMatch(/role-hitler\.webp/);
     expect(rows[0].children[1].text).toBe('Ann (you)');
     expect(rows[1].children[2].textContent).toBe('Hitler ✝');
   });

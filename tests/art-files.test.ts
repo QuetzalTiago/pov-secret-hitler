@@ -8,8 +8,9 @@ const CARDS = [
   'role-liberal', 'role-fascist', 'role-hitler', 'role-back', 'member-liberal', 'member-fascist', 'member-back',
 ];
 const BOARDS = ['board-liberal', 'board-fascist-56', 'board-fascist-78', 'board-fascist-910'];
+const SEALS = ['seal-liberal', 'seal-fascist'];
 const OTHERS = ['placard-president', 'placard-chancellor', 'logo'];
-const ALL = [...CARDS, ...BOARDS, ...OTHERS];
+const ALL = [...CARDS, ...SEALS, ...BOARDS, ...OTHERS];
 const BUDGET = 2.5 * 1024 * 1024;
 
 const read = (name: string) => fs.readFileSync(path.join(ART, `${name}.webp`));
@@ -28,7 +29,7 @@ function webpSize(buf: Buffer): { width: number; height: number } {
 
 describe('official art files', () => {
   it('has every expected webp with a RIFF/WEBP header', () => {
-    expect(ALL).toHaveLength(20);
+    expect(ALL).toHaveLength(22);
     for (const name of ALL) {
       const buf = read(name);
       expect(buf.length, name).toBeGreaterThan(0);
@@ -39,6 +40,10 @@ describe('official art files', () => {
 
   it('cards are 512x720', () => {
     for (const name of CARDS) expect(webpSize(read(name)), name).toEqual({ width: 512, height: 720 });
+  });
+
+  it('seals are 256x256', () => {
+    for (const name of SEALS) expect(webpSize(read(name)), name).toEqual({ width: 256, height: 256 });
   });
 
   it('boards are at most 2048 px wide', () => {

@@ -43,14 +43,14 @@ export function seriesLine(series: Series, names: string[]): string {
 
 const POWER_GLYPHS: Record<Power, string> = { peek: '👁', investigate: '🔍', special: '★', execute: '✕' };
 
-/** One game-over roster row: portrait (same seed as the 3D role card), name, role tag. */
+/** One game-over roster row: official role card thumbnail, name, role tag. */
 export function gameOverRow(p: PlayerView, you: number): HTMLLIElement {
   const li = document.createElement('li');
   const img = document.createElement('img');
   img.className = 'portrait';
   img.alt = '';
   img.width = 48;
-  img.height = 60;
+  img.height = 68;
   img.src = portraitUrl(p.role === 'hitler' ? 'hitler' : p.role === 'fascist' ? 'fascist' : 'liberal', p.seat);
   li.appendChild(img);
   li.appendChild(document.createTextNode(`${p.name}${p.seat === you ? ' (you)' : ''}`));

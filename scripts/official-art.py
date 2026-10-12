@@ -22,6 +22,8 @@ Outputs (page numbers are 0-based PDF page indexes):
 | member-liberal      | 10   | embedded raster, cropped to the cut rect, 512x720                    |
 | member-fascist      | 10   | render the row 2, column 2 cut rect, 512x720                         |
 | member-back         | 11   | render first cut rect, 512x720                                       |
+| seal-liberal        | 10   | member-liberal's seal, squared, circle-masked, 256x256               |
+| seal-fascist        | 10   | member-fascist's seal, squared, circle-masked, 256x256               |
 | placard-president   | 3    | render the placard, rotated 180 degrees, <= 1024 px wide             |
 | placard-chancellor  | 3    | render the placard, rotated 180 degrees, <= 1024 px wide             |
 | board-liberal       | 12   | render the board cut rect, dark frame trimmed, <= 2048 px wide       |
@@ -133,6 +135,27 @@ def logo(page):
     return fit_width(img.crop(img.getchannel("A").getbbox()), 1024)
 
 
+def seal(card):
+    """The party seal on a membership card: squared around its bbox, circle-masked, 256x256 RGBA."""
+    w, h = card.size
+    bg = card.getpixel((10, 360))
+    top, bottom = round(0.22 * h), round(0.85 * h)
+    band = card.crop((0, top, w, bottom))
+    gap = ImageChops.difference(band, Image.new("RGB", band.size, bg)).convert("L")
+    x0, y0, x1, y1 = gap.point(lambda v: 255 if v > 40 else 0).getbbox()
+    y0, y1 = y0 + top, y1 + top
+    print(f"seal bbox {(x0, y0, x1, y1)} {x1 - x0}x{y1 - y0}")
+    assert abs((x1 - x0) - (y1 - y0)) <= 0.08 * max(x1 - x0, y1 - y0), "seal bbox is not roughly square"
+    assert 350 <= x1 - x0 <= 480 and x0 > 20 and x1 < w - 20, "seal bbox is out of range"
+    cx, cy, half = (x0 + x1) / 2, (y0 + y1) / 2, (max(x1 - x0, y1 - y0) + 4) / 2
+    img = card.crop((round(cx - half), round(cy - half), round(cx + half), round(cy + half)))
+    img = img.resize((256, 256), Image.LANCZOS).convert("RGBA")
+    mask = Image.new("L", (256, 256), 0)
+    ImageDraw.Draw(mask).ellipse((1, 1, 254, 254), fill=255)
+    img.putalpha(mask)
+    return img
+
+
 def build(doc):
     """Return {name: (image, webp quality)}."""
     out = {}
@@ -160,6 +183,8 @@ def build(doc):
     out["member-liberal"] = trim_to_rect(img, bbox, large[10][0])
     out["member-fascist"] = render_cut(p(10), large[10][6])
     out["member-back"] = render_cut(p(11), large[11][0])
+    out["seal-liberal"] = seal(out["member-liberal"])
+    out["seal-fascist"] = seal(out["member-fascist"])
 
     # Placard art is printed upside down so it reads right when folded; the 1.3 pt margin is the stroke.
     out["placard-president"] = placard(p(3), (58.6, 93.6, 536.7, 221.5))

@@ -421,7 +421,7 @@ input:disabled { opacity: 0.5; }
 #confirm-card.discard button.primary { background: var(--hitler); border-color: var(--hitler); color: var(--ink); }
 #confirm-card.enact button.primary { background: var(--ok); border-color: var(--ok); color: var(--ink); }
 #gameover-title { font-family: var(--font-block); }
-#gameover-roles img.portrait { width: 48px; height: 60px; border: 2px solid var(--ink-faint); border-radius: 2px; vertical-align: middle; margin-right: 10px; image-rendering: auto; }
+#gameover-roles img.portrait { width: 48px; height: 68px; object-fit: cover; border: 2px solid var(--ink-faint); border-radius: 4px; vertical-align: middle; margin-right: 10px; image-rendering: auto; }
 #sb-role img.seal { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; }
 #gameover-title.liberal { color: var(--lib); }
 #gameover-title.fascist { color: var(--fas); }
