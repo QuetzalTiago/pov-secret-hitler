@@ -4,7 +4,9 @@
 import * as THREE from 'three';
 import { disposeObject } from './dispose';
 import { DEATH_DUR, REACTION_DUR, SMOKE_DUR, blinkScale, deathPose, isSmoker, mouthOpen, nextBlinkDelay, nextDragDelay, reactionPose, smokePose, type DeathPose, type Reaction, type ReactionPose, type SmokePose } from './life';
-import { glowTexture, textSprite } from './textures';
+import { PatronBadges } from './badges';
+import { getAssets } from './assets';
+import { RiggedCharacter } from './rigged';
 import { glossy } from './world';
 import { handGeometry } from './hands';
 import {
@@ -34,9 +36,9 @@ import {
   uniformGeometry,
 } from './patron';
 
-const COATS = [0x6b2f2a, 0x2f4a6b, 0x4a5a2a, 0x5a3a6b, 0x7a5a2a, 0x2a5a55, 0x6b4a3a, 0x3a3a46, 0x803a50, 0x55602f];
-const SKINS = [0xe0b090, 0xb07a55, 0x8a5a3a, 0xd9a07a, 0x6b4430, 0xf0c8a8, 0xc08860, 0x9a6a48, 0xe6b898, 0x7a4e36];
-const HATS = ['fedora', 'cap', 'bowler', 'none', 'beret', 'tophat', 'none', 'fedora', 'bowler', 'cap'] as const;
+export const COATS = [0x6b2f2a, 0x2f4a6b, 0x4a5a2a, 0x5a3a6b, 0x7a5a2a, 0x2a5a55, 0x6b4a3a, 0x3a3a46, 0x803a50, 0x55602f];
+export const SKINS = [0xe0b090, 0xb07a55, 0x8a5a3a, 0xd9a07a, 0x6b4430, 0xf0c8a8, 0xc08860, 0x9a6a48, 0xe6b898, 0x7a4e36];
+export const HATS = ['fedora', 'cap', 'bowler', 'none', 'beret', 'tophat', 'none', 'fedora', 'bowler', 'cap'] as const;
 const DARK = 0x1a1410;
 
 function mat(color: number, rough = 0.75) {
@@ -88,16 +90,45 @@ interface SmokeRig {
   qFore: THREE.Quaternion;
 }
 
-export class Character {
+/** What the game uses of a patron, whether procedural or rigged. */
+export interface Patron {
+  readonly seat: number;
+  readonly group: THREE.Group;
+  readonly variant: 'normal' | 'hitler';
+  readonly smoker: boolean;
+  dead: boolean;
+  hitMeshes: THREE.Object3D[];
+  /** This patron's chair (set by the game each frame). */
+  chair: THREE.Object3D | null;
+  setLabel(text: string, color?: string): void;
+  say(text: string, now: number): void;
+  lookAt(target: THREE.Vector3 | null): void;
+  setHighlight(on: boolean): void;
+  setAim(target: THREE.Vector3 | null, mode?: 'gun' | 'point'): void;
+  gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion };
+  setHandsUp(on: boolean): void;
+  die(): void;
+  recoil(): void;
+  react(kind: Reaction, delay?: number): void;
+  setTeamGlow(on: boolean): void;
+  smokeEmit(tip: THREE.Vector3, mouth: THREE.Vector3, dir: THREE.Vector3): number;
+  update(dt: number, now: number): void;
+  dispose(): void;
+}
+
+/** The rigged glTF patron once the assets are loaded (`?chars=old` forces the procedural one), else the procedural patron. */
+export function createCharacter(seat: number, styleIndex: number, variant: 'normal' | 'hitler'): Patron {
+  const old = typeof location !== 'undefined' && new URLSearchParams(location.search).get('chars') === 'old';
+  return getAssets() && !old ? new RiggedCharacter(seat, styleIndex, variant) : new Character(seat, styleIndex, variant);
+}
+
+export class Character implements Patron {
   group = new THREE.Group();
   body = new THREE.Group();
   head = new THREE.Group();
   private mats: THREE.MeshStandardMaterial[] = [];
   private baseColors: THREE.Color[] = [];
-  private tag: THREE.Sprite;
-  private tagText = '';
-  private bubble: THREE.Sprite | null = null;
-  private bubbleUntil = 0;
+  private badges: PatronBadges;
   private phase = Math.random() * 10;
   private lookTarget: THREE.Vector3 | null = null;
   private headYaw = 0;
@@ -111,9 +142,6 @@ export class Character {
   dead = false;
   highlight = 0;
   private highlightTarget = 0;
-  private glow: THREE.Sprite;
-  private glowAmt = 0;
-  private glowTarget = 0;
   hitMeshes: THREE.Object3D[] = [];
   private eyes: THREE.Mesh[] = [];
   private mouth!: THREE.Mesh;
@@ -224,18 +252,7 @@ export class Character {
     if (this.rig) this.rig.fore.add(this.rig.ember);
     for (const m of this.mats) this.baseColors.push(m.color.clone());
 
-    this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
-    this.tag.position.y = 1.86;
-    this.tag.renderOrder = 10;
-    this.group.add(this.tag);
-
-    // Fake night team glow: sprite aura plus emissive tint, no real light (lights force shader recompiles).
-    this.glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture('255,40,20'), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
-    this.glow.position.set(0, 1.3, -0.05);
-    this.glow.scale.setScalar(1.4);
-    this.glow.renderOrder = 1;
-    this.glow.visible = false;
-    this.group.add(this.glow);
+    this.badges = new PatronBadges(this.group, { tag: 1.86, bubble: 2.0, glow: new THREE.Vector3(0, 1.3, -0.05), glowScale: 1.4 });
   }
 
   /** Left arm as upper arm + forearm-with-hand pivots (so it can lift the cigarette), matching the resting arm at reach 0. */
@@ -316,31 +333,11 @@ export class Character {
   }
 
   setLabel(text: string, color = '#F7E1C3') {
-    const key = text + color;
-    if (key === this.tagText) return;
-    this.tagText = key;
-    const old = this.tag.material.map;
-    const { texture, aspect } = textSprite(text, { color, bg: 'rgba(35,31,32,0.82)', size: 34, border: 'rgba(251,185,105,0.6)' });
-    this.tag.material.map = texture;
-    this.tag.material.needsUpdate = true;
-    this.tag.scale.set(0.16 * aspect, 0.16, 1);
-    old?.dispose();
+    this.badges.setLabel(text, color);
   }
 
   say(text: string, now: number) {
-    if (this.bubble) {
-      this.group.remove(this.bubble);
-      this.bubble.material.map?.dispose();
-      this.bubble.material.dispose();
-    }
-    const { texture, aspect } = textSprite(text, { color: '#231F20', bg: 'rgba(247,225,195,0.96)', size: 30, maxWidth: 440, border: 'rgba(35,31,32,0.85)' });
-    this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
-    const h = 0.12 * (texture.image.height / 50);
-    this.bubble.scale.set(h * aspect, h, 1);
-    this.bubble.position.y = 2.0 + h / 2;
-    this.bubble.renderOrder = 11;
-    this.group.add(this.bubble);
-    this.bubbleUntil = now + 5 + text.length * 0.04;
+    this.badges.say(text, now);
   }
 
   lookAt(target: THREE.Vector3 | null) {
@@ -531,7 +528,7 @@ export class Character {
     else if (r.dragT === null) {
       r.dragIn -= dt;
       if (r.dragIn <= 0) {
-        const talking = this.bubble !== null && this.bubbleUntil - now > 1;
+        const talking = this.badges.talking(now);
         if (!this.aimTarget && this.aimAmount < 0.05 && !this.reaction && !talking) r.dragT = 0;
         else r.dragIn = 2;
       }
@@ -580,7 +577,7 @@ export class Character {
   }
 
   setTeamGlow(on: boolean) {
-    this.glowTarget = on ? 1 : 0;
+    this.badges.setGlow(on);
   }
 
   private updateChair(dp: DeathPose) {
@@ -652,34 +649,19 @@ export class Character {
     for (const eye of this.eyes) eye.scale.y = eyeY;
 
     // Mouth flaps while the bubble is up (not while it fades out).
-    const talking = this.bubble !== null && this.bubbleUntil - now > 1 && !this.dead;
+    const talking = this.badges.talking(now) && !this.dead;
     const mouthY = talking ? 1 + 1.8 * mouthOpen(t) : 1;
     this.mouth.scale.y += (mouthY - this.mouth.scale.y) * (talking ? 0.6 : k);
 
     // Highlight / death tint.
     this.highlight += (this.highlightTarget - this.highlight) * (1 - Math.exp(-12 * dt));
-    this.glowAmt += (this.glowTarget - this.glowAmt) * k;
+    this.badges.update(dt, now, this.dead);
     const h = this.highlight;
-    const g = this.glowAmt;
+    const g = this.badges.glowAmt;
     this.mats.forEach((m, i) => {
       m.color.copy(this.baseColors[i]).multiplyScalar(1 - dk * 0.55);
       m.emissive.setRGB(h * 0.35 + g * 0.45, h * 0.25 + g * 0.05, h * 0.08 + g * 0.03);
     });
-    const glowMat = this.glow.material as THREE.SpriteMaterial;
-    glowMat.opacity = g * 0.75;
-    this.glow.visible = glowMat.opacity > 0.01;
-    (this.tag.material as THREE.SpriteMaterial).opacity = this.dead ? 0.5 : 1;
-
-    if (this.bubble) {
-      const left = this.bubbleUntil - now;
-      this.bubble.material.opacity = Math.max(0, Math.min(1, left));
-      if (left <= 0) {
-        this.group.remove(this.bubble);
-        this.bubble.material.map?.dispose();
-        this.bubble.material.dispose();
-        this.bubble = null;
-      }
-    }
   }
 
   dispose() {

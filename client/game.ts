@@ -7,7 +7,7 @@ import { duckMusic, setMusicMood, sfx, voice } from './audio';
 import { ENACT_BANNER_DELAY_MS, ceremonyEndsAt } from './enact';
 import { cardConfirmCopy, edgeMarker, hudModel } from './hudmodel';
 import type { Interactable, Interactor } from './interact';
-import { Character } from './scene/characters';
+import { createCharacter, type Patron } from './scene/characters';
 import { disposeObject } from './scene/dispose';
 import { ActingRings, Board, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
 import { ballotFace, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
@@ -52,7 +52,7 @@ const POWER_TEXT: Record<string, string> = {
 export class Game {
   room: RoomView | null = null;
   view: GameView | null = null;
-  private chars = new Map<number, Character>();
+  private chars = new Map<number, Patron>();
   private board = new Board();
   private drawPile: Pile;
   private discardPile: Pile;
@@ -386,9 +386,9 @@ export class Game {
   private smokeMouth = new THREE.Vector3();
   private smokeDir = new THREE.Vector3();
 
-  private newCharacter(seat: number, variant: 'normal' | 'hitler'): Character {
+  private newCharacter(seat: number, variant: 'normal' | 'hitler'): Patron {
     const L = this.world.layout;
-    const c = new Character(seat, seat, variant);
+    const c = createCharacter(seat, seat, variant);
     c.group.position.copy(L.chair(seat));
     c.group.rotation.y = L.yaw(seat) + Math.PI;
     this.world.scene.add(c.group);
