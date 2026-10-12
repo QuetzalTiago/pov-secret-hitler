@@ -21,6 +21,11 @@ describe('block-slow-commands hook', () => {
     'npm ci',
     'npm install',
     'npm i && npm test',
+    'cd C:/x/repo; npm ci',
+    'cd repo && npx playwright test',
+    'FOO=1 npm run e2e',
+    '& npx playwright test',
+    'npm test\nnpm ci',
   ])('blocks %s', (command) => {
     expect(isBlocked(command)).toBe(true);
   });
@@ -33,6 +38,11 @@ describe('block-slow-commands hook', () => {
     'grep -rn playwright README.md',
     'npm run build',
     'git log --oneline',
+    'git commit -m "remove e2e; hook blocks npm ci for agents"',
+    'git commit -F msg.txt',
+    'echo "never run npx playwright test"',
+    'grep -n "npm ci" README.md',
+    "git commit -q -F - <<'EOF'\nRemove the e2e; agents spent minutes on headless-Chrome scripts and npm ci.\nEOF",
   ])('allows %s', (command) => {
     expect(isBlocked(command)).toBe(false);
   });
