@@ -137,6 +137,7 @@ export function pendingActors(s: GameState): number[] {
 
 /** Every legal action for a seat in the current state. */
 export function legalActions(s: GameState, seat: number): ActionBody[] {
+  if (s.phase === 'vote' && s.players[seat]?.alive && s.votes[seat] !== null) return [{ type: 'unvote' }];
   if (!pendingActors(s).includes(seat)) return [];
   const others = (pred: (t: number) => boolean) =>
     s.players.filter((p) => p.alive && p.seat !== s.president && pred(p.seat)).map((p) => p.seat);
@@ -305,6 +306,10 @@ export function reduce(state: GameState, action: Action): ReduceResult {
       d.emit({ k: 'nominated', president: s.president, target: action.target });
       break;
     }
+    case 'unvote':
+      s.votes[seat] = null;
+      d.emit({ k: 'unvoted', seat });
+      break;
     case 'vote': {
       s.votes[seat] = action.ja;
       d.emit({ k: 'voted', seat });

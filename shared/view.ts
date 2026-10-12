@@ -115,6 +115,7 @@ export function actingSeats(v: GameView): number[] {
  */
 export function legalFromView(v: GameView): ActionBody[] {
   const me = v.you;
+  if (me !== null && v.phase === 'vote' && v.players[me]?.alive && v.players[me].hasVoted) return [{ type: 'unvote' }];
   if (me === null || !v.pending.includes(me)) return [];
   const targets = (pred: (seat: number) => boolean) =>
     v.players.filter((p) => p.alive && p.seat !== v.president && pred(p.seat)).map((p) => p.seat);

@@ -121,6 +121,8 @@ export class Game {
   /** The action we sent and are waiting on; blocks re-sends until the view moves on, the server rejects it, or it times out. */
   private inFlight: { key: string; at: number } | null = null;
   private myVote: boolean | null = null;
+  /** The ballot an in-flight unvote took back, restored if the server refuses it. */
+  private takenBackVote: boolean | null = null;
   private reveal: { votes: (boolean | null)[]; until: number } | null = null;
   private pendingIndex: number | null = null;
   /** Last seat the policies were passed to; the view may already have cleared its chancellor on 'enacted'. */
@@ -538,7 +540,8 @@ export class Game {
   actionRejected() {
     if (!this.inFlight) return;
     this.settle();
-    this.myVote = null;
+    this.myVote = this.takenBackVote;
+    this.takenBackVote = null;
     this.pendingIndex = null;
     this.refreshInteractables();
     this.refreshHud();
@@ -761,6 +764,9 @@ export class Game {
       case 'voted':
         sfx.slap();
         if (e.seat === me) this.world.addShake(0.35);
+        break;
+      case 'unvoted':
+        if (e.seat === me) sfx.flip();
         break;
       case 'votes': {
         this.reveal = { votes: e.votes, until: this.now + VOTE_REVEAL_MS / 1000 };
@@ -1066,8 +1072,14 @@ export class Game {
     if (index !== undefined) this.pendingIndex = index;
     if (a.type === 'vote') {
       this.myVote = a.ja;
+      this.takenBackVote = null;
       sfx.slap();
       this.world.addShake(0.3);
+    }
+    if (a.type === 'unvote') {
+      this.takenBackVote = this.myVote;
+      this.myVote = null;
+      sfx.flip();
     }
     const key = this.flightKey();
     if (key !== null) this.inFlight = { key, at: this.now };
@@ -1196,6 +1208,16 @@ export class Game {
             id: a.ja ? 'vote-ja' : 'vote-nein',
             objects: [a.ja ? this.ja.mesh : this.nein.mesh],
             label: a.ja ? tr({ en: 'Slam JA!', es: '¡Estampa JA!' }) : tr({ en: 'Slam NEIN', es: 'Estampa NEIN' }),
+            action: true,
+            onClick: () => this.act(a),
+          });
+          break;
+        case 'unvote':
+          if (this.myVote === null) break;
+          list.push({
+            id: this.myVote ? 'vote-ja' : 'vote-nein',
+            objects: [this.myVote ? this.ja.mesh : this.nein.mesh],
+            label: tr({ en: 'Take back your vote', es: 'Retirar tu voto' }),
             action: true,
             onClick: () => this.act(a),
           });

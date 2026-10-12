@@ -69,6 +69,7 @@ export type ActionBody =
   | { type: 'ack' }
   | { type: 'nominate'; target: number }
   | { type: 'vote'; ja: boolean }
+  | { type: 'unvote' }
   | { type: 'presDiscard'; index: number }
   | { type: 'chancEnact'; index: number }
   | { type: 'proposeVeto' }
@@ -88,6 +89,7 @@ export type GameEvent =
   | { k: 'newPresident'; seat: number; special: boolean }
   | { k: 'nominated'; president: number; target: number }
   | { k: 'voted'; seat: number }
+  | { k: 'unvoted'; seat: number }
   | { k: 'votes'; votes: (boolean | null)[]; passed: boolean }
   | { k: 'tracker'; value: number }
   | { k: 'drawn'; seat: number; count: number }

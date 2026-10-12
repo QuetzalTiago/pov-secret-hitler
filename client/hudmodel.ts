@@ -259,6 +259,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
         const voted = v.players.filter((p) => p.hasVoted).length;
         const total = v.players.filter((p) => p.alive).length;
         detail = tr({ en: `${voted} of ${total} voted`, es: `${voted} de ${total} han votado` });
+        if (opts.myVote !== null) detail += ' ' + tr({ en: 'Click your ballot to take it back.', es: 'Haz clic en tu papeleta para retirarla.' });
       }
       break;
     case 'legPresident':

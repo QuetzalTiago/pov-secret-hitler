@@ -91,6 +91,14 @@ describe('hudModel', () => {
     expect(m.action.detail).toBe('President Ann · Chancellor Cy');
   });
 
+  it('hints that a cast ballot can be taken back', () => {
+    const { v, room } = fixture({ phase: 'vote', nominee: 2, pending: [1, 2, 3, 4] });
+    v.players[0].hasVoted = true;
+    const m = hudModel(v, room, { ...opts, myVote: true });
+    expect(m.action.detail).toBe('1 of 5 voted Click your ballot to take it back.');
+    expect(hudModel(v, room, opts).action.detail).toBe('1 of 5 voted');
+  });
+
   it('tells a waiting player who is choosing', () => {
     const { v, room } = fixture({ phase: 'nominate', president: 1, pending: [1] }, 0);
     const m = hudModel(v, room, opts);

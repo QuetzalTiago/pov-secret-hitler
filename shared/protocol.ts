@@ -112,6 +112,7 @@ function parseAction(a: unknown): ActionBody | null {
     case 'ack':
     case 'proposeVeto':
     case 'peekDone':
+    case 'unvote':
       return { type: a.type };
     case 'nominate':
     case 'investigate':
