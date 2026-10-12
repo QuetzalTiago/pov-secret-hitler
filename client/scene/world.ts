@@ -275,11 +275,11 @@ export class World {
 
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('pointermove', (e) => {
-      const real = e.movementX !== 0 || e.movementY !== 0 || Math.hypot(e.clientX - this.lastX, e.clientY - this.lastY) > 4;
-      if (real) {
-        this.lastX = e.clientX;
-        this.lastY = e.clientY;
-      }
+      // A glance survives the small drift after a click (e.g. on a roster row); a deliberate move takes the view back.
+      this.glanceMoved += Math.abs(e.movementX) + Math.abs(e.movementY) || Math.hypot(e.clientX - this.lastX, e.clientY - this.lastY);
+      this.lastX = e.clientX;
+      this.lastY = e.clientY;
+      const real = this.glanceMoved > 60;
       if (this.locked) {
         if (real) this.cancelGlance();
         // Captured mouse: relative look, clamped like a seated head turn.
@@ -312,6 +312,8 @@ export class World {
   private lastX = 0;
   private lastY = 0;
   private glanceUntil = 0;
+  /** Mouse travel (px) since the current glance began. */
+  private glanceMoved = 0;
   private glancePrev = { yaw: 0, pitch: 0 };
 
   /** The normalised look key for `e` (A/D/W/S/arrows), or null when it is not one or typing elsewhere. */
@@ -330,6 +332,7 @@ export class World {
     this.targetYaw = a.yaw;
     this.targetPitch = a.pitch;
     this.glanceUntil = this.time + secs;
+    this.glanceMoved = 0;
   }
 
   private cancelGlance() {
