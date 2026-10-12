@@ -51,6 +51,8 @@ describe('flat ink textures', () => {
     ['roleCard liberal', () => tx.roleCard('liberal')],
     ['roleCard fascist', () => tx.roleCard('fascist')],
     ['roleCard hitler', () => tx.roleCard('hitler')],
+    ['roleCard liberal seed 3', () => tx.roleCard('liberal', 3)],
+    ['roleCard hitler seed 1', () => tx.roleCard('hitler', 1)],
     ['membershipCard Ana', () => tx.membershipCard('Ana', 'liberal')],
     ['membershipCard Bo', () => tx.membershipCard('Bo', 'fascist')],
   ];

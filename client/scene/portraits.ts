@@ -10,7 +10,6 @@ export const PORTRAIT_VARIANTS = 4; // variants per kind
 
 const SKIN = '#a88a6c'; // muted human skin
 const SCALES = '#5f7a4a'; // muted lizard green
-const LINE = '#e8d6b0'; // cream, thin strokes only
 
 type Pt = [number, number];
 type Hat = 'fedora' | 'homburg' | 'cloche' | 'cap' | 'none';
@@ -47,7 +46,7 @@ function poly(s: S, pts: Pt[], fill: string) {
 }
 
 /** Open stroke; thin cream by default, thick ink for features. */
-function line(s: S, pts: Pt[], color = LINE, width = 0.012) {
+function line(s: S, pts: Pt[], color = COLORS.line, width = 0.012) {
   s.g.save();
   s.g.strokeStyle = color;
   s.g.lineWidth = s.w * width;
@@ -71,7 +70,7 @@ const flip = (pts: Pt[]): Pt[] => pts.map(([px, py]) => [1 - px, py]);
 function eye(s: S, px: number, py: number, slit: boolean) {
   if (slit) poly(s, [[px - 0.05, py], [px, py - 0.025], [px + 0.05, py], [px, py + 0.015]], COLORS.ink);
   else dot(s, px, py, 0.017, COLORS.ink);
-  dot(s, px + 0.01, py - 0.006, 0.006, LINE);
+  dot(s, px + 0.01, py - 0.006, 0.006, COLORS.line);
 }
 
 // --- clothes ---
@@ -177,7 +176,7 @@ function hat(s: S, kind: Hat, cx: number, hw: number, top: number) {
     line(s, [[cx - hw - 0.02, 0.12], [cx - 0.1, top + 0.01], [cx + 0.1, top + 0.01], [cx + hw + 0.04, 0.12]]);
     poly(s, [[cx - 0.02, 0.27], [cx + hw + 0.2, 0.3], [cx + hw + 0.22, 0.34], [cx - 0.02, 0.32]], COLORS.ink);
     line(s, [[cx, 0.325], [cx + hw + 0.2, 0.335]]);
-    dot(s, cx + 0.04, 0.2, 0.025, LINE, true);
+    dot(s, cx + 0.04, 0.2, 0.025, COLORS.line, true);
     dot(s, cx + 0.04, 0.2, 0.01, COLORS.ink);
     return;
   }

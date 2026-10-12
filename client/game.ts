@@ -1017,7 +1017,7 @@ export class Game {
     this.envMover.set(this.tmpV.copy(envPos).setY(envPos.y + (hovered === 'envelope' ? 0.02 : 0)), Q('y', L.yaw(me)));
     this.envMover.visible = !!v;
     this.envelope.setGlow(hovered === 'envelope' || (v?.phase === 'night' && !this.envelopeOpen && !v.players[me]?.acked) ? 0.6 + Math.sin(now * 4) * 0.3 : 0);
-    if (v?.yourRole) this.roleCard.setFace(roleCard(v.yourRole));
+    if (v?.yourRole) this.roleCard.setFace(roleCard(v.yourRole, me));
     if (this.envelopeOpen) {
       const [p, q] = this.handPose(0, 1, -0.38, -0.05);
       this.roleMover.set(p, q, 10);
@@ -1246,7 +1246,7 @@ export class Game {
         if (!p.role) continue;
         let r = this.reveals.get(p.seat);
         if (!r) {
-          const card = new Card(roleCard(p.role), cardBack('ROLE'), 1.2);
+          const card = new Card(roleCard(p.role, p.seat), cardBack('ROLE'), 1.2);
           card.mesh.position.copy(L.front(p.seat, -0.34, -0.02));
           this.world.scene.add(card.mesh);
           r = { card, mover: this.world.track(new Mover(card.mesh)) };

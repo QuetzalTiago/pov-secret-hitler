@@ -1,5 +1,7 @@
 // Every texture in the game is drawn at runtime on a canvas. No image assets.
 import * as THREE from 'three';
+import { drawPortrait } from './portraits';
+import { drawSeal } from './seals';
 
 const DISPLAY = '"Jost", "Futura", "Century Gothic", "Trebuchet MS", sans-serif';
 const MONO = '"Courier Prime", "Courier New", Courier, monospace';
@@ -356,7 +358,7 @@ function inkPoly(g: CanvasRenderingContext2D, pts: number[][], cx: number, cy: n
  * Original flat emblems with a thick ink outline: a stylised bird in flight, seen from the front,
  * with art-deco stepped wing tiers (liberal), or a geometric skull (fascist). Both fit within +-s.
  */
-function emblem(g: CanvasRenderingContext2D, kind: 'L' | 'F', cx: number, cy: number, s: number, color: string, ink = COLORS.ink) {
+export function emblem(g: CanvasRenderingContext2D, kind: 'L' | 'F', cx: number, cy: number, s: number, color: string, ink = COLORS.ink) {
   g.save();
   g.fillStyle = color;
   g.strokeStyle = ink;
@@ -463,7 +465,7 @@ export function policyFace(p: 'L' | 'F') {
     g.fillRect(0, 0, w, h);
     inkEdge(g, w, h);
     panel(g, w, h, 20);
-    emblem(g, p, w / 2, h * 0.4, 66, deep);
+    drawSeal(g, p, w / 2, h * 0.4, 78, deep);
     blockTitle(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.74, 46, deep, w - 60);
     centerText(g, 'P O L I C Y', w / 2, h * 0.84, `bold 16px ${MONO}`, COLORS.ink);
     age(g, w, h, p === 'L' ? 2 : 4);
@@ -536,8 +538,8 @@ export function ballotFace(ja: boolean) {
   });
 }
 
-export function roleCard(role: 'liberal' | 'fascist' | 'hitler') {
-  return tex(`role-${role}`, 256, 360, (g, w, h) => {
+export function roleCard(role: 'liberal' | 'fascist' | 'hitler', seed = 0) {
+  return tex(`role-${role}-${seed}`, 256, 360, (g, w, h) => {
     const lib = role === 'liberal';
     const hit = role === 'hitler';
     const deep = lib ? COLORS.liberalDeep : COLORS.fascistDeep;
@@ -546,10 +548,14 @@ export function roleCard(role: 'liberal' | 'fascist' | 'hitler') {
     inkEdge(g, w, h);
     panel(g, w, h, 18);
     centerText(g, 'SECRET ROLE', w / 2, 50, `bold 16px ${MONO}`, COLORS.ink);
-    emblem(g, lib ? 'L' : 'F', w / 2, h * 0.43, 58, hit ? COLORS.hitler : deep);
+    drawPortrait(g, role, seed, 34, 66, w - 68, 168);
+    g.strokeStyle = COLORS.ink;
+    g.lineWidth = 4;
+    g.strokeRect(34, 66, w - 68, 168);
+    drawSeal(g, lib ? 'L' : 'F', w - 34, 234, 22, deep);
     const title = hit ? 'HITLER' : lib ? 'LIBERAL' : 'FASCIST';
-    blockTitle(g, title, w / 2, h * 0.71, hit ? 60 : 52, hit ? COLORS.hitler : deep, w - 60);
-    centerText(g, lib ? 'Liberal party' : 'Fascist party', w / 2, h * 0.81, `bold 16px ${MONO}`, COLORS.ink);
+    blockTitle(g, title, w / 2, h * 0.74, hit ? 60 : 52, hit ? COLORS.hitler : deep, w - 60);
+    centerText(g, lib ? 'Liberal party' : 'Fascist party', w / 2, h * 0.83, `bold 16px ${MONO}`, COLORS.ink);
     centerText(g, 'click to close your eyes', w / 2, h * 0.91, `13px ${MONO}`, COLORS.kraft);
     age(g, w, h, 10 + role.length);
   });
@@ -566,7 +572,7 @@ export function membershipCard(name: string, party: 'liberal' | 'fascist') {
     frame(g, w, h, COLORS.brass, 17, 1.5);
     centerText(g, 'PARTY MEMBERSHIP', w / 2, 44, `bold 17px ${MONO}`, COLORS.ink);
     blockTitle(g, name, w / 2, 86, 30, COLORS.ink, w - 60);
-    emblem(g, lib ? 'L' : 'F', w / 2, h * 0.5, 50, deep);
+    drawSeal(g, lib ? 'L' : 'F', w / 2, h * 0.5, 62, deep);
     blockTitle(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.75, 52, deep, w - 60);
     centerText(g, 'click to put it away', w / 2, h * 0.9, `13px ${MONO}`, COLORS.kraft);
     age(g, w, h, 20 + name.length);
@@ -698,18 +704,8 @@ export function envelopeTexture() {
     g.lineTo(w / 2, h * 0.55);
     g.lineTo(w, 0);
     g.stroke();
-    // Oxblood wax seal.
-    g.fillStyle = COLORS.fascistDeep;
-    g.strokeStyle = COLORS.ink;
-    g.beginPath();
-    g.arc(w / 2, h * 0.55, 22, 0, Math.PI * 2);
-    g.fill();
-    g.stroke();
-    g.strokeStyle = 'rgba(176,128,111,0.35)';
-    g.lineWidth = 2;
-    g.beginPath();
-    g.arc(w / 2, h * 0.55, 14, 0, Math.PI * 2);
-    g.stroke();
+    // Neutral oxblood seal: the envelope is identical for every player, so it never shows a party.
+    drawSeal(g, null, w / 2, h * 0.55, 22, COLORS.fascistDeep);
     // Oxblood rubber stamp, slightly crooked.
     g.save();
     g.translate(w / 2, h * 0.85);
