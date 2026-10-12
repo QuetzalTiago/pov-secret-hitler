@@ -195,6 +195,11 @@ export class Room {
       s.disconnectedAt = Date.now();
       s.botControl = true;
       s.left = true;
+      // The seat stays during a game, so hand host to someone who can still Deal now / go back to the lobby.
+      if (this.host === seat) {
+        const next = this.seats.findIndex((x) => !x.bot && x.conn);
+        if (next >= 0) this.host = next;
+      }
       this.schedule();
     }
     this.broadcast();
