@@ -10,6 +10,7 @@ import type { Assets } from './assets';
 import { disposeObject } from './dispose';
 import { bottlesGeometry, buntingGeometry, hallGlowGeometry, hallPropsGeometry, posterGeometry } from './beerhall';
 import { handGeometry } from './hands';
+import { riggedHandGeometry } from './ownhands';
 import { cuffGeometry, pointingFingerGeometry, sleeveGeometry, unitSleeveGeometry } from './ownbody';
 import { cylinderBetween, limbGeometry, mergeParts } from './patron';
 import { seatColors } from './palette';
@@ -462,6 +463,7 @@ export class World {
     this.scene.environmentIntensity = ENV_INTENSITY;
     pmrem.dispose();
 
+    this.refreshOwnHands();
     this.chairProto = chairModel(a.props);
     const lamp = lampModel(a.props);
     lamp.position.y = 2.42; // the spot light and bulb sit inside the glass
@@ -686,7 +688,7 @@ export class World {
       }
       const dir = wrist.clone().sub(elbow).setY(0).normalize();
       // The camera looks toward -Z, so the yaw below mirrors local X: flip the side to keep the thumb on the inner side.
-      const hand = new THREE.Mesh(handGeometry('flat', -side as 1 | -1), skin);
+      const hand = new THREE.Mesh(this.ownHandGeometry('flat', -side as 1 | -1), skin);
       hand.scale.setScalar(OWN_HAND_SCALE);
       hand.position.copy(wrist).addScaledVector(dir, 0.05).setY(TABLE_Y + 0.02 * OWN_HAND_SCALE); // palm bottom on the table
       hand.rotation.y = Math.atan2(dir.x, dir.z);
@@ -717,7 +719,33 @@ export class World {
     // Flat hand (fingers +Z, palm down) -> fingers up, palm facing away from the camera.
     handQ: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)),
   };
-  private ownArm: { fore: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Mesh; finger: THREE.Mesh } | null = null;
+  private ownArm: { fore: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Mesh; finger: THREE.Mesh; fist: THREE.BufferGeometry; point: THREE.BufferGeometry | null } | null = null;
+  /** The patron model's mitten hand once the assets are loaded, else the procedural one. */
+  private ownHandGeometry(kind: 'flat' | 'fist', side: 1 | -1): THREE.BufferGeometry {
+    return this.assets ? riggedHandGeometry(this.assets.characters.suit, side, kind) : handGeometry(kind, side);
+  }
+  /** The raised right hand's geometries: a fist (the gun grip), and with the mitten a flat hand to point with. */
+  private ownArmHands(): { fist: THREE.BufferGeometry; point: THREE.BufferGeometry | null } {
+    const fist = this.ownHandGeometry('fist', -1); // a right fist, knuckles at +Z; turned to look down -Z
+    fist.rotateY(Math.PI);
+    // The mitten has no index finger to add, so it points with straight fingers; the procedural fist gets its finger instead.
+    const point = this.assets ? this.ownHandGeometry('flat', -1) : null;
+    point?.rotateY(Math.PI);
+    return { fist, point };
+  }
+  /** Swaps the already-built raised hands over to the mitten when the assets arrive. */
+  private refreshOwnHands() {
+    if (this.ownArm) {
+      this.ownArm.fist.dispose();
+      this.ownArm.point?.dispose();
+      Object.assign(this.ownArm, this.ownArmHands());
+      this.ownArm.hand.geometry = this.ownArm.fist;
+    }
+    for (const a of this.handsUp ?? []) {
+      a.hand.geometry.dispose();
+      a.hand.geometry = this.ownHandGeometry('flat', -a.side as 1 | -1);
+    }
+  }
   /** Forearm sleeve (y 0..1 from the elbow, stretched to length) and its wrist cuff, shared by the raised arms. */
   private raisedArm(): { fore: THREE.Mesh; cuff: THREE.Mesh } {
     const fore = new THREE.Mesh(unitSleeveGeometry(SLEEVE_R.elbow, SLEEVE_R.wrist), this.sleeve);
@@ -741,18 +769,17 @@ export class World {
     if (!this.ownArm) {
       const skin = this.skinMat;
       const { fore, cuff } = this.raisedArm();
-      const handGeo = handGeometry('fist', -1); // a right fist, knuckles at +Z; turned to look down -Z
-      handGeo.rotateY(Math.PI);
-      const hand = new THREE.Mesh(handGeo, skin);
+      const geos = this.ownArmHands();
+      const hand = new THREE.Mesh(geos.fist, skin);
       hand.scale.setScalar(OWN_HAND_SCALE); // the finger is a child, so it scales along
       const finger = new THREE.Mesh(pointingFingerGeometry(), skin);
       finger.position.set(0, 0.02, -0.08); // the hand looks down -Z, so the finger sticks out in front
       hand.add(finger);
       fore.visible = cuff.visible = hand.visible = false;
       this.scene.add(fore, cuff, hand);
-      this.ownArm = { fore, cuff, hand, finger };
+      this.ownArm = { fore, cuff, hand, finger, ...geos };
     }
-    const { fore, cuff, hand, finger } = this.ownArm;
+    const { fore, cuff, hand, finger, fist, point } = this.ownArm;
     fore.visible = cuff.visible = hand.visible = !!pose;
     for (const m of this.restRightArm) m.visible = !pose;
     if (!pose) return;
@@ -761,6 +788,7 @@ export class World {
       pose.gun.updateMatrixWorld();
       grip = pose.gun.localToWorld(new THREE.Vector3(0, -0.03, 0.08));
       hand.quaternion.copy(pose.gun.getWorldQuaternion(new THREE.Quaternion()));
+      hand.geometry = fist;
       finger.visible = false;
     } else {
       this.camera.updateMatrixWorld();
@@ -768,7 +796,8 @@ export class World {
       // Hand faces the target (its -Z axis points at it) with the index finger extended.
       const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion); // no roll as you look around
       hand.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(grip, pose.point, camUp));
-      finger.visible = true;
+      hand.geometry = point ?? fist;
+      finger.visible = !point;
     }
     const elbowLocal = new THREE.Vector3(0.34, -0.5, 0.05);
     const elbow = this.camera.localToWorld(elbowLocal.clone());
@@ -801,7 +830,7 @@ export class World {
       const skin = this.skinMat;
       this.handsUp = ([-1, 1] as const).map((side) => {
         const { fore, cuff } = this.raisedArm();
-        const hand = new THREE.Mesh(handGeometry('flat', -side as 1 | -1), skin); // thumb toward the midline once turned palm-out
+        const hand = new THREE.Mesh(this.ownHandGeometry('flat', -side as 1 | -1), skin); // thumb toward the midline once turned palm-out
         hand.scale.setScalar(OWN_HAND_SCALE);
         this.scene.add(fore, cuff, hand);
         return { fore, cuff, hand, side };
