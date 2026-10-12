@@ -158,6 +158,8 @@ export class World {
   private assets: Assets | null = null;
   /** The ambient bartender behind the back bar; null in the procedural fallback room. */
   private waiter: Waiter | null = null;
+  /** The bare bulb over the waiter (light + glass), stuttered in update(); null without assets. */
+  private waiterBulb: { light: THREE.SpotLight; mat: THREE.MeshStandardMaterial } | null = null;
   /** One shared chair mesh (asset mode); cloned per seat. */
   private chairProto: THREE.Group | null = null;
   private lampParts: { shade: THREE.Mesh; cord: THREE.Mesh; model: THREE.Group | null };
@@ -518,6 +520,7 @@ export class World {
     }
     // Model bottles and glasses with assets; the merged procedural bottles otherwise.
     this.waiter = null;
+    this.waiterBulb = null;
     if (a) {
       room.add(buildBackBar(a.props));
       this.waiter = new Waiter(a.characters.shirt, a.props.glass_wine ?? null);
@@ -535,6 +538,7 @@ export class World {
       const waiterCord = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.4, 5), new THREE.MeshStandardMaterial({ color: 0x111111 }));
       waiterCord.position.set(WAITER_SPOT.x, 3.4, WAITER_SPOT.z + 0.15);
       room.add(waiterLight, waiterLight.target, waiterBulb, waiterCord);
+      this.waiterBulb = { light: waiterLight, mat: waiterBulb.material };
     } else room.add(new THREE.Mesh(
       bottlesGeometry(),
       glossy(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 }), 0.35),
@@ -1006,6 +1010,12 @@ export class World {
     // Boost only while the bloom pass runs (render() skips the composer on steps without shadows).
     const glow = this.composer && this.quality.current.shadows ? this.bulbGlow : BULB_GLOW;
     (this.lampBulb.material as THREE.MeshStandardMaterial).emissiveIntensity = glow * lit * flicker;
+    if (this.waiterBulb) {
+      // A tired bare bulb (todo #253): steady most of the time, stuttering every few seconds, out of step with the lamp.
+      const stutter = Math.sin(t * 9.1) * Math.sin(t * 3.7 + 1) > 0.9 ? 0.25 + Math.random() * 0.75 : 1 - Math.random() * 0.02;
+      this.waiterBulb.light.intensity = LIGHTING.waiterSpot * stutter;
+      this.waiterBulb.mat.emissiveIntensity = 1.2 * stutter;
+    }
     if (this.ember) this.ember.emissiveIntensity = 2.2 + Math.sin(t * 2.3) * 0.5 + Math.sin(t * 5.1) * 0.25;
     this.redLight.intensity = danger * (3 + Math.sin(this.dangerPhase) * 1.5) + this.night * 0;
     this.muzzle.intensity *= Math.exp(-dt * 14);
