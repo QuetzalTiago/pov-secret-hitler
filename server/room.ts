@@ -274,6 +274,7 @@ export class Room {
     this.clearBotPlans();
     if (this.abandonTimer) clearTimeout(this.abandonTimer);
     if (this.chatTimer) clearTimeout(this.chatTimer);
+    for (const t of this.talkTimers) clearTimeout(t);
     this.stopMoodTimer();
     for (const t of this.disconnectTimers.values()) clearTimeout(t);
     for (const s of this.seats) if (s.conn) s.conn.room = null;
@@ -288,6 +289,7 @@ export class Room {
     this.clearBotPlans();
     if (this.abandonTimer) clearTimeout(this.abandonTimer);
     if (this.chatTimer) clearTimeout(this.chatTimer);
+    for (const t of this.talkTimers) clearTimeout(t);
     this.stopMoodTimer();
     for (const t of this.disconnectTimers.values()) clearTimeout(t);
   }
@@ -693,7 +695,14 @@ export class Room {
 
   // ---------- table talk ----------
 
+  /** Everything queued, scheduled or being written belongs to the old generation and is never posted. */
   private resetTalk() {
+    this.talkGen++;
+    for (const item of this.chatQueue.splice(0)) item.done();
+    if (this.chatTimer) clearTimeout(this.chatTimer);
+    this.chatTimer = null;
+    for (const t of this.talkTimers) clearTimeout(t);
+    this.talkTimers.clear();
     this.transcript = [];
     this.moods.clear();
     this.personas.clear();
@@ -785,7 +794,12 @@ export class Room {
         const prev = this.lastBotChat.get(seat);
         this.lastBotChat.set(seat, now);
         // The throttle holds while speak runs, but only a posted line keeps it.
-        const release = () => (prev === undefined ? this.lastBotChat.delete(seat) : this.lastBotChat.set(seat, prev));
+        const gen = this.talkGen;
+        const release = () => {
+          if (gen !== this.talkGen) return;
+          if (prev === undefined) this.lastBotChat.delete(seat);
+          else this.lastBotChat.set(seat, prev);
+        };
         this.speak(seat, plan)
           .then((said) => said || release())
           .catch((e) => {
@@ -804,6 +818,7 @@ export class Room {
    */
   private async speak(seat: number, plan: TalkPlan): Promise<boolean> {
     const started = Date.now();
+    const gen = this.talkGen;
     let line: string | null;
     let intent: string | null = null;
     if (plan.kind === 'line') {
@@ -812,6 +827,7 @@ export class Room {
     } else {
       const criteria = Object.fromEntries(Object.entries(plan.options).map(([k, o]) => [k, o.description]));
       const answer = await askChoice(plan.state, plan.instructions, criteria, fetch, 2);
+      if (gen !== this.talkGen) return false;
       const key = answer && answer.choice in plan.options ? answer.choice : heuristicTalk(plan.options, Math.random);
       this.botStats.talk[answer ? 'jev' : 'heuristic']++;
       const chosen = plan.options[key];
@@ -825,17 +841,21 @@ export class Room {
       } catch (e) {
         console.error('[bot] writeIntent failed', e);
       }
+      if (gen !== this.talkGen) return false;
     }
     const delay = Math.max(0, 900 + Math.random() * 1800 - (Date.now() - started));
-    this.sayLater(seat, line, delay);
+    this.sayLater(seat, line, delay, gen);
     return true;
   }
 
   // ---------- one bot at a time ----------
 
   /** Bot lines waiting their turn. Bots never talk over each other; humans are never delayed. */
-  private chatQueue: { seat: number; text: string; queuedAt: number; done: () => void }[] = [];
+  private chatQueue: { seat: number; text: string; queuedAt: number; gen: number; done: () => void }[] = [];
   private chatTimer: NodeJS.Timeout | null = null;
+  /** Seats shift when a redeal drops players, so lines are tagged with the deal they were meant for. */
+  private talkGen = 0;
+  private talkTimers = new Set<NodeJS.Timeout>();
   /** No bot line is posted before this time, so people can finish reading the last line (bot or human). */
   private chatFreeAt = 0;
 
@@ -848,12 +868,12 @@ export class Room {
    * Queues a bot line. It is posted once the chat is free, and the bot's mood settles a little for having
    * said it. Resolves when the line is posted (or dropped), so a reply can wait for the one before it.
    */
-  private say(seat: number, text: string): Promise<void> {
+  private say(seat: number, text: string, gen = this.talkGen): Promise<void> {
     return new Promise((done) => {
-      if (this.closed || !text) return done();
+      if (this.closed || !text || gen !== this.talkGen) return done();
       // A backlog would only deliver stale lines late; skip it rather than flood the chat.
       if (this.chatQueue.length >= 4) return done();
-      this.chatQueue.push({ seat, text, queuedAt: Date.now(), done });
+      this.chatQueue.push({ seat, text, queuedAt: Date.now(), gen, done });
       this.pumpChat();
     });
   }
@@ -869,7 +889,7 @@ export class Room {
         // Too old to still make sense, or the bot has died since: drop it.
         const stale = Date.now() - item.queuedAt > 25_000;
         const dead = !!g && g.phase !== 'gameOver' && !g.players[item.seat]?.alive;
-        if (!this.closed && !stale && !dead) {
+        if (!this.closed && !stale && !dead && item.gen === this.talkGen) {
           this.postChat(item.seat, item.text);
           const mood = this.moodOf(item.seat);
           mood.lastSpokeAt = Date.now();
@@ -895,10 +915,12 @@ export class Room {
   }
 
   /** Types a line after a human-looking pause, re-checking that the room is still alive. */
-  private sayLater(seat: number, text: string, delay: number) {
-    setTimeout(() => {
-      void this.say(seat, text);
+  private sayLater(seat: number, text: string, delay: number, gen = this.talkGen) {
+    const t = setTimeout(() => {
+      this.talkTimers.delete(t);
+      void this.say(seat, text, gen);
     }, delay);
+    this.talkTimers.add(t);
   }
 
   /**
@@ -975,19 +997,21 @@ export class Room {
   }
 
   private async replyInTurn(replying: { seat: number; trigger: Trigger }[], from: number, text: string) {
+    const gen = this.talkGen;
     for (const c of replying) {
       try {
-        await this.reply(c.seat, from, text, c.trigger);
+        await this.reply(c.seat, from, text, c.trigger, gen);
       } catch (e) {
         console.error('[bot] reply failed', e);
       }
-      if (this.closed) return;
+      if (this.closed || gen !== this.talkGen) return;
     }
   }
 
-  private async reply(seat: number, from: number, text: string, trigger: Trigger) {
+  private async reply(seat: number, from: number, text: string, trigger: Trigger, gen: number) {
     const started = Date.now();
     const line = await writeReply(this.talkContext(seat), from, text, trigger);
+    if (gen !== this.talkGen) return;
     if (!line) {
       this.lastBotChat.delete(seat);
       return;
@@ -995,7 +1019,8 @@ export class Room {
     // Reading the message, then typing the answer.
     const think = 600 + text.length * 15 + Math.random() * 1200;
     await new Promise((r) => setTimeout(r, Math.max(0, think - (Date.now() - started))));
-    await this.say(seat, line); // the next replier writes only after seeing this line
+    if (gen !== this.talkGen) return;
+    await this.say(seat, line, gen); // the next replier writes only after seeing this line
   }
 
   // ---------- impatience and unprompted accusations ----------
@@ -1053,10 +1078,15 @@ export class Room {
     mood.complainedAt = now;
     offend(mood, waiting.seat, 0.12 + persona.temper * 0.12);
     this.lastBotChat.set(seat, now);
+    const gen = this.talkGen;
     writeIgnored(this.talkContext(seat), waiting.seat)
-      .then((line) => (line ? this.sayLater(seat, line, 400 + Math.random() * 900) : this.lastBotChat.delete(seat)))
+      .then((line) => {
+        if (gen !== this.talkGen) return;
+        if (line) this.sayLater(seat, line, 400 + Math.random() * 900, gen);
+        else this.lastBotChat.delete(seat);
+      })
       .catch((e) => {
-        this.lastBotChat.delete(seat);
+        if (gen === this.talkGen) this.lastBotChat.delete(seat);
         console.error('[bot] writeIgnored failed', e);
       });
     return true;
@@ -1087,10 +1117,15 @@ export class Room {
       warmTo(mood, p.seat, 0.45);
       this.lastBotChat.set(seat, now);
       const why = `en la ronda ${last.round} puso una liberal ${last.chancellor === p.seat ? 'como canciller' : 'como presidente'}`;
+      const gen = this.talkGen;
       writeReconsider(this.talkContext(seat), p.seat, why)
-        .then((line) => (line ? this.sayLater(seat, line, 500 + Math.random() * 1200) : this.lastBotChat.delete(seat)))
+        .then((line) => {
+          if (gen !== this.talkGen) return;
+          if (line) this.sayLater(seat, line, 500 + Math.random() * 1200, gen);
+          else this.lastBotChat.delete(seat);
+        })
         .catch((e) => {
-          this.lastBotChat.delete(seat);
+          if (gen === this.talkGen) this.lastBotChat.delete(seat);
           console.error('[bot] writeReconsider failed', e);
         });
       return true;
@@ -1138,10 +1173,15 @@ export class Room {
     const chance = kind === 'accusation' ? 0.06 + persona.paranoia * 0.15 : 0.04 + persona.chattiness * 0.11;
     if (Math.random() > chance) return;
     this.lastBotChat.set(seat, now);
+    const gen = this.talkGen;
     writeAccusation(this.talkContext(seat), target_, prof[target_].proof, kind)
-      .then((line) => (line ? this.sayLater(seat, line, 500 + Math.random() * 1500) : this.lastBotChat.delete(seat)))
+      .then((line) => {
+        if (gen !== this.talkGen) return;
+        if (line) this.sayLater(seat, line, 500 + Math.random() * 1500, gen);
+        else this.lastBotChat.delete(seat);
+      })
       .catch((e) => {
-        this.lastBotChat.delete(seat);
+        if (gen === this.talkGen) this.lastBotChat.delete(seat);
         console.error('[bot] writeAccusation failed', e);
       });
   }
