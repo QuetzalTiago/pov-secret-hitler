@@ -16,6 +16,7 @@ import { seatColors } from './palette';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
 import { buildBackBar, chairModel, lampModel, stoolModel } from './roomprops';
 import { CigaretteSmoke } from './smoke';
+import { WAITER_SPOT, Waiter } from './waiter';
 import { ease } from './tween';
 import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles } from './look';
 import {
@@ -154,6 +155,8 @@ export class World {
   private chairs = new Map<number, THREE.Group>();
   private room = new THREE.Group();
   private assets: Assets | null = null;
+  /** The ambient bartender behind the back bar; null in the procedural fallback room. */
+  private waiter: Waiter | null = null;
   /** One shared chair mesh (asset mode); cloned per seat. */
   private chairProto: THREE.Group | null = null;
   private lampParts: { shade: THREE.Mesh; cord: THREE.Mesh; model: THREE.Group | null };
@@ -523,8 +526,13 @@ export class World {
       room.add(shelf);
     }
     // Model bottles and glasses with assets; the merged procedural bottles otherwise.
-    if (a) room.add(buildBackBar(a.props));
-    else room.add(new THREE.Mesh(
+    this.waiter = null;
+    if (a) {
+      room.add(buildBackBar(a.props));
+      this.waiter = new Waiter(a.characters.shirt, a.props.glass_wine ?? null);
+      this.waiter.group.position.set(WAITER_SPOT.x, 0, WAITER_SPOT.z);
+      room.add(this.waiter.group);
+    } else room.add(new THREE.Mesh(
       bottlesGeometry(),
       glossy(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 }), 0.35),
     ));
@@ -979,6 +987,7 @@ export class World {
     this.updateOwnHandsUp(dt);
     this.cigaretteSmoke.update(dt);
     for (const m of this.movers) m.update(dt);
+    this.waiter?.update(dt);
   }
 
   get graphicsMode(): GraphicsMode {

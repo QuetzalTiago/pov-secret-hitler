@@ -86,7 +86,7 @@ interface SeatedPose {
 
 const seatedPoses = new WeakMap<CharacterTemplate, SeatedPose>();
 
-function skinnedMeshOf(root: THREE.Object3D): THREE.SkinnedMesh {
+export function skinnedMeshOf(root: THREE.Object3D): THREE.SkinnedMesh {
   let found: THREE.SkinnedMesh | null = null;
   root.traverse((o) => {
     if ((o as THREE.SkinnedMesh).isSkinnedMesh) found = o as THREE.SkinnedMesh;
@@ -147,7 +147,7 @@ function eachDominated(mesh: THREE.SkinnedMesh, bone: THREE.Bone, fn: (p: THREE.
   }
 }
 
-function boxOf(mesh: THREE.SkinnedMesh, bone: THREE.Bone, range?: { start: number; count: number }): THREE.Box3 {
+export function boxOf(mesh: THREE.SkinnedMesh, bone: THREE.Bone, range?: { start: number; count: number }): THREE.Box3 {
   const box = new THREE.Box3();
   eachDominated(mesh, bone, (p) => box.expandByPoint(p), range);
   return box;
