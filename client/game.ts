@@ -816,15 +816,13 @@ export class Game {
               onClick: () => this.act(a, a.index),
             });
           } else {
-            // Click the card you want to THROW AWAY; the other one is enacted.
-            const other = 1 - a.index;
-            const p = held[other];
+            // Click the card you want to ENACT; the other one is discarded.
+            const p = held[a.index];
             if (!p) break;
-            const keep = held[a.index];
             list.push({
-              id: `hand-${other}`,
+              id: `hand-${a.index}`,
               objects: [p.card.mesh],
-              label: `Discard this; enact the ${keep?.face === 'L' ? 'Liberal' : 'Fascist'} policy`,
+              label: `Enact this ${p.face === 'L' ? 'Liberal' : 'Fascist'} policy (the other is discarded)`,
               action: true,
               onClick: () => this.act(a, a.index),
             });
@@ -891,10 +889,10 @@ export class Game {
         if (mine && this.myVote === null) return `Vote on President ${pres} with Chancellor ${this.name(v.nominee)}: slam JA! or NEIN.`;
         return `${dead}Votes are in from ${v.players.filter((p) => p.hasVoted).length} of ${v.players.filter((p) => p.alive).length}. Waiting for ${waitingOn.join(', ') || 'the reveal'}.`;
       case 'legPresident':
-        return mine ? 'Click the policy you want to DISCARD. The other two go to your Chancellor.' : `${dead}President ${pres} is choosing a policy to discard.`;
+        return mine ? `Click the policy to DISCARD. The other two go to Chancellor ${this.name(v.chancellor)}.` : `${dead}President ${pres} is choosing a policy to discard.`;
       case 'legChancellor':
         return mine
-          ? `Click the policy you want to DISCARD; the other is enacted.${v.vetoUnlocked && !v.vetoRefused ? ' Or stamp VETO.' : ''}`
+          ? `Click the policy to ENACT; the other is discarded.${v.vetoUnlocked && !v.vetoRefused ? ' Or stamp VETO.' : ''}`
           : `${dead}Chancellor ${this.name(v.chancellor)} is choosing a policy to enact.`;
       case 'veto':
         return mine ? `Chancellor ${this.name(v.chancellor)} wants to veto. Slam JA! to agree or NEIN to refuse.` : `${dead}President ${pres} is considering the veto.`;
@@ -973,7 +971,8 @@ export class Game {
         // Held high enough to be fully visible; hovering brings the card toward you.
         const [pos, q] = this.handPose(i, held.length, hover ? -0.36 : -0.42, hover ? -0.045 : -0.07);
         p.mover.set(pos, q, 10);
-        p.card.setGlow(hover ? 0.12 : 0);
+        // Red when the click discards the card, green when it enacts it.
+        p.card.setGlow(hover ? 0.5 : 0, v?.phase === 'legPresident' ? 'discard' : v?.phase === 'legChancellor' ? 'enact' : undefined);
       } else {
         const off = i - (held.length - 1) / 2;
         const pos = L.front(p.holder, off * 0.09, 0.02, 0.86);

@@ -29,9 +29,10 @@ export class Card {
       this.faceMat.needsUpdate = true;
     }
   }
-  setGlow(v: number) {
-    this.faceMat.emissive.setRGB(v * 0.35, v * 0.3, v * 0.15);
-    this.backMat.emissive.setRGB(v * 0.35, v * 0.3, v * 0.15);
+  setGlow(v: number, tint?: 'discard' | 'enact') {
+    const [r, g, b] = tint === 'discard' ? [0.45, 0.08, 0.05] : tint === 'enact' ? [0.08, 0.35, 0.12] : [0.35, 0.3, 0.15];
+    this.faceMat.emissive.setRGB(v * r, v * g, v * b);
+    this.backMat.emissive.setRGB(v * r, v * g, v * b);
   }
 }
 
