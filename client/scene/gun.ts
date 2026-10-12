@@ -8,6 +8,12 @@ import { mergeParts } from './patron';
 // grip below/behind. The caller owns and disposes both.
 
 const BARREL_Y = 0.03;
+/** The revolver's scale in the scene (props.ts revolver()); the points below are unscaled, gun-local. */
+export const GUN_SCALE = 1.4;
+/** Where the closed hand holds the grip: inside the plow handle, below the frame and behind the trigger guard. */
+export const GUN_GRIP = new THREE.Vector3(0, -0.025, 0.072);
+/** The muzzle, on the bore axis at the barrel's front face. */
+export const GUN_MUZZLE = new THREE.Vector3(0, BARREL_Y, -0.185);
 const CYL_Y = 0.0145; // the top chamber lines up with the bore
 const CYL_R = 0.026;
 const CYL_HALF = 0.025;

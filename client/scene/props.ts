@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import {
   BOARD_ASPECT, BOARD_SLOTS, ballotFace, boardTexture, cardBack, envelopeTexture, placardTexture, policyFace, ringTexture,
 } from './textures';
-import { revolverGeometry } from './gun';
+import { GUN_SCALE, revolverGeometry } from './gun';
 import { ease, tween, type Tween } from './tween';
 import { TABLE_Y } from './world';
 import { PRINT_TINT } from './lighting';
@@ -251,6 +251,6 @@ export function revolver(): THREE.Group {
     new THREE.Mesh(grip, new THREE.MeshStandardMaterial({ color: 0x45260f, roughness: 0.6 })),
   );
   g.traverse((o) => (o.castShadow = true));
-  g.scale.setScalar(1.4);
+  g.scale.setScalar(GUN_SCALE);
   return g;
 }
