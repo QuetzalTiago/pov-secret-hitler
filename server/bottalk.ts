@@ -111,13 +111,18 @@ export interface Reaction {
   chance: number;
 }
 
+/** Whether the message names this bot (first name, accent- and case-insensitive). */
+export function namesBot(text: string, botName: string): boolean {
+  return new RegExp(`(^|[^a-z0-9])${fold(botName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(fold(text));
+}
+
 /**
  * How a bot reads one message someone else sent. Name matching is deliberately loose (first name,
  * accent-insensitive) because that is how people actually type at a table.
  */
 export function readMessage(text: string, botName: string, persona: Persona, mood: Mood, from = -1): Reaction {
   const t = fold(text);
-  const named = new RegExp(`(^|[^a-z0-9])${fold(botName).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`).test(t);
+  const named = namesBot(text, botName);
   const insult = INSULT.test(t);
   const accuse = ACCUSE.test(t);
   const setup = SETUP.test(t);

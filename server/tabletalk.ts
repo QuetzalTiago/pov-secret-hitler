@@ -4,10 +4,10 @@ import type { ServerMsg } from '../shared/protocol';
 import type { GameEvent, GameState } from '../shared/types';
 import { profiles, type Memory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
-import { LinePicker } from './botlines';
+import { LinePicker, poolLine, type POOLS } from './botlines';
 import { heuristicTalk, mustTalk, planTalk, talkReads, type TalkPlan } from './botchat';
 import {
-  cool, newMood, offend, readMessage, relation, warmTo,
+  cool, namesBot, newMood, offend, readMessage, relation, warmTo,
   writeAccusation, writeIgnored, writeIntent, writeReconsider, writeReply,
   type ChatLine, type Mood, type Suspicion, type Trigger,
 } from './bottalk';
@@ -16,6 +16,16 @@ import { askChoice } from './jev';
 import { llmEnabled } from './llm';
 import { personaFor, type Persona } from './persona';
 import { config, type BotLang } from './config';
+
+/** Which scripted pool answers a player who spoke to a bot, when the writing model cannot. */
+const REPLY_POOL: Record<Trigger, keyof typeof POOLS> = {
+  insulted: 'replyInsulted',
+  accused: 'replyAccused',
+  setup: 'replySetup',
+  support: 'replySupport',
+  addressed: 'replyAddressed',
+  general: 'replyAddressed',
+};
 
 /** What table talk needs from its room. Functions, so it always reads the room's current state. */
 export interface TalkHost {
@@ -341,7 +351,9 @@ export class TableTalk {
     // Only during a game: a bot writes from its own GameView, and in the lobby there is none to write from.
     if (this.host.closed() || !this.host.game() || this.host.stage() !== 'game' || this.host.connectedHumans() === 0) return;
     const now = Date.now();
-    const candidates: { seat: number; trigger: Trigger; chance: number }[] = [];
+    // With no text model a bot only answers someone who spoke to it, with a template line.
+    const online = this.canWrite();
+    const candidates: { seat: number; trigger: Trigger; chance: number; named: boolean }[] = [];
     for (const seat of this.talkingBots()) {
       if (seat === from) continue;
       const mood = this.moodOf(seat);
@@ -355,11 +367,12 @@ export class TableTalk {
       else if (r.trigger === 'accused') offend(mood, from, 0.12);
       else if (r.trigger === 'support') warmTo(mood, from, 0.3);
       if (now - (this.lastBotChat.get(seat) ?? 0) < 10000) continue;
-      candidates.push({ seat, trigger: r.trigger, chance: r.chance });
+      const named = namesBot(text, this.host.seatName(seat));
+      // Unnamed chatter, insults and accusations get no template answer; claiming the chat throttle for
+      // them would only mute the event-driven template lines in botTalk().
+      if (!online && !named) continue;
+      candidates.push({ seat, trigger: r.trigger, chance: r.chance, named });
     }
-    // Without a model nobody can reply, and claiming the chat throttle here would only mute the
-    // event-driven template lines in botTalk().
-    if (!this.canWrite()) return;
     const replying = candidates
       .filter((c) => Math.random() < c.chance)
       .sort((a, b) => b.chance - a.chance)
@@ -370,11 +383,11 @@ export class TableTalk {
     void this.replyInTurn(replying, from, text);
   }
 
-  private async replyInTurn(replying: { seat: number; trigger: Trigger }[], from: number, text: string) {
+  private async replyInTurn(replying: { seat: number; trigger: Trigger; named: boolean }[], from: number, text: string) {
     const gen = this.talkGen;
     for (const c of replying) {
       try {
-        await this.reply(c.seat, from, text, c.trigger, gen);
+        await this.reply(c.seat, from, text, c.trigger, c.named, gen);
       } catch (e) {
         console.error('[bot] reply failed', e);
       }
@@ -382,10 +395,12 @@ export class TableTalk {
     }
   }
 
-  private async reply(seat: number, from: number, text: string, trigger: Trigger, gen: number) {
+  private async reply(seat: number, from: number, text: string, trigger: Trigger, named: boolean, gen: number) {
     const started = Date.now();
-    const line = await writeReply(this.talkContext(seat), from, text, trigger);
+    let line = this.canWrite() ? await writeReply(this.talkContext(seat), from, text, trigger) : null;
     if (gen !== this.talkGen) return;
+    // A bot spoken to by name must not leave the player hanging when the model is down or fails.
+    if (!line && named) line = poolLine(REPLY_POOL[trigger], this.host.lang(), { name: this.host.seatName(from) }, Math.random, this.lines);
     if (!line) {
       this.lastBotChat.delete(seat);
       return;

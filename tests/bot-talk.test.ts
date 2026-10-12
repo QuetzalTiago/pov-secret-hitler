@@ -4,6 +4,7 @@ import { newMemory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
 import { planTalk, talkReads } from '../server/botchat';
 import { writeAccusation, writeIgnored, writeReconsider } from '../server/bottalk';
+import { fill, POOLS } from '../server/botlines';
 import { Room, type Conn } from '../server/room';
 import { roles, setup } from './helpers';
 
@@ -269,6 +270,67 @@ describe('must-post plans', () => {
       await vi.advanceTimersByTimeAsync(60000);
       expect(said(posted)).toHaveLength(1);
       expect(posted.mock.calls.some((c: unknown[]) => c[1] === 'ordinary')).toBe(false);
+    } finally {
+      finish(room);
+    }
+  });
+});
+
+describe('replies without the text model', () => {
+  const REPLY_POOLS = ['replyInsulted', 'replyAccused', 'replySetup', 'replySupport', 'replyAddressed'] as const;
+  const replyLines = (lang: 'es' | 'en', name: string) =>
+    REPLY_POOLS.flatMap((k) => (POOLS as any)[k]?.[lang] as string[] ?? []).map((l) => fill(l, { name }));
+
+  const started = (lang: 'es-AR' | 'en') => {
+    vi.useFakeTimers();
+    const conn: Conn = { id: 1, room: null, seat: -1, send: () => {} };
+    const room = new Room('ABCD', () => {}, lang);
+    room.join(conn, 'Human');
+    for (let i = 0; i < 4; i++) room.addBot(conn);
+    expect(room.start(conn)).toBeNull();
+    const talk = (room as any).talk;
+    const posted = vi.spyOn(talk, 'postChat');
+    // Opening chatter on the deal would otherwise leave the bots inside their 10 s reply throttle.
+    talk.lastBotChat.clear();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    return { room, talk, posted, bot: talk.host.seatName(1) as string };
+  };
+  const finish = (room: Room) => {
+    vi.spyOn(Math, 'random').mockRestore();
+    vi.useRealTimers();
+    room.close();
+  };
+  const replies = (posted: { mock: { calls: unknown[][] } }, lines: string[]) =>
+    posted.mock.calls.filter((c) => lines.includes(c[1] as string));
+
+  it('a bot named in a message answers from the reply pools', async () => {
+    const { room, talk, posted, bot } = started('en');
+    try {
+      talk.heard(0, `${bot}, are you fascist?`);
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(replies(posted, replyLines('en', 'Human'))).toHaveLength(1);
+    } finally {
+      finish(room);
+    }
+  });
+
+  it('an unnamed message gets no reply', async () => {
+    const { room, talk, posted } = started('en');
+    try {
+      talk.heard(0, 'hello everyone');
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(replies(posted, replyLines('en', 'Human'))).toHaveLength(0);
+    } finally {
+      finish(room);
+    }
+  });
+
+  it('a Spanish room answers from the es pool', async () => {
+    const { room, talk, posted, bot } = started('es-AR');
+    try {
+      talk.heard(0, `${bot}, sos facho?`);
+      await vi.advanceTimersByTimeAsync(20000);
+      expect(replies(posted, replyLines('es', 'Human'))).toHaveLength(1);
     } finally {
       finish(room);
     }

@@ -141,6 +141,27 @@ export const POOLS = {
     es: ['bien jugado.', 'la próxima.', 'se me escapó, che.', 'buen partido igual.', 'la revancha es mía.'],
     en: ['Well played.', 'Next time.', 'It slipped away.', 'Good game anyway.', 'Rematch, then.'],
   },
+  // Answers to a player who spoke to the bot by name, for when the writing model is down. {name} is that player.
+  replyInsulted: {
+    es: ['mirá quién habla, {name}.', 'tranquilo, {name}, que te estás pasando.', '{name}, fijate lo que decís.', 'qué simpático, {name}.', 'seguí así, {name}, que vas bárbaro.'],
+    en: ['Look who is talking, {name}.', 'Easy, {name}, you are out of line.', 'Watch your mouth, {name}.', 'Real charming, {name}.', 'Keep it up, {name}, very convincing.'],
+  },
+  replyAccused: {
+    es: ['¿yo, {name}? ni ahí.', 'no, {name}, eso no me cierra para nada.', 'te equivocás, {name}.', '{name}, mirá bien las votaciones antes de acusar.', 'qué ocurrencia, {name}. Fijate en otro lado.'],
+    en: ['Me, {name}? No way.', "That doesn't add up at all, {name}.", 'You have the wrong person, {name}.', 'Check the votes before you accuse anyone, {name}.', 'Funny idea, {name}. Look somewhere else.'],
+  },
+  replySetup: {
+    es: ['¿quién le hace la cama a quién, {name}?', '¿cómo es eso de la cama, {name}?', 'a ver, {name}, ¿quién arma qué?', '{name}, ¿a quién se la están haciendo?', 'contame más, {name}, no entiendo quién.'],
+    en: ["Who's setting up whom, {name}?", 'What do you mean, a setup, {name}?', 'Hold on, {name}, who is framing who?', '{name}, who is getting framed here?', "Tell me more, {name}, I don't see who."],
+  },
+  replySupport: {
+    es: ['gracias, {name}, lo tengo en cuenta.', 'te la agradezco, {name}.', 'bien, {name}, votemos juntos.', 'ahí vamos, {name}, bancame y yo te banco.', 'cuento con vos, {name}.'],
+    en: ['Thanks, {name}, noted.', 'I appreciate it, {name}.', "Good, {name}, let's vote together.", "Deal, {name}, back me and I'll back you.", "I'm counting on you, {name}."],
+  },
+  replyAddressed: {
+    es: ['todavía no sé, {name}.', 'preguntame después de la próxima votación, {name}.', 'mmm, difícil de decir, {name}.', 'no tengo claro, {name}. Vamos viendo.', 'dame un rato, {name}, estoy mirando.'],
+    en: ['Not sure yet, {name}.', 'Ask me after the next vote, {name}.', 'Hard to say, {name}.', "I haven't made up my mind, {name}. Let's see.", 'Give me a moment, {name}, I am watching.'],
+  },
 } satisfies Record<string, { es: string[]; en: string[] }>;
 
 export function fill(tmpl: string, vars: Record<string, string>): string {
