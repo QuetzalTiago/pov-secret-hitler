@@ -150,20 +150,28 @@ export class Character {
       paint(shirtGeometry(), shirtHex),
       paint(tieGeometry(), tieHex),
     ];
+    // The resting left arm (with the Hitler armband) is its own mesh so it can be hidden while the hands are up.
+    const bandParts: THREE.BufferGeometry[] = [];
+    if (hitler) {
+      // Plain red armband on the upper arm (deliberately no insignia).
+      const band = armbandGeometry();
+      bandParts.push(paint(band.band, 0xa01818), paint(band.disc, 0xe8e0d0));
+    }
     if (this.smoker) this.rig = this.buildSmokeRig(outfit, coatHex, skinHex);
-    else parts.push(paint(armGeometry(1), coatHex), paint(restHandGeometry(1), skinHex));
+    else {
+      const leftArm = new THREE.Mesh(mergeParts([paint(armGeometry(1), coatHex), paint(restHandGeometry(1), skinHex), ...bandParts.map((g) => g.clone())]), outfit);
+      this.restArmLeft = [leftArm];
+      this.body.add(leftArm);
+    }
+    this.buildHandsUpArm(-1, outfit, coatHex, skinHex, []);
+    this.buildHandsUpArm(1, outfit, coatHex, skinHex, bandParts);
     // Right arm (the figure faces +Z, so its right is -X): swapped for the aiming rig when holding the gun.
     const rightArm = new THREE.Mesh(mergeParts([paint(armGeometry(-1), coatHex), paint(restHandGeometry(-1), skinHex)]), outfit);
     this.restArm = [rightArm];
     this.body.add(rightArm);
     const { shoulder, wrist } = armJoints(-1);
     this.buildAimArm(shoulder, wrist, outfit, coatHex, skinHex);
-    if (hitler) {
-      // Plain red armband on the upper arm (deliberately no insignia).
-      const band = armbandGeometry();
-      parts.push(paint(band.band, 0xa01818), paint(band.disc, 0xe8e0d0));
-      this.addUniform(parts);
-    }
+    if (hitler) this.addUniform(parts);
     this.body.add(new THREE.Mesh(mergeParts(parts), outfit));
 
     // Head: shaped skull with ears and nose, both eyes in one mesh, the mouth on its own (it scales while talking).
@@ -334,6 +342,11 @@ export class Character {
   }
 
   private restArm: THREE.Mesh[] = [];
+  private restArmLeft: THREE.Mesh[] = [];
+  private handsUpArms: { shoulder: THREE.Group; elbow: THREE.Group; restS: THREE.Quaternion; restE: THREE.Quaternion; upS: THREE.Quaternion; upE: THREE.Quaternion }[] = [];
+  private handsUpTarget = 0;
+  private handsUpAmount = 0;
+  private handsUpQ = new THREE.Quaternion();
   private aimArm = new THREE.Group();
   /** Where the revolver's grip sits while aiming (world position read by the game each frame). */
   handAnchor = new THREE.Object3D();
@@ -358,6 +371,70 @@ export class Character {
     this.restQuat.setFromRotationMatrix(m);
     this.aimArm.quaternion.copy(this.restQuat);
     this.body.add(this.aimArm);
+  }
+
+  /**
+   * The surrender rig for one arm: a shoulder group (upper arm, plus the armband if any) and a child elbow group
+   * (forearm and flat hand), whose +Z runs along the bone, with their rest (arm on the table) and raised
+   * (upper arm out and up, forearm straight up) orientations. `extras` are body-space parts riding on the upper arm.
+   */
+  private buildHandsUpArm(side: 1 | -1, outfit: THREE.Material, coatHex: number, skinHex: number, extras: THREE.BufferGeometry[]) {
+    const { shoulder, elbow, wrist } = armJoints(side);
+    const z = new THREE.Vector3(0, 0, 1);
+    const q = (dir: THREE.Vector3) => new THREE.Quaternion().setFromUnitVectors(z, dir.clone().normalize());
+    const upperLen = elbow.distanceTo(shoulder);
+    const foreLen = 0.28;
+    const restS = q(elbow.clone().sub(shoulder));
+    // Armband parts move from body space into the shoulder group's rest frame.
+    const toLocal = new THREE.Matrix4().compose(shoulder, restS, new THREE.Vector3(1, 1, 1)).invert();
+    const upperParts = [paintGeometry(limbGeometry(new THREE.Vector3(), new THREE.Vector3(0, 0, upperLen), 0.058, 0.054), coatHex), ...extras.map((g) => g.clone().applyMatrix4(toLocal))];
+    const sg = new THREE.Group();
+    sg.position.copy(shoulder);
+    sg.add(new THREE.Mesh(mergeParts(upperParts), outfit));
+    const eg = new THREE.Group();
+    eg.position.z = upperLen;
+    const foreParts = [
+      paintGeometry(limbGeometry(new THREE.Vector3(), new THREE.Vector3(0, 0, foreLen), 0.052, 0.045), coatHex),
+      paintGeometry(handGeometry('flat', side).translate(0, 0, foreLen + 0.05), skinHex),
+    ];
+    eg.add(new THREE.Mesh(mergeParts(foreParts), outfit));
+    sg.add(eg);
+    sg.visible = false;
+    this.body.add(sg);
+    const upS = q(new THREE.Vector3(side * 0.85, 0.25, 0.35));
+    // The elbow group is relative to the shoulder group: inverse(shoulder) * world.
+    const restE = restS.clone().invert().multiply(q(wrist.clone().sub(elbow)));
+    const upE = upS.clone().invert().multiply(q(new THREE.Vector3(0, 1, 0.15)));
+    this.handsUpArms.push({ shoulder: sg, elbow: eg, restS, restE, upS, upE });
+  }
+
+  /** The aimed-at patron raises both hands (false lowers them). */
+  setHandsUp(on: boolean) {
+    this.handsUpTarget = on ? 1 : 0;
+  }
+
+  /** Runs after updateAim and updateSmoke: while raised, the surrender rig replaces the rest arms, the smoking arm and the aim arm. */
+  private updateHandsUp(dt: number, now: number) {
+    this.handsUpAmount += ((this.handsUpTarget && !this.dead ? 1 : 0) - this.handsUpAmount) * (1 - Math.exp(-7 * dt));
+    const a = this.handsUpAmount;
+    const up = a > 0.02;
+    for (const m of this.restArmLeft) m.visible = !up;
+    if (this.rig) {
+      this.rig.upper.visible = !up;
+      if (up) {
+        this.rig.dragT = null;
+        this.rig.dragIn = Math.max(this.rig.dragIn, 3);
+      }
+    }
+    for (const arm of this.handsUpArms) arm.shoulder.visible = up;
+    if (!up) return;
+    for (const m of this.restArm) m.visible = false;
+    this.aimArm.visible = false;
+    const e = a * a * (3 - 2 * a);
+    for (const arm of this.handsUpArms) {
+      arm.shoulder.quaternion.slerpQuaternions(arm.restS, arm.upS, e);
+      arm.elbow.quaternion.slerpQuaternions(arm.restE, arm.upE, e).multiply(this.handsUpQ.setFromAxisAngle(this.xAxis, Math.sin(now * 23 + this.phase) * 0.03 * a));
+    }
   }
 
   /** Raise the gun arm toward a world point (null lowers it back to the table). */
@@ -479,11 +556,11 @@ export class Character {
 
   /**
    * Writes the ember's, the mouth's and the head's facing (slightly down) in world space; returns the exhale amount 0..1.
-   * -1 for non-smokers and the dead (nothing to emit).
+   * -1 for non-smokers, the dead and while the hands are up (nothing to emit).
    */
   smokeEmit(tip: THREE.Vector3, mouth: THREE.Vector3, dir: THREE.Vector3): number {
     const r = this.rig;
-    if (!r || this.dead) return -1;
+    if (!r || this.dead || this.handsUpAmount > 0.02) return -1;
     r.ember.getWorldPosition(tip);
     this.head.getWorldQuaternion(r.qFore);
     mouth.set(0, -0.07, 0.16);
@@ -521,6 +598,7 @@ export class Character {
     else this.pose.pitch = this.pose.yaw = this.pose.lean = this.pose.armLift = 0;
     this.updateAim(dt);
     if (this.rig) this.updateSmoke(this.rig, dt, now);
+    this.updateHandsUp(dt, now);
     // Idle: breathing and a slow sway.
     const k = 1 - Math.exp(-4 * dt);
     if (!this.dead) this.deathT = null;
