@@ -50,12 +50,13 @@ export function talkReads(m: Memory, v: GameView): { pF: number[]; sus: number[]
   return { pF, sus: pF.map((p) => 6 * (p - prior)) };
 }
 
-/** buildState with each player's `suspicion` swapped for the belief percentage. buildState lists the other
- *  players in seat order, so the swap goes by that order. */
+/** buildState with each player's `suspicion` and decision-side `read` swapped for the talk percentage, so a
+ *  Fascist talks from the table's view. buildState lists the other players in seat order, so the swap goes
+ *  by that order. */
 function withLikelyFascist(state: ReturnType<typeof buildState>, v: GameView, pF: number[]) {
   const others = v.players.filter((p) => p.seat !== v.you);
   const players = (state.players as Record<string, unknown>[]).map((p, i) => {
-    const { suspicion: _s, ...rest } = p;
+    const { suspicion: _s, read: _r, ...rest } = p;
     return { ...rest, likelyFascist: `${Math.round(pF[others[i].seat] * 100)}%` };
   });
   return { ...state, players };
