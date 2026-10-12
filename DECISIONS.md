@@ -56,3 +56,8 @@ Decisions made autonomously while building, with the reasoning.
     dark: no bright or white large fills, large-fill luminance <= 0.45 (pinned by
     `tests/textures-palette.test.ts`), parchment only on `#prompt.mine` and `#confirm-card`. We take his
     principles and never trace or copy his artwork.
+25. **Official art amends #24.** Cards, boards, placards, posters, logo and HUD card images now use the official
+    Secret Hitler art under CC BY-NC-SA 4.0, credited in `client/art/CREDITS.md`. The procedural Schubert-style
+    textures, seals and portraits are only the fallback (`?art=old` or a failed load); #24's "never trace or copy
+    his artwork" no longer holds. The HUD stays dark glass, patrons stay human, and the <= 0.45 luminance cap now
+    covers only fallback canvas fills and the HUD. The guide is renamed "Official art on dark".

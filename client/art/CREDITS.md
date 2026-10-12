@@ -16,3 +16,4 @@ Card, board, placard and logo art from the original Secret Hitler, used under CC
 | `placard-president.webp`, `placard-chancellor.webp` | President and Chancellor placards |
 | `board-liberal.webp`, `board-fascist-56.webp`, `board-fascist-78.webp`, `board-fascist-910.webp` | Liberal board and Fascist boards for 5-6, 7-8 and 9-10 players |
 | `logo.webp` | Secret Hitler logo |
+| `seal-liberal.webp`, `seal-fascist.webp` | Party seals cropped from the membership cards |
