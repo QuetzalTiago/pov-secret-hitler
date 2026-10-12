@@ -183,7 +183,11 @@ export class UI {
       $('sound').textContent = isMuted() ? 'Sound: off' : 'Sound: on';
     };
     const fsBtn = $('fullscreen-btn');
-    if (!fullscreenSupported()) fsBtn.classList.add('hidden');
+    const fsHint = $('fs-hint');
+    if (!fullscreenSupported()) {
+      fsBtn.classList.add('hidden');
+      fsHint.classList.add('hidden');
+    }
     else {
       fsBtn.onclick = () => toggleFullscreen();
       window.addEventListener('keydown', (e) => {
@@ -198,6 +202,7 @@ export class UI {
         fsBtn.setAttribute('aria-label', label);
         fsBtn.title = label;
         fsBtn.setAttribute('aria-pressed', String(on));
+        fsHint.classList.toggle('hidden', on);
       });
     }
     $('copy-code').onclick = () => this.copy(this.room?.code ?? '', 'copy-code', 'copied');

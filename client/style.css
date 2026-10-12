@@ -312,6 +312,11 @@ input:disabled { opacity: 0.5; }
 .mk-arrow { display: inline-block; color: var(--accent); }
 
 #top-right { position: absolute; top: 12px; right: 14px; display: flex; gap: 6px; align-items: center; }
+#fs-hint { font-size: 12px; color: var(--ink-dim); text-shadow: 0 1px 3px #000; white-space: nowrap; margin-right: 2px; }
+#fs-hint kbd {
+  display: inline-block; min-width: 1.4em; padding: 1px 5px; margin: 0 2px; border: 1px solid var(--glass-edge); border-radius: 4px;
+  background: rgba(0, 0, 0, 0.45); color: var(--ink); font: 700 11px var(--font-display); text-align: center;
+}
 @keyframes pulse { to { opacity: 0.5; } }
 #settings { position: absolute; top: calc(100% + 8px); right: 0; width: 200px; padding: var(--space-2); gap: 2px; z-index: 5; border-radius: var(--radius-l); }
 #settings button { width: 100%; text-align: left; background: transparent; border-color: transparent; color: var(--ink); border-radius: var(--radius-s); padding: 9px 12px; }
@@ -548,6 +553,7 @@ body.low-fx #victory .vp:nth-child(n+17) { display: none; }
 }
 
 @media (max-width: 640px) {
+  #fs-hint { display: none; }
   #roster { right: 6px; max-height: max(120px, calc(100dvh - 360px)); }
   .r-row { padding: 2px; width: auto; }
   .r-name, .r-you, .badge { display: none; }
