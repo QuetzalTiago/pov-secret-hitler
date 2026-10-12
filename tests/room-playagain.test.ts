@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { seriesLine } from '../client/ui';
+import { config } from '../server/config';
 import { Room, type Conn } from '../server/room';
 
 const mk = (id: number): Conn => ({ id, room: null, seat: -1, send: () => {} });
@@ -55,14 +56,54 @@ describe('series and play again', () => {
     room.close();
   });
 
-  it('re-deals when the only un-ready human disconnects, dropping that seat', () => {
+  it('re-deals when the only un-ready human disconnects, keeping the seat within grace', () => {
     const { room, conns } = finished(4);
+    const token = room.seats.find((s) => s.name === 'B')!.token;
     room.playAgain(conns[0]);
     expect(room.game!.phase).toBe('gameOver');
     room.disconnected(conns[1]);
     expect(room.game!.phase).not.toBe('gameOver');
+    expect(room.seats).toHaveLength(6);
+    expect(room.seats.some((s) => s.name === 'B')).toBe(true);
+    const c = mk(9);
+    expect(room.resume(c, token)).toBeNull();
+    expect(room.seats.find((s) => s.name === 'B')!.conn).toBe(c);
+    room.close();
+  });
+
+  it('drops a human whose grace has run out at the re-deal', () => {
+    vi.useFakeTimers();
+    try {
+      const { room, conns } = finished(4);
+      room.disconnected(conns[1]);
+      vi.advanceTimersByTime(config.reconnectGraceMs + 1);
+      room.playAgain(conns[0]);
+      expect(room.game!.phase).not.toBe('gameOver');
+      expect(room.seats).toHaveLength(5);
+      expect(room.seats.some((s) => s.name === 'B')).toBe(false);
+      room.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops a human who left at the re-deal', () => {
+    const { room, conns } = finished(4);
+    room.playAgain(conns[0]);
+    room.leave(conns[1]);
+    expect(room.game!.phase).not.toBe('gameOver');
     expect(room.seats).toHaveLength(5);
     expect(room.seats.some((s) => s.name === 'B')).toBe(false);
+    room.close();
+  });
+
+  it('keeps a human within grace on rematch', () => {
+    const { room, conns } = finished(4);
+    room.disconnected(conns[1]);
+    expect(room.rematch(conns[0])).toBeNull();
+    expect(room.stage).toBe('lobby');
+    expect(room.seats).toHaveLength(6);
+    expect(room.seats.some((s) => s.name === 'B')).toBe(true);
     room.close();
   });
 

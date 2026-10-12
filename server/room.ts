@@ -428,14 +428,18 @@ export class Room {
     return this.redeal();
   }
 
-  private redeal(): string | null {
-    this.ready.clear();
-    // Drop seats of humans who are gone; keep everyone else.
+  /** Drops humans who left or whose reconnect grace ran out; a refreshing tab keeps its seat. */
+  private dropGoneHumans(): void {
     for (let i = this.seats.length - 1; i >= 0; i--) {
       const s = this.seats[i];
-      if (!s.bot && !s.conn) this.removeSeat(i);
+      if (!s.bot && (s.left || (!s.conn && !this.disconnectTimers.has(s.token)))) this.removeSeat(i);
       else s.botControl = s.bot;
     }
+  }
+
+  private redeal(): string | null {
+    this.ready.clear();
+    this.dropGoneHumans();
     this.clearTimer();
     if (this.seats.length < MIN_PLAYERS) {
       this.stage = 'lobby';
@@ -455,12 +459,7 @@ export class Room {
     this.ready.clear();
     this.stage = 'lobby';
     this.game = null;
-    // Drop seats of humans who are gone; keep everyone else.
-    for (let i = this.seats.length - 1; i >= 0; i--) {
-      const s = this.seats[i];
-      if (!s.bot && !s.conn) this.removeSeat(i);
-      else s.botControl = s.bot;
-    }
+    this.dropGoneHumans();
     this.clearTimer();
     this.stopMoodTimer();
     this.resetTalk();
