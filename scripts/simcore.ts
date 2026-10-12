@@ -1,24 +1,10 @@
 // Plays complete games with bots and checks invariants after every step.
-import { botAction, randomAction } from '../shared/bot';
-import { buildDecision, heuristicChoice } from '../shared/smartbot';
-import { newMemory, noteMyHand, observe } from '../shared/tracker';
-import {
-  aliveCount, cardCounts, createGame, legalActions, pendingActors, reduce,
-} from '../shared/engine';
-import { nextRandom } from '../shared/rng';
+import { aliveCount, cardCounts, legalActions, pendingActors } from '../shared/engine';
 import { FASCIST_WIN, HITLER_ZONE, LIBERAL_WIN } from '../shared/rules';
 import { PHASES, type GameEvent, type GameState } from '../shared/types';
-import { viewFor } from '../shared/view';
+import { heuristicChooser, oldSmartChooser, randomChooser, runGame, type GameResult } from './gameloop';
 
-export interface GameResult {
-  players: number;
-  winner: string;
-  reason: string;
-  steps: number;
-  events: number;
-}
-
-const MAX_STEPS = 5000;
+export type { GameResult };
 
 export function checkInvariants(s: GameState): void {
   const fail = (m: string) => {
@@ -64,41 +50,14 @@ export function playGame(
   mode: 'random' | 'heuristic' | 'smart',
   onStep?: (s: GameState, events: GameEvent[]) => void,
 ): GameResult {
-  const names = Array.from({ length: n }, (_, i) => `Bot${i}`);
-  let s = createGame(names, seed);
-  let r = (seed ^ 0x9e3779b9) >>> 0;
-  const rand = () => {
-    const [v, next] = nextRandom(r);
-    r = next;
-    return v;
-  };
-  checkInvariants(s);
-  const memories = names.map((_, i) => newMemory(i, n));
-  let steps = 0;
-  let events = 0;
-  while (s.phase !== 'gameOver') {
-    if (++steps > MAX_STEPS) throw new Error(`game ${n}p seed ${seed} did not finish`);
-    const actors = pendingActors(s);
-    const seat = actors[Math.floor(rand() * actors.length)];
-    const legal = legalActions(s, seat);
-    let body;
-    if (mode === 'random') body = randomAction(legal, rand);
-    else if (mode === 'heuristic') body = botAction(viewFor(s, seat), legal, rand);
-    else {
-      // Same strategy + memory the server bots use when Jev is unavailable.
-      const v = viewFor(s, seat);
-      const d = buildDecision(v, legal, memories[seat], (x) => names[x]);
-      body = d.options[heuristicChoice(d, rand)].action;
-      if (body.type === 'presDiscard') noteMyHand(memories[seat], v, body.index);
-      if (body.type === 'chancEnact') noteMyHand(memories[seat], v, null);
-    }
-    const res = reduce(s, { ...body, seat } as never);
-    s = res.state;
-    if (mode === 'smart') memories.forEach((m, i) => observe(m, viewFor(s, i), res.events));
-    events += res.events.length;
-    eventsAreClean(res.events);
-    checkInvariants(s);
-    onStep?.(s, res.events);
-  }
-  return { players: n, winner: s.winner!, reason: s.winReason!, steps, events };
+  const chooser = mode === 'random' ? randomChooser : mode === 'heuristic' ? heuristicChooser : oldSmartChooser;
+  return runGame(n, seed, () => chooser, {
+    trackMemory: mode === 'smart',
+    onStart: checkInvariants,
+    onStep: (s, events) => {
+      eventsAreClean(events);
+      checkInvariants(s);
+      onStep?.(s, events);
+    },
+  });
 }
