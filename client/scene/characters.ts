@@ -1,17 +1,50 @@
 // Procedural low-poly patrons. Original designs: coats, faces and hats vary by seat.
+// Geometry comes from patron.ts and is merged per mesh to keep the draw-call count low: one vertex-coloured
+// "outfit" material covers everything on the body (coat, skin, shirt, tie, belt), so a patron is a handful of meshes.
 import * as THREE from 'three';
 import { disposeObject } from './dispose';
 import { DEATH_DUR, REACTION_DUR, blinkScale, deathPose, mouthOpen, nextBlinkDelay, reactionPose, type DeathPose, type Reaction, type ReactionPose } from './life';
 import { glowTexture, textSprite } from './textures';
-import { boxLimb, glossy } from './world';
+import { glossy } from './world';
 import { handGeometry } from './hands';
+import {
+  aimArmGeometry,
+  armGeometry,
+  armJoints,
+  armbandGeometry,
+  eyesGeometry,
+  faceDetailGeometry,
+  fingerGeometry,
+  hatGeometry,
+  headSkinGeometry,
+  mergeParts,
+  mouthGeometry,
+  neckGeometry,
+  paintGeometry,
+  peakedCapGeometry,
+  shirtGeometry,
+  tieGeometry,
+  torsoGeometry,
+  uniformGeometry,
+} from './patron';
 
 const COATS = [0x6b2f2a, 0x2f4a6b, 0x4a5a2a, 0x5a3a6b, 0x7a5a2a, 0x2a5a55, 0x6b4a3a, 0x3a3a46, 0x803a50, 0x55602f];
 const SKINS = [0xe0b090, 0xb07a55, 0x8a5a3a, 0xd9a07a, 0x6b4430, 0xf0c8a8, 0xc08860, 0x9a6a48, 0xe6b898, 0x7a4e36];
 const HATS = ['fedora', 'cap', 'bowler', 'none', 'beret', 'tophat', 'none', 'fedora', 'bowler', 'cap'] as const;
+const DARK = 0x1a1410;
 
 function mat(color: number, rough = 0.75) {
-  return new THREE.MeshStandardMaterial({ color, roughness: rough, flatShading: true });
+  return new THREE.MeshStandardMaterial({ color, roughness: rough, flatShading: false });
+}
+
+/** Flat resting hand at the end of an arm, in body space. */
+function restHandGeometry(side: 1 | -1) {
+  const { elbow, wrist } = armJoints(side);
+  const dir = wrist.clone().sub(elbow).setY(0).normalize();
+  const hand = handGeometry('flat', side);
+  hand.rotateY(Math.atan2(dir.x, dir.z));
+  const p = wrist.clone().addScaledVector(dir, 0.055).setY(0.815);
+  return hand.translate(p.x, p.y, p.z);
 }
 
 export class Character {
@@ -58,107 +91,69 @@ export class Character {
    */
   constructor(public seat: number, styleIndex: number, public variant: 'normal' | 'hitler' = 'normal') {
     const hitler = variant === 'hitler';
-    const coat = mat(hitler ? 0x7a6844 : COATS[styleIndex % COATS.length]);
-    const skin = mat(hitler ? 0xe8c4a4 : SKINS[(styleIndex * 3) % SKINS.length], 0.6);
-    const dark = mat(0x1a1410, 0.6);
-    const shirt = mat(hitler ? 0x8c7450 : 0xd8d0c0);
-    this.mats.push(coat, skin, dark, shirt);
+    const coatHex = hitler ? 0x7a6844 : COATS[styleIndex % COATS.length];
+    const skinHex = hitler ? 0xe8c4a4 : SKINS[(styleIndex * 3) % SKINS.length];
+    const shirtHex = hitler ? 0x8c7450 : 0xd8d0c0;
+    const tieHex = hitler ? 0x14100c : styleIndex % 2 ? 0x8a1a1a : 0x1a2a4a;
+    // Vertex-coloured, so coat, skin, shirt and tie share one material (one draw call); tint and emissive act on it as a whole.
+    const outfit = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.72, flatShading: false, vertexColors: true });
+    const skin = mat(skinHex, 0.6);
+    const dark = mat(DARK, 0.6);
+    this.mats.push(outfit, skin, dark);
+    const paint = paintGeometry;
 
-    // Torso: tapered coat with a shirt V and lapels.
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.62, 7), coat);
-    torso.position.y = 0.86;
-    const chest = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.26, 3), shirt);
-    chest.position.set(0, 0.98, 0.2);
-    chest.rotation.set(-0.12 + Math.PI, 0, 0);
-    const tie = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.17, 0.02), mat(hitler ? 0x14100c : styleIndex % 2 ? 0x8a1a1a : 0x1a2a4a));
-    tie.position.set(0, 0.99, 0.235);
-    tie.rotation.x = -0.12;
-    const shoulders = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.12, 0.26), coat);
-    shoulders.position.y = 1.13;
-    // Arms reaching to the table.
-    for (const side of [-1, 1]) {
-      // Jointed chain so the hands stay attached: shoulder -> elbow -> wrist on the table edge.
-      const shoulder = new THREE.Vector3(side * 0.27, 1.1, 0.0);
-      const elbow = new THREE.Vector3(side * 0.31, 0.88, 0.17);
-      const wrist = new THREE.Vector3(side * 0.23, 0.83, 0.45);
-      const upper = boxLimb(shoulder, elbow, 0.11, 0.12, coat);
-      const fore = boxLimb(elbow, wrist, 0.1, 0.1, coat);
-      const dir = wrist.clone().sub(elbow).setY(0).normalize();
-      const hand = new THREE.Mesh(handGeometry('flat', side as 1 | -1), skin);
-      hand.position.copy(wrist).addScaledVector(dir, 0.055).setY(0.815);
-      hand.rotation.y = Math.atan2(dir.x, dir.z);
-      this.body.add(upper, fore, hand);
-      if (side === -1) {
-        // Right arm (the figure faces +Z, so its right is -X): swapped for the aiming rig when holding the gun.
-        this.restArm = [upper, fore, hand];
-        this.buildAimArm(shoulder, wrist, coat, skin);
-      } else {
-        this.restArmLeft = [upper, fore, hand];
-      }
-      this.buildHandsUpArm(side as 1 | -1, shoulder, elbow, wrist, coat, skin);
-      if (hitler && side === 1) {
-        // Plain red armband on the upper arm (deliberately no insignia).
-        const band = boxLimb(shoulder.clone().lerp(elbow, 0.38), shoulder.clone().lerp(elbow, 0.62), 0.125, 0.135, mat(0xa01818, 0.5));
-        const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.01, 12), mat(0xe8e0d0, 0.5));
-        disc.position.copy(shoulder).lerp(elbow, 0.5).add(new THREE.Vector3(0.066, 0, 0));
-        disc.rotation.z = Math.PI / 2;
-        this.body.add(band, disc);
-        this.restArmLeft.push(band, disc);
-      }
+    // Body: coat torso with rounded shoulders, the left arm and hand, neck, shirt V and tie in a single mesh.
+    const parts = [
+      paint(torsoGeometry(), coatHex),
+      paint(neckGeometry(), skinHex),
+      paint(shirtGeometry(), shirtHex),
+      paint(tieGeometry(), tieHex),
+      paint(armGeometry(1), coatHex),
+      paint(restHandGeometry(1), skinHex),
+    ];
+    // Right arm (the figure faces +Z, so its right is -X): swapped for the aiming rig when holding the gun.
+    const rightArm = new THREE.Mesh(mergeParts([paint(armGeometry(-1), coatHex), paint(restHandGeometry(-1), skinHex)]), outfit);
+    this.restArm = [rightArm];
+    this.body.add(rightArm);
+    const { shoulder, wrist } = armJoints(-1);
+    this.buildAimArm(shoulder, wrist, outfit, coatHex, skinHex);
+    if (hitler) {
+      // Plain red armband on the upper arm (deliberately no insignia).
+      const band = armbandGeometry();
+      parts.push(paint(band.band, 0xa01818), paint(band.disc, 0xe8e0d0));
+      this.addUniform(parts);
     }
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 6), skin);
-    neck.position.y = 1.22;
-    this.body.add(torso, chest, tie, shoulders, neck);
-    if (hitler) this.addUniform(dark);
+    this.body.add(new THREE.Mesh(mergeParts(parts), outfit));
 
-    // Head: faceted sphere with a simple face.
-    const skull = new THREE.Mesh(new THREE.IcosahedronGeometry(0.15, 1), skin);
-    skull.scale.set(1, 1.12, 1);
-    const brows: THREE.Mesh[] = [];
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0c0806, emissive: 0x221100, roughness: 0.3 });
-    for (const side of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.022, 0.02), eyeMat);
-      eye.position.set(side * 0.055, 0.03, 0.135);
-      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.014, 0.02), dark);
-      brow.position.set(side * 0.055, 0.065, 0.135);
-      brow.rotation.z = side * (styleIndex % 3 === 0 ? 0.25 : -0.08);
-      this.eyes.push(eye);
-      brows.push(brow);
-      this.head.add(eye, brow);
-    }
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.07, 4), skin);
-    nose.rotation.x = Math.PI / 2;
-    nose.position.set(0, -0.005, 0.16);
-    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.012, 0.01), dark);
+    // Head: shaped skull with ears and nose, both eyes in one mesh, the mouth on its own (it scales while talking).
+    const headSkin = new THREE.Mesh(headSkinGeometry(), skin);
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0c0806, emissive: 0x221100, roughness: 0.3, flatShading: false });
+    const eyes = new THREE.Mesh(eyesGeometry(), eyeMat);
+    eyes.position.set(0, 0.03, 0.135);
+    this.eyes.push(eyes);
+    const mouth = new THREE.Mesh(mouthGeometry(), dark);
     mouth.position.set(0, -0.07, 0.135);
     this.mouth = mouth;
-    this.head.add(skull, nose, mouth);
-    if (hitler) {
-      // Short square moustache and a dark fringe swept across the forehead.
-      const stache = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.026, 0.02), dark);
-      stache.position.set(0, -0.04, 0.148);
-      const fringe = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.04, 0.05), dark);
-      fringe.position.set(-0.025, 0.085, 0.12);
-      fringe.rotation.z = 0.35;
-      this.head.add(stache, fringe);
-    } else if (styleIndex % 4 === 1) {
-      const stache = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.022, 0.02), dark);
-      stache.position.set(0, -0.042, 0.145);
-      this.head.add(stache);
-    }
-    if (!hitler && styleIndex % 5 === 2) {
-      const beard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.1, 0.1), dark);
-      beard.position.set(0, -0.11, 0.08);
-      this.head.add(beard);
-    }
-    if (hitler) this.addPeakedCap();
-    else this.addHat(HATS[styleIndex % HATS.length], styleIndex);
+    const hat = hitler ? 'peaked' : HATS[styleIndex % HATS.length];
+    const cap = hitler ? peakedCapGeometry() : null;
+    const detail = faceDetailGeometry({
+      browTilt: styleIndex % 3 === 0 ? 0.25 : -0.08,
+      mustache: hitler ? 'toothbrush' : styleIndex % 4 === 1 ? 'wide' : 'none',
+      beard: !hitler && styleIndex % 5 === 2,
+      hair: hat === 'none',
+      fringe: hitler,
+    });
+    // The peaked cap's dark band and visor ride along with the dark face details.
+    const details = new THREE.Mesh(cap ? mergeParts([detail, cap.trim]) : detail, dark);
+    this.head.add(headSkin, eyes, mouth, details);
+    if (cap) this.addPeakedCap(cap.cloth, cap.badge);
+    else if (hat !== 'peaked') this.addHat(hat, styleIndex);
     this.head.position.y = 1.4;
     this.body.add(this.head);
     this.group.add(this.body);
 
     // Face details are too small to cast a visible shadow; skipping them keeps them out of the shadow pass.
-    const faceDetails = new Set<THREE.Object3D>([...this.eyes, ...brows, nose, mouth]);
+    const faceDetails = new Set<THREE.Object3D>([eyes, details, mouth]);
     this.body.traverse((o) => {
       if ((o as THREE.Mesh).isMesh) {
         o.castShadow = !faceDetails.has(o);
@@ -182,86 +177,27 @@ export class Character {
     this.group.add(this.glow);
   }
 
-  /** Belt, cross strap and tunic buttons. */
-  private addUniform(dark: THREE.MeshStandardMaterial) {
-    const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.235, 0.235, 0.05, 7), dark);
-    belt.position.y = 0.7;
-    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.5, 0.02), dark);
-    strap.position.set(-0.04, 0.93, 0.225);
-    strap.rotation.set(-0.12, 0, -0.55);
+  /** Belt and cross strap join the body's vertex-coloured geometry; the brass buckle and buttons are their own glossy mesh. */
+  private addUniform(parts: THREE.BufferGeometry[]) {
+    const u = uniformGeometry();
+    parts.push(paintGeometry(u.dark, DARK));
     const brass = glossy(mat(0xc8a050, 0.35), 0.5);
     brass.metalness = 0.8;
-    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.02), brass);
-    buckle.position.set(0, 0.7, 0.245);
-    this.body.add(belt, strap, buckle);
-    for (let i = 0; i < 3; i++) {
-      const b = new THREE.Mesh(new THREE.SphereGeometry(0.009, 6, 4), brass);
-      b.position.set(0.05, 0.8 + i * 0.09, 0.235 - i * 0.008);
-      this.body.add(b);
-    }
+    this.body.add(new THREE.Mesh(u.brass, brass));
   }
 
-  /** Military peaked cap: tall crown, dark band, glossy visor. */
-  private addPeakedCap() {
+  /** Military peaked cap: tall crown and a brass badge (the dark band and glossy visor are merged into the face details). */
+  private addPeakedCap(cloth: THREE.BufferGeometry, badge: THREE.BufferGeometry) {
     const capMat = mat(0x6e5c3c, 0.7);
-    const bandMat = mat(0x1a1410, 0.5);
     this.mats.push(capMat);
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.15, 0.1, 10), capMat);
-    crown.position.y = 0.17;
-    crown.rotation.x = -0.12;
-    crown.scale.z = 1.08;
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.155, 0.05, 10), bandMat);
-    band.position.y = 0.12;
-    const visor = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.012, 10, 1, false, -Math.PI / 2, Math.PI), bandMat);
-    visor.position.set(0, 0.1, 0.1);
-    visor.rotation.x = 0.22;
-    const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.008, 10), mat(0xc8a050, 0.35));
-    badge.rotation.x = Math.PI / 2 - 0.12;
-    badge.position.set(0, 0.18, 0.175);
-    this.head.add(crown, band, visor, badge);
+    this.head.add(new THREE.Mesh(cloth, capMat), new THREE.Mesh(badge, mat(0xc8a050, 0.35)));
   }
 
   private addHat(kind: (typeof HATS)[number], i: number) {
+    if (kind === 'none') return; // bare-headed patrons get a hair cap in the face details
     const hatMat = mat([0x1d1a18, 0x3a2a1a, 0x22252a, 0x4a1a1a][i % 4], 0.8);
     this.mats.push(hatMat);
-    const add = (geo: THREE.BufferGeometry, y: number, sx = 1, sz = 1) => {
-      const m = new THREE.Mesh(geo, hatMat);
-      m.position.y = y;
-      m.scale.set(sx, 1, sz);
-      this.head.add(m);
-      return m;
-    };
-    switch (kind) {
-      case 'fedora':
-        add(new THREE.CylinderGeometry(0.25, 0.25, 0.02, 12), 0.12);
-        add(new THREE.CylinderGeometry(0.12, 0.15, 0.14, 8), 0.19);
-        break;
-      case 'tophat':
-        add(new THREE.CylinderGeometry(0.22, 0.22, 0.02, 12), 0.12);
-        add(new THREE.CylinderGeometry(0.13, 0.13, 0.26, 10), 0.25);
-        break;
-      case 'bowler':
-        add(new THREE.CylinderGeometry(0.2, 0.2, 0.02, 12), 0.11);
-        add(new THREE.SphereGeometry(0.15, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0.11);
-        break;
-      case 'cap': {
-        add(new THREE.SphereGeometry(0.165, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0.07);
-        const brim = add(new THREE.BoxGeometry(0.2, 0.015, 0.12), 0.08);
-        brim.position.z = 0.14;
-        break;
-      }
-      case 'beret': {
-        const b = add(new THREE.CylinderGeometry(0.17, 0.16, 0.06, 10), 0.15);
-        b.rotation.z = 0.2;
-        break;
-      }
-      case 'none': {
-        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.158, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2.2), mat(0x2a1a10, 0.9));
-        hair.position.y = 0.03;
-        this.head.add(hair);
-        break;
-      }
-    }
+    this.head.add(new THREE.Mesh(hatGeometry(kind), hatMat));
   }
 
   setLabel(text: string, color = '#f0e6d2') {
@@ -301,11 +237,6 @@ export class Character {
   }
 
   private restArm: THREE.Mesh[] = [];
-  private restArmLeft: THREE.Mesh[] = [];
-  private handsUpArms: { shoulder: THREE.Group; elbow: THREE.Group; restS: THREE.Quaternion; restE: THREE.Quaternion; upS: THREE.Quaternion; upE: THREE.Quaternion }[] = [];
-  private handsUpTarget = 0;
-  private handsUpAmount = 0;
-  private handsUpQ = new THREE.Quaternion();
   private aimArm = new THREE.Group();
   /** Where the revolver's grip sits while aiming (world position read by the game each frame). */
   handAnchor = new THREE.Object3D();
@@ -315,80 +246,21 @@ export class Character {
   private restQuat = new THREE.Quaternion();
 
   /** A straight arm pivoting at the shoulder; its +Z axis points along the arm toward the hand. */
-  private buildAimArm(shoulder: THREE.Vector3, wrist: THREE.Vector3, coat: THREE.Material, skin: THREE.Material) {
+  private buildAimArm(shoulder: THREE.Vector3, wrist: THREE.Vector3, outfit: THREE.Material, coatHex: number, skinHex: number) {
     this.aimArm.position.copy(shoulder);
-    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.3), coat);
-    upper.position.z = 0.14;
-    const fore = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.28), coat);
-    fore.position.z = 0.41;
-    const hand = new THREE.Mesh(handGeometry('fist', -1), skin);
-    hand.position.z = 0.58;
+    // Sleeve and fist in one vertex-coloured mesh.
+    const arm = new THREE.Mesh(mergeParts([paintGeometry(aimArmGeometry(), coatHex), paintGeometry(handGeometry('fist', -1).translate(0, 0, 0.58), skinHex)]), outfit);
     this.handAnchor.position.set(0, 0.0, 0.6);
     // Index finger, shown only when pointing (not when holding the gun).
-    this.finger = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.024, 0.1), skin);
+    this.finger = new THREE.Mesh(paintGeometry(fingerGeometry(), skinHex), outfit);
     this.finger.position.set(0, 0.02, 0.66);
-    this.aimArm.add(upper, fore, hand, this.finger, this.handAnchor);
-    for (const m of [upper, fore, hand]) m.castShadow = true;
+    this.aimArm.add(arm, this.finger, this.handAnchor);
     this.aimArm.visible = false;
     // Resting orientation: pointing from the shoulder down toward the hand on the table.
     const m = new THREE.Matrix4().lookAt(wrist, shoulder, new THREE.Vector3(0, 1, 0));
     this.restQuat.setFromRotationMatrix(m);
     this.aimArm.quaternion.copy(this.restQuat);
     this.body.add(this.aimArm);
-  }
-
-  /**
-   * The surrender rig for one arm: a shoulder group and a child elbow group whose +Z runs along the bone,
-   * with their rest (arm on the table) and raised (upper arm out and up, forearm straight up) orientations.
-   */
-  private buildHandsUpArm(side: 1 | -1, shoulder: THREE.Vector3, elbow: THREE.Vector3, wrist: THREE.Vector3, coat: THREE.Material, skin: THREE.Material) {
-    const z = new THREE.Vector3(0, 0, 1);
-    const upperLen = elbow.distanceTo(shoulder);
-    const foreLen = 0.28;
-    const sg = new THREE.Group();
-    sg.position.copy(shoulder);
-    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, upperLen), coat);
-    upper.position.z = upperLen / 2;
-    const eg = new THREE.Group();
-    eg.position.z = upperLen;
-    const fore = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, foreLen), coat);
-    fore.position.z = foreLen / 2;
-    const hand = new THREE.Mesh(handGeometry('flat', side), skin);
-    hand.position.z = foreLen + 0.05;
-    eg.add(fore, hand);
-    sg.add(upper, eg);
-    for (const m of [upper, fore, hand]) m.castShadow = true;
-    sg.visible = false;
-    this.body.add(sg);
-    const q = (dir: THREE.Vector3) => new THREE.Quaternion().setFromUnitVectors(z, dir.clone().normalize());
-    const restS = q(elbow.clone().sub(shoulder));
-    const upS = q(new THREE.Vector3(side * 0.85, 0.25, 0.35));
-    // The elbow group is relative to the shoulder group: inverse(shoulder) * world.
-    const restE = restS.clone().invert().multiply(q(wrist.clone().sub(elbow)));
-    const upE = upS.clone().invert().multiply(q(new THREE.Vector3(0, 1, 0.15)));
-    this.handsUpArms.push({ shoulder: sg, elbow: eg, restS, restE, upS, upE });
-  }
-
-  /** The aimed-at patron raises both hands (false lowers them). */
-  setHandsUp(on: boolean) {
-    this.handsUpTarget = on ? 1 : 0;
-  }
-
-  /** Runs after updateAim: while raised, the surrender rig replaces the rest arms and the aim arm. */
-  private updateHandsUp(dt: number, now: number) {
-    this.handsUpAmount += ((this.handsUpTarget && !this.dead ? 1 : 0) - this.handsUpAmount) * (1 - Math.exp(-7 * dt));
-    const a = this.handsUpAmount;
-    const up = a > 0.02;
-    for (const m of this.restArmLeft) m.visible = !up;
-    for (const arm of this.handsUpArms) arm.shoulder.visible = up;
-    if (!up) return;
-    for (const m of this.restArm) m.visible = false;
-    this.aimArm.visible = false;
-    const e = a * a * (3 - 2 * a);
-    for (const arm of this.handsUpArms) {
-      arm.shoulder.quaternion.slerpQuaternions(arm.restS, arm.upS, e);
-      arm.elbow.quaternion.slerpQuaternions(arm.restE, arm.upE, e).multiply(this.handsUpQ.setFromAxisAngle(this.xAxis, Math.sin(now * 23 + this.phase) * 0.03 * a));
-    }
   }
 
   /** Raise the gun arm toward a world point (null lowers it back to the table). */
@@ -484,7 +356,6 @@ export class Character {
     if (this.reaction) reactionPose(this.reaction.kind, Math.max(0, this.reaction.t), this.pose);
     else this.pose.pitch = this.pose.yaw = this.pose.lean = this.pose.armLift = 0;
     this.updateAim(dt);
-    this.updateHandsUp(dt, now);
     // Idle: breathing and a slow sway.
     const k = 1 - Math.exp(-4 * dt);
     if (!this.dead) this.deathT = null;
