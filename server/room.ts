@@ -3,7 +3,7 @@
 // get angry at being ignored, and start accusations of their own. See bottalk.ts for how a line is written.
 import { randomBytes, randomInt } from 'node:crypto';
 import { RuleError, createGame, legalActions, pendingActors, reduce } from '../shared/engine';
-import type { RoomView, SeatInfo, ServerMsg } from '../shared/protocol';
+import type { RoomView, SeatInfo, ServerMsg, Series } from '../shared/protocol';
 import { MAX_PLAYERS, MIN_PLAYERS } from '../shared/rules';
 import type { ActionBody, GameEvent, GameState, Phase } from '../shared/types';
 import { newMemory, observe, profiles, type Memory } from '../shared/tracker';
@@ -69,6 +69,10 @@ export class Room {
   /** Running while no human is connected; ends the room when it fires. */
   private abandonTimer: NodeJS.Timeout | null = null;
   private closed = false;
+  /** Running score of games at this table; wins are keyed by player name (seats get re-indexed). */
+  series: Series = { liberal: 0, fascist: 0, wins: {} };
+  /** Seat tokens of humans who pressed Play again after the game ended. */
+  private ready = new Set<string>();
   /** Per-seat memory built from that seat's own view (bots read it; it never leaves the server). */
   private memories: Memory[] = [];
   private lastBotChat = new Map<number, number>();
@@ -148,6 +152,7 @@ export class Room {
     this.startGrace(s);
     this.broadcast();
     this.checkEmpty();
+    if (!this.closed) this.checkReady();
   }
 
   /** After the grace period an absent human loses their lobby seat, or a bot plays for them in a game. */
@@ -190,6 +195,7 @@ export class Room {
     }
     this.broadcast();
     this.checkEmpty();
+    if (!this.closed) this.checkReady();
   }
 
   /** Renames bots whose names are too close to `name`, so nobody at the table can be mixed up. */
@@ -291,6 +297,7 @@ export class Room {
       seats: this.seats.map((s) => ({ name: s.name, token: s.token, bot: s.bot, botControl: s.botControl })),
       game: this.game,
       memories: this.memories.map((m) => ({ ...m, known: [...m.known.entries()] })),
+      series: this.series,
     };
   }
 
@@ -304,6 +311,7 @@ export class Room {
     room.stage = snap.stage;
     room.host = snap.host;
     room.game = snap.game;
+    room.series = validSeries(snap.series);
     room.memories = (snap.memories ?? []).map((m) => ({ ...m, known: new Map(m.known) }) as Memory);
     if (room.game && room.memories.length !== room.game.players.length) {
       room.memories = room.game.players.map((p) => newMemory(p.seat, room.game!.players.length));
@@ -352,6 +360,12 @@ export class Room {
     if (!this.isHost(conn)) return 'Only the host can start.';
     if (this.stage !== 'lobby') return 'Already started.';
     if (this.seats.length < MIN_PLAYERS) return `Need at least ${MIN_PLAYERS} players (add bots to fill seats).`;
+    this.ready.clear();
+    this.deal();
+    return null;
+  }
+
+  private deal() {
     this.stage = 'game';
     this.game = createGame(this.seats.map((s) => s.name), randomInt(0, 2 ** 32));
     this.memories = this.seats.map((_, i) => newMemory(i, this.seats.length));
@@ -359,12 +373,58 @@ export class Room {
     this.resetTalk();
     this.startMoodTimer();
     this.after([{ k: 'nightStart' }]);
+  }
+
+  /** A human at the game-over screen toggles being ready for another game at the same table. */
+  playAgain(conn: Conn): string | null {
+    if (this.game?.phase !== 'gameOver') return 'The game is not over.';
+    const seat = this.seatOf(conn);
+    if (seat < 0) return 'You are not seated.';
+    const token = this.seats[seat].token;
+    if (!this.ready.delete(token)) this.ready.add(token);
+    this.broadcast();
+    this.checkReady();
+    return null;
+  }
+
+  /** Re-deals once every connected human is ready. */
+  private checkReady() {
+    if (this.game?.phase !== 'gameOver') return;
+    const humans = this.seats.filter((s) => !s.bot && s.conn);
+    if (humans.length > 0 && humans.every((s) => this.ready.has(s.token))) this.redeal();
+  }
+
+  forceRedeal(conn: Conn): string | null {
+    if (!this.isHost(conn)) return 'Only the host can deal.';
+    if (this.game?.phase !== 'gameOver') return 'The game is not over.';
+    return this.redeal();
+  }
+
+  private redeal(): string | null {
+    this.ready.clear();
+    // Drop seats of humans who are gone; keep everyone else.
+    for (let i = this.seats.length - 1; i >= 0; i--) {
+      const s = this.seats[i];
+      if (!s.bot && !s.conn) this.removeSeat(i);
+      else s.botControl = s.bot;
+    }
+    this.clearTimer();
+    if (this.seats.length < MIN_PLAYERS) {
+      this.stage = 'lobby';
+      this.game = null;
+      this.stopMoodTimer();
+      this.resetTalk();
+      this.broadcast();
+      return null;
+    }
+    this.deal();
     return null;
   }
 
   rematch(conn: Conn): string | null {
     if (!this.isHost(conn)) return 'Only the host can start a new game.';
     if (this.game?.phase !== 'gameOver') return 'The game is not over.';
+    this.ready.clear();
     this.stage = 'lobby';
     this.game = null;
     // Drop seats of humans who are gone; keep everyone else.
@@ -405,6 +465,8 @@ export class Room {
 
   private after(events: GameEvent[]) {
     const g = this.game;
+    const over = events.find((e) => e.k === 'gameOver');
+    if (g && over?.k === 'gameOver') this.recordResult(g, over.winner);
     if (g) {
       this.memories.forEach((m, seat) => observe(m, viewFor(g, seat), events));
       this.feel(events);
@@ -413,6 +475,13 @@ export class Room {
     this.resetTimerIfNeeded();
     this.broadcast(events);
     this.schedule(settleMs(events));
+  }
+
+  private recordResult(g: GameState, winner: 'liberal' | 'fascist') {
+    this.series[winner] += 1;
+    for (const p of g.players) {
+      if ((p.role === 'liberal' ? 'liberal' : 'fascist') === winner) this.series.wins[p.name] = (this.series.wins[p.name] ?? 0) + 1;
+    }
   }
 
   private resetTimerIfNeeded() {
@@ -1089,6 +1158,7 @@ export class Room {
       bot: s.bot,
       botControlled: s.botControl && !s.bot,
       connected: s.bot || s.conn !== null,
+      ready: !s.bot && this.ready.has(s.token),
     }));
   }
 
@@ -1101,6 +1171,7 @@ export class Room {
       seats: this.seatInfo(),
       game: this.game ? viewFor(this.game, seat) : null,
       events,
+      series: this.series,
       deadlineMs: this.deadline === null ? null : Math.max(0, this.deadline - Date.now()),
     };
   }
@@ -1122,4 +1193,14 @@ export interface RoomSnapshot {
   seats: { name: string; token: string; bot: boolean; botControl: boolean }[];
   game: GameState | null;
   memories: StoredMemory[];
+  series?: Series;
+}
+
+const isCount = (n: unknown) => typeof n === 'number' && Number.isFinite(n);
+
+function validSeries(s: unknown): Series {
+  const x = s as Series | undefined;
+  const ok = typeof x === 'object' && x !== null && isCount(x.liberal) && isCount(x.fascist)
+    && typeof x.wins === 'object' && x.wins !== null && Object.values(x.wins).every(isCount);
+  return ok ? { liberal: x!.liberal, fascist: x!.fascist, wins: { ...x!.wins } } : { liberal: 0, fascist: 0, wins: {} };
 }

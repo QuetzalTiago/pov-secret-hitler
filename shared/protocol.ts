@@ -18,6 +18,8 @@ export type ClientMsg =
   | { t: 'chat'; text: string }
   | { t: 'leave' }
   | { t: 'rematch' }
+  | { t: 'playAgain' }
+  | { t: 'redeal' }
   | { t: 'ping' };
 
 export interface SeatInfo {
@@ -26,6 +28,14 @@ export interface SeatInfo {
   bot: boolean; // a permanent bot added by the host
   botControlled: boolean; // a human seat temporarily driven by a bot
   connected: boolean;
+  ready: boolean; // pressed Play again at game over
+}
+
+/** Running score of games at one table; wins are keyed by player name. */
+export interface Series {
+  liberal: number;
+  fascist: number;
+  wins: Record<string, number>;
 }
 
 export interface RoomView {
@@ -36,6 +46,7 @@ export interface RoomView {
   seats: SeatInfo[];
   game: GameView | null;
   events: GameEvent[];
+  series: Series;
   deadlineMs: number | null; // ms remaining on the phase timer
 }
 
@@ -139,6 +150,8 @@ export function parseClientMsg(raw: string): ClientMsg | null {
     case 'start':
     case 'leave':
     case 'rematch':
+    case 'playAgain':
+    case 'redeal':
     case 'ping':
       return { t: m.t };
     default:

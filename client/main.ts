@@ -66,6 +66,8 @@ const ui = new UI({
   },
   chat: (text) => net.send({ t: 'chat', text }),
   rematch: () => net.send({ t: 'rematch' }),
+  playAgain: () => net.send({ t: 'playAgain' }),
+  redeal: () => net.send({ t: 'redeal' }),
 });
 
 const world = new World(document.getElementById('app')!);

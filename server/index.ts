@@ -235,6 +235,10 @@ export function startServer(port = config.port): Promise<RunningServer> {
         return null;
       case 'rematch':
         return room.rematch(conn);
+      case 'playAgain':
+        return room.playAgain(conn);
+      case 'redeal':
+        return room.forceRedeal(conn);
     }
   }
 

@@ -1,5 +1,5 @@
 // DOM overlay: lobby, HUD, prompt, timer, chat, toasts, credits, game over. Always textContent, never innerHTML with user data.
-import type { RoomView } from '../shared/protocol';
+import type { RoomView, Series } from '../shared/protocol';
 import type { Power } from '../shared/types';
 import type { GameView, PlayerView } from '../shared/view';
 import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
@@ -21,6 +21,19 @@ export interface UIHandlers {
   leave(): void;
   chat(text: string): void;
   rematch(): void;
+  playAgain(): void;
+  redeal(): void;
+}
+
+/** One line of series score for the lobby and game-over panel; '' before any game was played. */
+export function seriesLine(series: Series, names: string[]): string {
+  if (series.liberal + series.fascist === 0) return '';
+  const wins = names
+    .map((n) => [n, series.wins[n] ?? 0] as const)
+    .filter(([, w]) => w >= 1)
+    .sort((a, b) => b[1] - a[1])
+    .map(([n, w]) => `${n} ${w}`);
+  return ['Series', `Liberals ${series.liberal} – Fascists ${series.fascist}`, ...(wins.length ? [wins.join(', ')] : [])].join(' · ');
 }
 
 const POWER_GLYPHS: Record<Power, string> = { peek: '👁', investigate: '🔍', special: '★', execute: '✕' };
@@ -128,6 +141,8 @@ export class UI {
     $('cc-confirm').onclick = () => this.cardConfirm?.confirm();
     $('cc-cancel').onclick = () => this.cardConfirm?.cancel();
     $('rematch').onclick = () => h.rematch();
+    $('play-again').onclick = () => h.playAgain();
+    $('redeal').onclick = () => h.redeal();
     $('gameover-leave').onclick = () => h.leave();
     for (const id of ['credits-btn', 'home-credits']) $(id).onclick = () => $('credits').classList.remove('hidden');
     $('credits-close').onclick = () => $('credits').classList.add('hidden');
@@ -366,6 +381,9 @@ export class UI {
       $<HTMLButtonElement>('add-bot').disabled = n >= 10;
       $<HTMLButtonElement>('remove-bot').disabled = !room.seats.some((s) => s.bot);
       $('seat-count').textContent = `${n} / 10 seated${n < 5 ? ` · need ${5 - n} more to start` : ''}`;
+      const line = seriesLine(room.series, room.seats.map((s) => s.name));
+      $('lobby-series').textContent = line;
+      $('lobby-series').classList.toggle('hidden', !line);
     } else {
       $('lobby').classList.add('hidden');
       $('hud').classList.remove('hidden');
@@ -743,7 +761,15 @@ export class UI {
     const list = $('gameover-roles');
     list.replaceChildren();
     for (const p of v.players) list.appendChild(gameOverRow(p, room.you));
-    $('rematch').classList.toggle('hidden', room.you !== room.host);
+    const names = room.seats.map((s) => s.name);
+    $('gameover-series').textContent = seriesLine(room.series, names);
+    $('gameover-series').classList.toggle('hidden', !room.series.liberal && !room.series.fascist);
+    $('play-again').textContent = room.seats[room.you]?.ready ? 'Ready ✓ (click to cancel)' : 'Play again';
+    const humans = room.seats.filter((s) => !s.bot && s.connected);
+    $('ready-note').textContent = `${humans.filter((s) => s.ready).length} of ${humans.length} ready`;
+    const isHost = room.you === room.host;
+    $('redeal').classList.toggle('hidden', !isHost);
+    $('rematch').classList.toggle('hidden', !isHost);
   }
 
   hideGameOver() {
