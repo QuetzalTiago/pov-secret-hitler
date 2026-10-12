@@ -10,7 +10,7 @@ import type { Interactable, Interactor } from './interact';
 import { createCharacter, type Patron } from './scene/characters';
 import { disposeObject } from './scene/dispose';
 import { ActingRings, Board, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
-import { ballotFace, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
+import { COLORS, ballotFace, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
 import { slowmoScale, tweens } from './scene/tween';
 import { Mover, TABLE_Y, type World } from './scene/world';
 import { flagTab, unflagTab } from './tabflag';
@@ -200,7 +200,7 @@ export class Game {
     this.jaMover = world.track(new Mover(this.ja.mesh));
     this.neinMover = world.track(new Mover(this.nein.mesh));
 
-    const vt = labelTexture('VETO', '#F2654A', '#231F20');
+    const vt = labelTexture('VETO', COLORS.fascist, COLORS.ink);
     const edge = new THREE.MeshStandardMaterial({ color: 0x3a0f0a });
     this.vetoToken = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.08), [
       edge, edge, new THREE.MeshStandardMaterial({ map: vt, emissive: 0xffffff, emissiveMap: vt, emissiveIntensity: 0.3 }), edge, edge, edge,

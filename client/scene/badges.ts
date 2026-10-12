@@ -1,6 +1,6 @@
 // Name tag, speech bubble and night team-glow sprites shared by the procedural and the rigged patron.
 import * as THREE from 'three';
-import { glowTexture, textSprite } from './textures';
+import { COLORS, glowTexture, textSprite } from './textures';
 
 export interface BadgeHeights {
   /** Local y of the name tag. */
@@ -36,12 +36,12 @@ export class PatronBadges {
     parent.add(this.glow);
   }
 
-  setLabel(text: string, color = '#F7E1C3') {
+  setLabel(text: string, color: string = COLORS.line) {
     const key = text + color;
     if (key === this.tagText) return;
     this.tagText = key;
     const old = this.tag.material.map;
-    const { texture, aspect } = textSprite(text, { color, bg: 'rgba(35,31,32,0.82)', size: 34, border: 'rgba(251,185,105,0.6)' });
+    const { texture, aspect } = textSprite(text, { color, bg: 'rgba(20,17,15,0.85)', size: 34, border: 'rgba(184,145,63,0.6)' });
     this.tag.material.map = texture;
     this.tag.material.needsUpdate = true;
     this.tag.scale.set(0.16 * aspect, 0.16, 1);
@@ -50,7 +50,7 @@ export class PatronBadges {
 
   say(text: string, now: number) {
     this.dropBubble();
-    const { texture, aspect } = textSprite(text, { color: '#231F20', bg: 'rgba(247,225,195,0.96)', size: 30, maxWidth: 440, border: 'rgba(35,31,32,0.85)' });
+    const { texture, aspect } = textSprite(text, { color: COLORS.line, bg: 'rgba(20,17,15,0.92)', size: 30, maxWidth: 440, border: 'rgba(184,145,63,0.6)' });
     this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
     const h = 0.12 * (texture.image.height / 50);
     this.bubble.scale.set(h * aspect, h, 1);

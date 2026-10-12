@@ -17,12 +17,23 @@ describe('relLuminance', () => {
   });
 });
 
+const largeFills = () => {
+  const { COLORS } = tx;
+  return [COLORS.paper, COLORS.stock, COLORS.liberal, COLORS.fascist, COLORS.hitler, COLORS.ink, COLORS.ochre, COLORS.plaster, COLORS.oak, COLORS.lacquer];
+};
+
 describe('aged noir palette', () => {
   it('keeps large-fill colours dark enough to sit under the lamp', () => {
-    const { COLORS } = tx;
-    for (const c of [COLORS.paper, COLORS.stock, COLORS.liberal, COLORS.fascist, COLORS.hitler, COLORS.ink, COLORS.ochre, COLORS.plaster, COLORS.oak, COLORS.lacquer]) {
+    for (const c of largeFills()) {
       expect(tx.relLuminance(c)).toBeLessThanOrEqual(0.45);
     }
+  });
+
+  it('has a cream line colour that is light and never a large fill', () => {
+    const { line } = tx.COLORS as Record<string, string>;
+    expect(line).toBeDefined();
+    expect(tx.relLuminance(line)).toBeGreaterThan(0.45);
+    expect(largeFills()).not.toContain(line);
   });
 
   it('has darker paper than the old poster cream', () => {
