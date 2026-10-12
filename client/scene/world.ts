@@ -660,6 +660,7 @@ export class World {
       this.handsUp = ([-1, 1] as const).map((side) => {
         const fore = new THREE.Mesh(new THREE.BoxGeometry(0.085, 1, 0.08), this.sleeve);
         const hand = new THREE.Mesh(handGeometry('flat', -side as 1 | -1), skin); // thumb toward the midline once turned palm-out
+        hand.scale.setScalar(OWN_HAND_SCALE);
         this.scene.add(fore, hand);
         return { fore, hand, side };
       });
