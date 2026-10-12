@@ -2,7 +2,7 @@
 import type { RoomView } from '../shared/protocol';
 import type { Power } from '../shared/types';
 import type { GameView } from '../shared/view';
-import type { HudModel } from './hudmodel';
+import type { Badge, HudModel } from './hudmodel';
 import { isMuted, setMuted } from './audio';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -36,6 +36,10 @@ export class UI {
   private copyLabels = new Map<string, string>();
   private copyTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private errorTimer: ReturnType<typeof setTimeout> | undefined;
+  private rosterKey = '';
+  private markers = new Map<string, { key: string; label: string; w: number; h: number }>();
+  /** Set by the game: a roster row was clicked, turn the camera to that seat. */
+  onLookAt?: (seat: number) => void;
 
   constructor(private h: UIHandlers) {
     const nameInput = $<HTMLInputElement>('name');
@@ -275,6 +279,7 @@ export class UI {
   renderHud(model: HudModel | null, mine: boolean, fallback = '') {
     this.renderStatus(model);
     this.renderStepper(model);
+    this.renderRoster(model);
     const card = $('prompt');
     const title = model ? model.action.title : fallback;
     card.classList.toggle('hidden', !title);
@@ -340,6 +345,102 @@ export class UI {
         return seg;
       }),
     );
+  }
+
+  private renderRoster(model: HudModel | null) {
+    const el = $('roster');
+    el.classList.toggle('hidden', !model);
+    if (!model) {
+      this.rosterKey = '';
+      return;
+    }
+    // Rebuilding mid-click would swallow it, so only touch the DOM when something changed.
+    const key = JSON.stringify(model.roster);
+    if (key === this.rosterKey) return;
+    this.rosterKey = key;
+    const BADGES: Partial<Record<Badge, [string, string]>> = {
+      president: ['b-pres', 'PRES'],
+      chancellor: ['b-chanc', 'CHANC'],
+      nominee: ['b-nom', 'NOMINEE'],
+      voted: ['b-voted', '✓'],
+      acting: ['b-acting', ''],
+    };
+    el.replaceChildren(
+      ...model.roster.map((r) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'r-row';
+        row.classList.toggle('dead', !r.alive);
+        row.classList.toggle('limited', r.badges.includes('termLimited'));
+        row.classList.toggle('k-lib', r.knownRole === 'liberal');
+        row.classList.toggle('k-fas', r.knownRole === 'fascist' || r.knownRole === 'hitler');
+        row.title = r.name;
+        const avatar = document.createElement('span');
+        avatar.className = 'r-avatar';
+        avatar.style.setProperty('--hue', String(UI.hue(r.name)));
+        avatar.textContent = [...r.name][0] ?? '?';
+        const name = document.createElement('span');
+        name.className = 'r-name';
+        name.textContent = r.name;
+        row.append(avatar, name);
+        if (r.you) {
+          const you = document.createElement('span');
+          you.className = 'r-you';
+          you.textContent = '(you)';
+          row.appendChild(you);
+        }
+        const badges = document.createElement('span');
+        badges.className = 'r-badges';
+        const add = (cls: string, text: string) => {
+          const b = document.createElement('span');
+          b.className = `badge ${cls}`;
+          b.textContent = text;
+          badges.appendChild(b);
+        };
+        if (!r.alive) add('b-dead', '✝');
+        for (const b of r.badges) {
+          const def = BADGES[b];
+          if (def) add(def[0], def[1]);
+        }
+        row.appendChild(badges);
+        row.onclick = () => {
+          this.onLookAt?.(r.seat);
+          row.blur(); // keep WASD look working
+        };
+        return row;
+      }),
+    );
+  }
+
+  /** Shows or moves an edge marker (ndc x/y, arrow angle); touches the DOM only when the rounded value changed. */
+  setMarker(id: 'pres' | 'nom', m: { x: number; y: number; angle: number; label: string } | null) {
+    const el = $(`mk-${id}`);
+    let st = this.markers.get(id);
+    if (!st) this.markers.set(id, (st = { key: '', label: '', w: 0, h: 0 }));
+    if (!m) {
+      if (st.key !== 'off') {
+        st.key = 'off';
+        el.classList.add('hidden');
+      }
+      return;
+    }
+    if (st.key === 'off' || st.label !== m.label) {
+      st.label = m.label;
+      el.querySelector('.mk-text')!.textContent = m.label;
+      el.classList.remove('hidden');
+      st.w = el.offsetWidth;
+      st.h = el.offsetHeight;
+    }
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const px = Math.round(Math.min(W - st.w / 2 - 8, Math.max(st.w / 2 + 8, ((m.x + 1) / 2) * W)));
+    const py = Math.round(Math.min(H - st.h / 2 - 8, Math.max(st.h / 2 + 8, ((1 - m.y) / 2) * H)));
+    const deg = Math.round(((Math.PI - m.angle) * 180) / Math.PI);
+    const key = `${px},${py},${deg}`;
+    if (key === st.key) return;
+    st.key = key;
+    el.style.transform = `translate(${px - st.w / 2}px, ${py - st.h / 2}px)`;
+    (el.firstElementChild as HTMLElement).style.transform = `rotate(${deg}deg)`;
   }
 
   setTimer(secs: number | null, mine: boolean) {

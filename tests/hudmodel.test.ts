@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hudModel, type HudOpts } from '../client/hudmodel';
+import { edgeMarker, hudModel, type HudOpts } from '../client/hudmodel';
 import type { RoomView } from '../shared/protocol';
 import type { GameView } from '../shared/view';
 
@@ -118,5 +118,29 @@ describe('hudModel', () => {
     expect(m.roster[3].away).toBe(true);
     expect(m.action.title).toBe('The Fascists win');
     expect(m.action.mine).toBe(false);
+  });
+});
+
+describe('edgeMarker', () => {
+  it('pushes a far-left point to the left edge', () => {
+    const m = edgeMarker({ x: -3, y: 0, z: 0.5 })!;
+    expect(m.x).toBeCloseTo(-0.9);
+    expect(m.y).toBeCloseTo(0);
+    expect(m.angle).toBeCloseTo(Math.PI);
+  });
+
+  it('returns null for an on-screen point', () => {
+    expect(edgeMarker({ x: 0.2, y: 0.1, z: 0.5 })).toBeNull();
+  });
+
+  it('pushes a diagonal point to the corner', () => {
+    const m = edgeMarker({ x: 2, y: 2, z: 0.5 })!;
+    expect(m.x).toBeCloseTo(0.9);
+    expect(m.y).toBeCloseTo(0.9);
+  });
+
+  it('flips a point behind the camera', () => {
+    const m = edgeMarker({ x: 0.5, y: 0, z: 1.5 })!;
+    expect(m.x).toBeLessThan(0);
   });
 });

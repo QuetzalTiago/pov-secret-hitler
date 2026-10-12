@@ -4,7 +4,7 @@ import type { RoomView } from '../shared/protocol';
 import type { ActionBody, GameEvent, Policy } from '../shared/types';
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { setMusicMood, sfx, voice } from './audio';
-import { hudModel } from './hudmodel';
+import { edgeMarker, hudModel } from './hudmodel';
 import type { Interactable, Interactor } from './interact';
 import { Character } from './scene/characters';
 import { disposeObject } from './scene/dispose';
@@ -142,6 +142,9 @@ export class Game {
   private lastHeartbeat = 0;
   private lastSecond = -1;
   deadlineAt: number | null = null;
+  /** Head positions per seat (layout-fixed), and a scratch vector for projecting them. */
+  private heads: THREE.Vector3[] = [];
+  private proj = new THREE.Vector3();
 
   constructor(
     private world: World,
@@ -149,6 +152,7 @@ export class Game {
     private ui: UI,
     private send: (a: ActionBody) => void,
   ) {
+    ui.onLookAt = (seat) => this.world.glanceAt(this.world.layout.head(seat), 3);
     const scene = world.scene;
     scene.add(this.board.group);
     this.drawPile = new Pile('POLICY', new THREE.Vector3(-0.66, TABLE_Y, -0.05));
@@ -321,6 +325,7 @@ export class Game {
     if (key === this.layoutKey) return;
     this.layoutKey = key;
     this.world.setLayout(n, me);
+    this.heads = Array.from({ length: Math.max(5, n) }, (_, s) => this.world.layout.head(s));
     for (const c of this.chars.values()) {
       this.world.scene.remove(c.group);
       c.dispose();
@@ -1213,6 +1218,21 @@ export class Game {
     return slowmoScale(this.slowmoClock);
   }
 
+  /** Edge markers pointing at the President and the Chancellor nominee while their heads are off screen. */
+  private updateMarkers() {
+    const v = this.view;
+    const me = this.room?.you;
+    const live = !!v && v.phase !== 'night' && v.phase !== 'gameOver';
+    this.marker('pres', live && v!.president !== me ? v!.president : null, 'PRESIDENT');
+    this.marker('nom', live && v!.phase === 'vote' && v!.nominee !== me ? v!.nominee : null, 'NOMINEE');
+  }
+
+  private marker(id: 'pres' | 'nom', seat: number | null, tag: string) {
+    const head = seat === null ? undefined : this.heads[seat];
+    const m = head ? edgeMarker(this.proj.copy(head).project(this.world.camera)) : null;
+    this.ui.setMarker(id, m && { ...m, label: `${tag} ${this.view?.players[seat!]?.name ?? ''}` });
+  }
+
   update(dt: number) {
     this.now += dt;
     tweens.update(dt);
@@ -1232,6 +1252,7 @@ export class Game {
     }
     this.computeTargets();
     this.updateCharacters(dt);
+    this.updateMarkers();
     // Timer.
     if (this.deadlineAt !== null && v && v.phase !== 'gameOver') {
       const left = Math.max(0, this.deadlineAt - performance.now());

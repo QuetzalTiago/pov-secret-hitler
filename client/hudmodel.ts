@@ -66,6 +66,24 @@ function stepIndex(phase: GameView['phase']): number | null {
   }
 }
 
+/**
+ * Off-screen marker for a projected point (three's Vector3.project output; z > 1 is behind the camera).
+ * Null when on screen; else the point pushed out to the ±margin rectangle with the angle of its direction.
+ */
+export function edgeMarker(
+  ndc: { x: number; y: number; z: number },
+  margin = 0.9,
+): { x: number; y: number; angle: number } | null {
+  const behind = ndc.z > 1;
+  if (!behind && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1) return null;
+  // Behind the camera the projection is mirrored: negate so the marker points the way to turn.
+  const x = behind ? -ndc.x : ndc.x;
+  const y = behind ? -ndc.y : ndc.y;
+  const m = Math.max(Math.abs(x), Math.abs(y));
+  if (m < 1e-6) return { x: margin, y: 0, angle: 0 }; // dead behind: no direction, pick one
+  return { x: (x * margin) / m, y: (y * margin) / m, angle: Math.atan2(y, x) };
+}
+
 export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
   const me = room.you;
   const name = (seat: number | null) => (seat === null ? '?' : (v.players[seat]?.name ?? '?'));
