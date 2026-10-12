@@ -1,5 +1,5 @@
 import type { Pace } from '../shared/protocol';
-import type { GameEvent, Phase, Policy } from '../shared/types';
+import type { GameEvent, Phase } from '../shared/types';
 import { config } from './config';
 
 /** Think-time range per phase, in seconds at the default botDelayMs (1400 ms = 1 unit). */
@@ -35,11 +35,6 @@ export function botTempo(name: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < name.length; i++) h = Math.imul(h ^ name.charCodeAt(i), 0x01000193);
   return 0.75 + ((h >>> 0) / 0x100000000) * 0.6;
-}
-
-/** 0.6 when the hand has 2+ cards that are all the same policy (no real choice), else 1. */
-export function choiceFactor(hand: readonly Policy[] | null | undefined): number {
-  return hand && hand.length >= 2 && hand.every((p) => p === hand[0]) ? 0.6 : 1;
 }
 
 /** Table Pace multiplier on bot think, bot settle and phase timers; everything stays proportional to config.botDelayMs. */

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Room, type Conn } from '../server/room';
 import { config } from '../server/config';
-import { THINK_SECONDS, SETTLE_SECONDS, botTempo, botThinkMs, choiceFactor, settleMs } from '../server/pacing';
+import { THINK_SECONDS, SETTLE_SECONDS, botTempo, botThinkMs, settleMs } from '../server/pacing';
 import { legalActions, pendingActors } from '../shared/engine';
 import { PHASES, type GameEvent } from '../shared/types';
 import type { ServerMsg } from '../shared/protocol';
@@ -9,7 +9,6 @@ import { scheduleBatch } from '../client/beats';
 
 const TEMPO_MIN = 0.75;
 const TEMPO_MAX = 1.35;
-const CHOICE_MIN = 0.6;
 
 const original = { timerScale: config.timerScale, botDelayMs: config.botDelayMs };
 
@@ -139,7 +138,7 @@ describe('per-seat bot plans', () => {
         await new Promise((r) => setTimeout(r, 1));
       }
       expect(opened).toBeGreaterThan(0);
-      const minWait = (SETTLE_SECONDS.votes + THINK_SECONDS.legPresident[0] * TEMPO_MIN * CHOICE_MIN) * 1000 * u;
+      const minWait = (SETTLE_SECONDS.votes + THINK_SECONDS.legPresident[0] * TEMPO_MIN) * 1000 * u;
       expect(readyAt).toBeGreaterThanOrEqual(opened - 10 + minWait);
       const t1 = Date.now();
       while (room.game!.phase === 'legPresident' && Date.now() - t1 < 5000) await new Promise((r) => setTimeout(r, 1));
@@ -198,14 +197,41 @@ describe('botTempo', () => {
   });
 });
 
-describe('choiceFactor', () => {
-  it('speeds up only hands with no real choice', () => {
-    expect(choiceFactor(['L', 'L', 'L'])).toBe(0.6);
-    expect(choiceFactor(['F', 'F'])).toBe(0.6);
-    expect(choiceFactor(['L', 'F', 'F'])).toBe(1);
-    expect(choiceFactor([])).toBe(1);
-    expect(choiceFactor(undefined)).toBe(1);
-    expect(choiceFactor(null)).toBe(1);
+describe('bot think time ignores the hand', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    config.timerScale = original.timerScale;
+    config.botDelayMs = original.botDelayMs;
+  });
+
+  it('LLL and LLF hands get the same ready time', () => {
+    config.timerScale = 1e4; // keep the deadline cap out of the way
+    config.botDelayMs = 1_000_000;
+    const { room } = startGame();
+    try {
+      const r = room as unknown as { schedule(settle?: number): void; game: { phase: string; president: number; hand: string[] } };
+      vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+      r.game.phase = 'legPresident';
+      r.game.president = 1;
+      const readyFor = (hand: string[]) => {
+        r.game.hand = hand;
+        plansOf(room).clear();
+        r.schedule();
+        return plansOf(room).get(1)!.readyAt;
+      };
+      const spread: number[] = [];
+      for (const rnd of [0.1, 0.5, 0.9]) {
+        vi.spyOn(Math, 'random').mockReturnValue(rnd);
+        const lll = readyFor(['L', 'L', 'L']);
+        expect(readyFor(['L', 'L', 'F'])).toBe(lll);
+        expect(readyFor(['F', 'F', 'F'])).toBe(lll);
+        spread.push(lll);
+      }
+      expect(spread[0]).toBeLessThan(spread[1]);
+      expect(spread[1]).toBeLessThan(spread[2]);
+    } finally {
+      room.close();
+    }
   });
 });
 
@@ -226,8 +252,7 @@ describe('bot plans after an enactment', () => {
       const now = Date.now();
       r.schedule(settleMs([{ k: 'enacted', policy: 'L', chaos: false }]));
       expect(plansOf(room).size).toBeGreaterThan(0);
-      const choice = r.game.phase === 'legPresident' || r.game.phase === 'legChancellor' ? CHOICE_MIN : 1;
-      const floor = now + SETTLE_SECONDS.enacted * 1000 * u + THINK_SECONDS[r.game.phase][0] * 1000 * u * TEMPO_MIN * choice - 5;
+      const floor = now + SETTLE_SECONDS.enacted * 1000 * u + THINK_SECONDS[r.game.phase][0] * 1000 * u * TEMPO_MIN - 5;
       for (const p of plansOf(room).values()) expect(p.readyAt).toBeGreaterThanOrEqual(floor);
     } finally {
       room.close();

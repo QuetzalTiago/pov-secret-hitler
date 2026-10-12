@@ -21,7 +21,7 @@ import { llmEnabled } from './llm';
 import { BOT_NAMES, personaFor, pickBotName, tooSimilar, type Persona } from './persona';
 import { decide, decideNow } from './brain';
 import { config } from './config';
-import { PACE_FACTOR, botTempo, botThinkMs, choiceFactor, settleMs } from './pacing';
+import { PACE_FACTOR, botTempo, botThinkMs, settleMs } from './pacing';
 
 export interface Conn {
   id: number;
@@ -583,7 +583,7 @@ export class Room {
     }
   }
 
-  /** Gives every pending bot seat its own readyAt for this phase and arms a timer per seat; decide() starts right away. New plans wait `settle` ms (client animations), then think for a time scaled by the bot's tempo and how real the choice is. */
+  /** Gives every pending bot seat its own readyAt for this phase and arms a timer per seat; decide() starts right away. New plans wait `settle` ms (client animations), then think for a time scaled by the bot's tempo. */
   schedule(settle = 0) {
     const g = this.game;
     // Nobody watching: pause bots until a human comes back (plans keep their readyAt).
@@ -604,8 +604,7 @@ export class Room {
     for (const seat of pending) {
       if (this.botPlans.has(seat)) continue;
       const now = Date.now();
-      const factor = g.phase === 'legPresident' || g.phase === 'legChancellor' ? choiceFactor(viewFor(g, seat).hand) : 1;
-      let readyAt = now + (settle + botThinkMs(g.phase) * botTempo(this.seatName(seat)) * factor) * this.paceFactor();
+      let readyAt = now + (settle + botThinkMs(g.phase) * botTempo(this.seatName(seat))) * this.paceFactor();
       // Never let a bot sit on its move until the phase timer takes over.
       if (this.deadline !== null) readyAt = Math.min(readyAt, Math.max(now, this.deadline - 5000 * config.timerScale * this.paceFactor()));
       this.botPlans.set(seat, { key, readyAt, timer: null, held: false, decision: this.decideFor(seat) });
