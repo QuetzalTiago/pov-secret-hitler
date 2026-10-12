@@ -108,7 +108,7 @@ export function spray(
       t,
       land: new THREE.Vector3(x, surface === 'table' ? TABLE_Y : 0, z),
       surface,
-      size: between(0.015, 0.07),
+      size: between(0.03, 0.09), // big enough to read on the table from across it
     });
   }
   return out;
@@ -157,7 +157,8 @@ export function pickAnchor(x: number, z: number, surface: Surface, board: Anchor
 export type BloodPart = 'all' | 'upper' | 'gunArm';
 
 /** Dark flat blood ink, linear RGB. */
-export const BLOOD_INK = new THREE.Color(0x4a0606);
+// Fresh arterial red: the old near-black 0x4a0606 vanished on dark suits, the felt and the darkened room.
+export const BLOOD_INK = new THREE.Color(0x8a0c0c);
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(Math.max((x - a) / (b - a), 0), 1);

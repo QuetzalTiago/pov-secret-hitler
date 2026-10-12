@@ -27,7 +27,7 @@ export class BloodDroplets {
     this.attr.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('position', this.attr);
     geo.setDrawRange(0, 0);
-    this.points = new THREE.Points(geo, new THREE.PointsMaterial({ color: BLOOD_INK, size: 0.018, sizeAttenuation: true }));
+    this.points = new THREE.Points(geo, new THREE.PointsMaterial({ color: BLOOD_INK, size: 0.03, sizeAttenuation: true }));
     this.points.frustumCulled = false;
     this.points.visible = false;
   }

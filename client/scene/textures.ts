@@ -655,7 +655,7 @@ export function bloodAtlas() {
       };
       if (i < 2) {
         // streak: tapered tail along +x
-        g.fillStyle = '#4a0606';
+        g.fillStyle = '#9a0e0e';
         g.beginPath();
         g.moveTo(cx, cy - base * 0.5);
         g.lineTo(i * T + T - 8, cy - 2 - r() * 3);
@@ -664,20 +664,20 @@ export function bloodAtlas() {
         g.closePath();
         g.fill();
       }
-      blob(cx, cy, base, '#4a0606');
-      blob(cx + (r() - 0.5) * 6, cy + (r() - 0.5) * 6, base * 0.5, '#2e0303');
+      blob(cx, cy, base, '#9a0e0e');
+      blob(cx + (r() - 0.5) * 6, cy + (r() - 0.5) * 6, base * 0.5, '#5c0606');
       const sats = 4 + Math.floor(r() * 3);
       for (let k = 0; k < sats; k++) {
         const a = r() * Math.PI * 2;
         const d = base * (1.35 + r() * 0.6);
         const x = Math.min(i * T + T - 8, Math.max(i * T + 8, cx + Math.cos(a) * d));
         const y = Math.min(T - 8, Math.max(8, cy + Math.sin(a) * d));
-        dot(x, y, 2 + r() * 3.5, k % 2 ? '#4a0606' : '#2e0303');
+        dot(x, y, 2 + r() * 3.5, k % 2 ? '#9a0e0e' : '#5c0606');
       }
       for (let k = 0; k < 3; k++) {
         const a = r() * Math.PI * 2;
         const d = r() * base * 0.6;
-        dot(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 2 + r() * 2.5, '#6a0b0b');
+        dot(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 2 + r() * 2.5, '#c41a14');
       }
     }
   });

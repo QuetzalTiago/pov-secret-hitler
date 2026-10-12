@@ -33,8 +33,8 @@ describe('spray', () => {
   it('lands exactly on the table plane inside the ellipse, or on the floor', () => {
     for (const d of spray(9, victim, shooter, 300, layout)) {
       expect(d.t).toBeGreaterThan(0);
-      expect(d.size).toBeGreaterThanOrEqual(0.015);
-      expect(d.size).toBeLessThanOrEqual(0.07);
+      expect(d.size).toBeGreaterThanOrEqual(0.03);
+      expect(d.size).toBeLessThanOrEqual(0.09);
       if (d.surface === 'table') {
         expect(d.land.y).toBe(TABLE_Y);
         expect(d.land.x ** 2 / layout.rx ** 2 + d.land.z ** 2 / layout.rz ** 2).toBeLessThanOrEqual(1 + 1e-9);
