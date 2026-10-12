@@ -540,6 +540,18 @@ export class World {
       this.waiter = new Waiter(a.characters.shirt, a.props.glass_wine ?? null);
       this.waiter.group.position.set(WAITER_SPOT.x, 0, WAITER_SPOT.z);
       room.add(this.waiter.group);
+      // A dim bare bulb on a cord over the waiter, so he reads in the dark behind the counter. No shadow: one is enough.
+      const waiterLight = new THREE.SpotLight(0xffc080, 8, 3.6, Math.PI / 4.5, 0.8, 1.6);
+      waiterLight.position.set(WAITER_SPOT.x, 3.2, WAITER_SPOT.z + 0.15);
+      waiterLight.target.position.set(WAITER_SPOT.x, 1.1, WAITER_SPOT.z + 0.1);
+      const waiterBulb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xffe0a8, emissive: 0xffb060, emissiveIntensity: 1.2 }),
+      );
+      waiterBulb.position.copy(waiterLight.position);
+      const waiterCord = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.4, 5), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+      waiterCord.position.set(WAITER_SPOT.x, 3.4, WAITER_SPOT.z + 0.15);
+      room.add(waiterLight, waiterLight.target, waiterBulb, waiterCord);
     } else room.add(new THREE.Mesh(
       bottlesGeometry(),
       glossy(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 }), 0.35),
