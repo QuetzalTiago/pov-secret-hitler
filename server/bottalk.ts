@@ -357,14 +357,14 @@ export function sanitize(raw: string, names: string[], guardRole: boolean, teamm
 
 // ---------- the two things a bot writes ----------
 
-async function compose(ctx: TalkContext, situation: string, task: string, temperature: number, toward: number | null = null): Promise<string | null> {
+async function compose(ctx: TalkContext, situation: string, task: string, temperature: number, toward: number | null = null, priority: 'reply' | 'other' = 'other'): Promise<string | null> {
   const me = ctx.name(ctx.view.you!);
   const raw = await write({
     system: systemPrompt(ctx, me, toward),
     user: `${situationBlock(ctx, situation, toward)}\n\n${task}`,
     maxTokens: 90,
     temperature,
-  }, undefined, ctx.onSent);
+  }, undefined, ctx.onSent, priority);
   if (raw === null) return null;
   const live = ctx.view.phase !== 'gameOver';
   const teammates =
@@ -408,7 +408,7 @@ export async function writeReply(ctx: TalkContext, fromSeat: number, text: strin
         general: `${from} said that at the table. Jump in if you have something to add.`,
       }[trigger];
   const task = `${how}\n${es ? `Lo que dijo ${from}` : `What ${from} said`}: "${text}"`;
-  return compose(ctx, es ? `${from} te habló en el chat.` : `${from} spoke to you in the chat.`, task, 1.05, fromSeat);
+  return compose(ctx, es ? `${from} te habló en el chat.` : `${from} spoke to you in the chat.`, task, 1.05, fromSeat, 'reply');
 }
 
 /**

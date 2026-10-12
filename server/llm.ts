@@ -45,6 +45,22 @@ function recordSuccess(): void {
   cooldownMs = BREAKER_MIN_MS;
 }
 
+/**
+ * A 429 that names a wait (Retry-After) tells us exactly how long the provider wants us gone, so honour it
+ * at once instead of burning four more calls to learn the same thing. Never shortens an open breaker.
+ */
+function openBreakerFor(secs: number): void {
+  openUntil = Math.max(openUntil, Date.now() + secs * 1000);
+  console.info(`[llm] provider asked for a ${secs}s wait; pausing bot table talk and using template lines.`);
+}
+
+/** Retry-After in whole seconds, or null when missing or not a plain integer. */
+function retryAfterSecs(res: Response): number | null {
+  const raw = res.headers.get('retry-after');
+  if (!raw || !/^\d+$/.test(raw.trim())) return null;
+  return Number(raw.trim());
+}
+
 /** True while the breaker is holding calls back. Exposed for the stats endpoint and tests. */
 export function breakerOpen(now = Date.now()): boolean {
   return now < openUntil;
@@ -54,12 +70,26 @@ export function llmEnabled(): boolean {
   return !!config.llm.key && !llmStats.disabled && !breakerOpen();
 }
 
-/** Test seam: forget the breaker and the auth-failure count. */
+/**
+ * Send times of the last minute, for the soft per-minute budget (config.llm.rpm). Lines that answer a
+ * player are worth more than chatter, so chatter stops at 60% of the budget and leaves the rest for replies.
+ */
+const WINDOW_MS = 60_000;
+const OTHER_SHARE = 0.6;
+let sentAt: number[] = [];
+
+function sentInWindow(now: number): number {
+  while (sentAt.length && now - sentAt[0] >= WINDOW_MS) sentAt.shift();
+  return sentAt.length;
+}
+
+/** Test seam: forget the breaker, the auth-failure count and the rate window. */
 export function resetLlmState(): void {
   consecutiveFailures = 0;
   openUntil = 0;
   cooldownMs = BREAKER_MIN_MS;
   authFailures = 0;
+  sentAt = [];
   llmStats.disabled = false;
 }
 
@@ -162,8 +192,10 @@ const ADAPTERS: Record<string, Adapter> = { gemini, openai, anthropic };
  * many requests are already in flight. A bot that cannot find its words types the scripted line instead;
  * it never blocks the game.
  */
-export async function write(req: LlmRequest, fetchImpl: typeof fetch = fetch, onSent?: () => void): Promise<string | null> {
+export async function write(req: LlmRequest, fetchImpl: typeof fetch = fetch, onSent?: () => void, priority: 'reply' | 'other' = 'other'): Promise<string | null> {
   if (!llmEnabled() || inflight >= config.llm.maxInflight) return null;
+  const recent = sentInWindow(Date.now());
+  if (recent >= config.llm.rpm || (priority === 'other' && recent >= Math.ceil(config.llm.rpm * OTHER_SHARE))) return null;
   const adapter = ADAPTERS[config.llm.provider];
   if (!adapter) {
     llmStats.disabled = true;
@@ -173,15 +205,32 @@ export async function write(req: LlmRequest, fetchImpl: typeof fetch = fetch, on
   const { url, model } = llmEndpoint();
   inflight++;
   llmStats.calls++;
+  sentAt.push(Date.now());
   onSent?.();
   try {
     const call = adapter(req, url.replace(/\/$/, ''), model, config.llm.key);
     // Free tiers answer 503 now and then. One quick retry turns most of those into a line instead of a
     // visible drop to the template; anything worse is the breaker's problem, not this function's.
     let res = await fetchImpl(call.url, { ...call.init, signal: AbortSignal.timeout(config.llm.timeoutMs) });
-    if (res.status >= 500 || res.status === 429) {
+    // A 429 that asks for a long wait will not be cured by retrying 400 ms later.
+    if (res.status >= 500 || (res.status === 429 && (retryAfterSecs(res) ?? 0) <= 2)) {
       await new Promise((r) => setTimeout(r, 400));
       res = await fetchImpl(call.url, { ...call.init, signal: AbortSignal.timeout(config.llm.timeoutMs) });
+    }
+    if (res.status === 429) {
+      // The body says whether this is the per-minute or the daily quota; log it once per breaker opening.
+      // Gemini usually sends no Retry-After, so the 429 that will trip the breaker counts too.
+      const secs = retryAfterSecs(res);
+      if (secs !== null || consecutiveFailures + 1 >= BREAKER_AFTER) {
+        let body = '';
+        try {
+          body = (await res.text()).slice(0, 200);
+        } catch {
+          // unreadable body: log the status alone
+        }
+        console.error(`[llm] 429 from provider: ${body}`);
+      }
+      if (secs !== null) openBreakerFor(secs);
     }
     if (res.status === 401 || res.status === 403) {
       if (++authFailures >= 3) {

@@ -62,6 +62,8 @@ export const config = {
     /** A chat line takes a few seconds to generate; a late answer still reads fine, a missing one does not. */
     timeoutMs: num(process.env.SH_LLM_TIMEOUT_MS, 12_000),
     maxInflight: num(process.env.SH_LLM_MAX_INFLIGHT, 4),
+    /** Soft requests-per-minute budget; non-reply lines stop at 60% of it so replies keep headroom. */
+    rpm: num(process.env.SH_LLM_RPM, 10),
     /** Hard ceiling on generated lines per game, so a long table can never run up a surprise bill. */
     maxCallsPerGame: num(process.env.SH_LLM_MAX_CALLS, 400),
     /** Hard ceiling on generated lines over a room's whole life (all deals), so re-dealing cannot reset the bill. */
