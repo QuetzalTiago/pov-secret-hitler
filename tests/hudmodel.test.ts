@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLang } from '../client/i18n';
 import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, screenBlood, type HudOpts } from '../client/hudmodel';
 import type { RoomView } from '../shared/protocol';
 import type { Role } from '../shared/types';
@@ -341,5 +342,43 @@ describe('screenBlood', () => {
   it('treats the only other seat as a neighbour at 2 seats', () => {
     expect(screenBlood(0, 1, 2)).toBe('spatter');
     expect(screenBlood(1, 0, 2)).toBe('spatter');
+  });
+});
+
+describe('hudmodel in Spanish', () => {
+  beforeEach(() => setLang('es'));
+  afterEach(() => setLang('en'));
+
+  it('cardConfirmCopy keeps the codes and translates the text', () => {
+    const d = cardConfirmCopy('discard', 'F', 3);
+    expect(d.verb).toBe('DISCARD');
+    expect(d.verbLabel).toBe('DESCARTAR');
+    expect(d.policy).toBe('LEY FASCISTA');
+    expect(d.detail).toBe('Las otras 2 van al Canciller.');
+    expect(d.confirm).toBe('Descartarla');
+    const e = cardConfirmCopy('enact', 'L', 2);
+    expect(e.verbLabel).toBe('PROMULGAR');
+    expect(e.policy).toBe('LEY LIBERAL');
+    expect(e.confirm).toBe('Promulgarla');
+  });
+
+  it('step labels, role label and action titles', () => {
+    const { v, room } = fixture({ phase: 'legPresident', chancellor: 2, pending: [0] });
+    const m = hudModel(v, room, opts);
+    expect(m.step?.labels).toEqual(['Nominar', 'Votar', 'Legislar', 'Poder']);
+    expect(m.status.roleLabel).toBe('Liberal');
+    expect(m.action.title).toBe('Descarta una ley');
+    expect(m.action.detail).toBe('Haz clic en la carta para tirarla. Las otras dos van al Canciller Cy.');
+    expect(m.action.verb).toBe('discard');
+    const w = fixture({ phase: 'nominate', president: 1, pending: [1] });
+    expect(hudModel(w.v, w.room, opts).action.title).toBe('El Presidente Bob está eligiendo');
+    expect(actionLabel('nominate', false)).toBe('Elige un Canciller');
+  });
+
+  it('switching back to English returns English', () => {
+    setLang('en');
+    const { v, room } = fixture({ phase: 'legPresident', chancellor: 2, pending: [0] });
+    expect(hudModel(v, room, opts).action.title).toBe('Discard one policy');
+    expect(cardConfirmCopy('enact', 'L', 2).policy).toBe('LIBERAL POLICY');
   });
 });

@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLang } from '../client/i18n';
 import type { GameView } from '../shared/view';
 import {
   emptyRecord,
@@ -123,5 +124,23 @@ describe('loadRecord / saveRecord', () => {
     });
     expect(loadRecord()).toEqual(emptyRecord());
     expect(() => saveRecord(emptyRecord())).not.toThrow();
+  });
+});
+
+describe('recordLine in Spanish', () => {
+  beforeEach(() => setLang('es'));
+  afterEach(() => setLang('en'));
+
+  it('plural and singular', () => {
+    const r = rec({ played: 12, wins: { liberal: 4, fascist: 2, hitler: 1 }, streak: 3, best: 5 });
+    expect(recordLine(r)).toBe('Tu récord: 7 victorias en 12 · racha 3 · mejor 5');
+    expect(recordLine(rec({ played: 1, wins: { liberal: 1, fascist: 0, hitler: 0 }, streak: 1, best: 1 }))).toBe(
+      'Tu récord: 1 victoria en 1 · racha 1',
+    );
+  });
+
+  it('switching back to English returns English', () => {
+    setLang('en');
+    expect(recordLine(rec({ played: 2, streak: 0, best: 0 }))).toBe('Your record: 0 wins in 2');
   });
 });

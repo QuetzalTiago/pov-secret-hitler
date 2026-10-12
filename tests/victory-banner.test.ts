@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLang } from '../client/i18n';
 import { REASONS, VICTORY_MS, victoryBanner, victoryDelay, victoryParticles } from '../client/victory';
 
 describe('victoryBanner', () => {
@@ -101,5 +102,26 @@ describe('victoryParticles', () => {
       expect(p.hue).toBeGreaterThanOrEqual(0);
       expect(p.hue).toBeLessThanOrEqual(28);
     }
+  });
+});
+
+describe('victoryBanner in Spanish', () => {
+  beforeEach(() => setLang('es'));
+  afterEach(() => setLang('en'));
+
+  it('translates title, headline, reason and stamp label, keeps codes and German text', () => {
+    const b = victoryBanner('liberal', 'liberalPolicies', 'fascist');
+    expect(b.title).toBe('GANAN LOS LIBERALES');
+    expect(b.headline).toBe('TRIUNFO LIBERAL');
+    expect(b.reason).toBe('Se promulgaron cinco leyes liberales.');
+    expect(b.stamp).toBe('DEFEAT');
+    expect(b.stampLabel).toBe('DERROTA');
+    expect(b.masthead).toBe('Der Abend');
+    expect(REASONS.hitlerElected).toBe('Hitler fue elegido Canciller.');
+  });
+
+  it('switching back to English returns English', () => {
+    setLang('en');
+    expect(victoryBanner('liberal', 'hitlerExecuted', 'liberal').reason).toBe('Hitler was executed.');
   });
 });

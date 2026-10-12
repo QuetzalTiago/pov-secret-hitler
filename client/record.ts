@@ -1,6 +1,7 @@
 // Personal win/loss record: client-only, kept in localStorage and counted once per finished game.
 import type { Role } from '../shared/types';
 import type { GameView } from '../shared/view';
+import { tr } from './i18n';
 
 export interface PlayerRecord {
   played: number;
@@ -36,9 +37,12 @@ export function recordGame(r: PlayerRecord, v: GameView, key: string): PlayerRec
 export function recordLine(r: PlayerRecord): string {
   if (r.played === 0) return '';
   const w = r.wins.liberal + r.wins.fascist + r.wins.hitler;
-  let line = `Your record: ${w} ${w === 1 ? 'win' : 'wins'} in ${r.played}`;
-  if (r.streak > 0) line += ` · streak ${r.streak}`;
-  if (r.best > r.streak) line += ` · best ${r.best}`;
+  let line = tr({
+    en: `Your record: ${w} ${w === 1 ? 'win' : 'wins'} in ${r.played}`,
+    es: `Tu récord: ${w} ${w === 1 ? 'victoria' : 'victorias'} en ${r.played}`,
+  });
+  if (r.streak > 0) line += tr({ en: ` · streak ${r.streak}`, es: ` · racha ${r.streak}` });
+  if (r.best > r.streak) line += tr({ en: ` · best ${r.best}`, es: ` · mejor ${r.best}` });
   return line;
 }
 

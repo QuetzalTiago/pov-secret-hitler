@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLang } from '../client/i18n';
 import type { Beat } from '../client/beats';
 import { eventCopy, powerCopy } from '../client/eventcopy';
 
@@ -90,5 +91,36 @@ describe('eventCopy', () => {
     expect(copy({ k: 'voted', seat: 1 })).toBeNull();
     expect(copy({ k: 'acked', seat: 1 })).toBeNull();
     expect(copy({ k: 'peeked', seat: 1 })).toBeNull();
+  });
+});
+
+describe('eventCopy in Spanish', () => {
+  beforeEach(() => setLang('es'));
+  afterEach(() => setLang('en'));
+
+  it('powers', () => {
+    expect(powerCopy('peek')).toBe('Ver leyes: el Presidente mira las tres leyes de arriba.');
+    expect(powerCopy('investigate')).toBe('Investigar lealtad: el Presidente inspecciona un carné de partido.');
+    expect(powerCopy('special')).toBe('Elección especial: el Presidente elige al próximo Presidente.');
+    expect(powerCopy('execute')).toBe('Ejecución: el Presidente toma el revólver.');
+  });
+
+  it('nominated, to you and to someone else', () => {
+    expect(copy({ k: 'nominated', president: 1, target: 0 })?.text).toBe('¡Bob te nomina a TI como Canciller!');
+    expect(copy({ k: 'nominated', president: 0, target: 2 })?.text).toBe('Nominas a Cy como Canciller.');
+    expect(copy({ k: 'nominated', president: 1, target: 2 })?.text).toBe('Bob nomina a Cy como Canciller.');
+  });
+
+  it('votes, enacted and executed', () => {
+    expect(copy({ k: 'votes', votes: [true, true, false, null, true], passed: true })?.text).toBe('JA! 3 a 1. Se elige el gobierno.');
+    expect(copy({ k: 'enacted', policy: 'F', chaos: false })?.text).toBe('Ley fascista promulgada.');
+    expect(copy({ k: 'executed', by: 1, target: 0 })?.text).toBe('Te han ejecutado.');
+    expect(copy({ k: 'executed', by: 0, target: 3 })?.text).toBe('Di ha sido ejecutado.');
+  });
+
+  it('switching back to English returns English', () => {
+    setLang('en');
+    expect(copy({ k: 'enacted', policy: 'F', chaos: false })?.text).toBe('Fascist policy enacted.');
+    expect(powerCopy('execute')).toBe('Execution: the President picks up the revolver.');
   });
 });

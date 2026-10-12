@@ -2,13 +2,15 @@
 import type { RoomView } from '../shared/protocol';
 import type { Party, Power, Role } from '../shared/types';
 import { actingSeats, type GameView } from '../shared/view';
+import { tr } from './i18n';
 
 type Verb =
   | 'discard' | 'enact' | 'vote' | 'nominate' | 'shoot' | 'investigate' | 'elect' | 'peek' | 'role' | 'veto'
   | null;
 export interface CardConfirmCopy {
-  verb: 'DISCARD' | 'ENACT';
-  policy: 'LIBERAL POLICY' | 'FASCIST POLICY';
+  verb: 'DISCARD' | 'ENACT'; // stable code (ui.ts styles from it); verbLabel is what is shown
+  verbLabel: string;
+  policy: string;
   face: 'L' | 'F';
   detail: string;
   confirm: string;
@@ -16,10 +18,32 @@ export interface CardConfirmCopy {
 
 /** Copy for the "are you sure?" panel shown after selecting a policy card. */
 export function cardConfirmCopy(verb: 'discard' | 'enact', face: 'L' | 'F', handSize: number): CardConfirmCopy {
-  const policy = face === 'L' ? 'LIBERAL POLICY' : 'FASCIST POLICY';
+  const policy = tr(
+    face === 'L' ? { en: 'LIBERAL POLICY', es: 'LEY LIBERAL' } : { en: 'FASCIST POLICY', es: 'LEY FASCISTA' },
+  );
   return verb === 'discard'
-    ? { verb: 'DISCARD', policy, face, detail: `The other ${handSize - 1} go to the Chancellor.`, confirm: 'Discard it' }
-    : { verb: 'ENACT', policy, face, detail: 'It goes on the board. The other policy is discarded.', confirm: 'Enact it' };
+    ? {
+        verb: 'DISCARD',
+        verbLabel: tr({ en: 'DISCARD', es: 'DESCARTAR' }),
+        policy,
+        face,
+        detail: tr({
+          en: `The other ${handSize - 1} go to the Chancellor.`,
+          es: handSize - 1 === 1 ? 'La otra va al Canciller.' : `Las otras ${handSize - 1} van al Canciller.`,
+        }),
+        confirm: tr({ en: 'Discard it', es: 'Descartarla' }),
+      }
+    : {
+        verb: 'ENACT',
+        verbLabel: tr({ en: 'ENACT', es: 'PROMULGAR' }),
+        policy,
+        face,
+        detail: tr({
+          en: 'It goes on the board. The other policy is discarded.',
+          es: 'Va al tablero. La otra ley se descarta.',
+        }),
+        confirm: tr({ en: 'Enact it', es: 'Promulgarla' }),
+      };
 }
 
 /** A private suspicion mark on a roster row: client-only, never sent anywhere. */
@@ -76,8 +100,24 @@ export interface HudModel {
   roster: RosterEntry[];
 }
 
-const STEP_LABELS = ['Nominate', 'Vote', 'Legislate', 'Power'];
-const ROLE_LABELS: Record<Role, string> = { liberal: 'Liberal', fascist: 'Fascist', hitler: 'Hitler' };
+function stepLabels(): string[] {
+  return [
+    tr({ en: 'Nominate', es: 'Nominar' }),
+    tr({ en: 'Vote', es: 'Votar' }),
+    tr({ en: 'Legislate', es: 'Legislar' }),
+    tr({ en: 'Power', es: 'Poder' }),
+  ];
+}
+
+function roleLabel(role: Role): string {
+  return tr(
+    role === 'liberal'
+      ? { en: 'Liberal', es: 'Liberal' }
+      : role === 'fascist'
+        ? { en: 'Fascist', es: 'Fascista' }
+        : { en: 'Hitler', es: 'Hitler' },
+  );
+}
 
 function stepIndex(phase: GameView['phase']): number | null {
   switch (phase) {
@@ -153,117 +193,171 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
   switch (v.phase) {
     case 'night':
       if (!mine) {
-        title = 'Eyes closed';
-        detail = `Waiting for ${v.pending.length} more…`;
+        title = tr({ en: 'Eyes closed', es: 'Ojos cerrados' });
+        detail = tr({ en: `Waiting for ${v.pending.length} more…`, es: `Esperando a ${v.pending.length} más…` });
       } else if (!opts.envelopeOpen) {
-        title = 'Check your secret role';
-        detail = 'Click your envelope to see it.';
+        title = tr({ en: 'Check your secret role', es: 'Mira tu rol secreto' });
+        detail = tr({ en: 'Click your envelope to see it.', es: 'Haz clic en tu sobre para verlo.' });
         verb = 'role';
       } else {
-        title = 'Memorise your role';
-        detail = 'Click the card to close your eyes.';
+        title = tr({ en: 'Memorise your role', es: 'Memoriza tu rol' });
+        detail = tr({ en: 'Click the card to close your eyes.', es: 'Haz clic en la carta para cerrar los ojos.' });
         verb = 'role';
       }
       break;
     case 'nominate':
       if (mine) {
         const names = opts.termLimited.map(name).join(', ');
-        title = 'Nominate a Chancellor';
-        detail = 'Click a player at the table.' + (names ? ` Term-limited: ${names}.` : '');
+        title = tr({ en: 'Nominate a Chancellor', es: 'Nomina a un Canciller' });
+        detail =
+          tr({ en: 'Click a player at the table.', es: 'Haz clic en un jugador de la mesa.' }) +
+          (names ? tr({ en: ` Term-limited: ${names}.`, es: ` Con mandato limitado: ${names}.` }) : '');
         verb = 'nominate';
       } else {
-        title = `President ${pres} is choosing`;
-        detail = 'Waiting for a Chancellor nomination.';
+        title = tr({ en: `President ${pres} is choosing`, es: `El Presidente ${pres} está eligiendo` });
+        detail = tr({ en: 'Waiting for a Chancellor nomination.', es: 'Esperando la nominación de un Canciller.' });
       }
       break;
     case 'vote':
       if (mine && opts.myVote === null) {
-        title = 'Vote on the government';
-        detail = `President ${pres} · Chancellor ${name(v.nominee)}` + (v.nominee === me ? ' (you!)' : '');
+        title = tr({ en: 'Vote on the government', es: 'Vota el gobierno' });
+        const nominee = name(v.nominee);
+        detail = tr({
+          en: `President ${pres} · Chancellor ${nominee}` + (v.nominee === me ? ' (you!)' : ''),
+          es: `Presidente ${pres} · Canciller ${nominee}` + (v.nominee === me ? ' (¡tú!)' : ''),
+        });
         verb = 'vote';
       } else {
-        title = 'Votes are coming in';
-        detail = `${v.players.filter((p) => p.hasVoted).length} of ${v.players.filter((p) => p.alive).length} voted`;
+        title = tr({ en: 'Votes are coming in', es: 'Llegan los votos' });
+        const voted = v.players.filter((p) => p.hasVoted).length;
+        const total = v.players.filter((p) => p.alive).length;
+        detail = tr({ en: `${voted} of ${total} voted`, es: `${voted} de ${total} han votado` });
       }
       break;
     case 'legPresident':
       if (mine) {
-        title = 'Discard one policy';
-        detail = `Click the card to throw away. The other two go to Chancellor ${chanc}.`;
+        title = tr({ en: 'Discard one policy', es: 'Descarta una ley' });
+        detail = tr({
+          en: `Click the card to throw away. The other two go to Chancellor ${chanc}.`,
+          es: `Haz clic en la carta para tirarla. Las otras dos van al Canciller ${chanc}.`,
+        });
         verb = 'discard';
       } else {
-        title = `President ${pres} is discarding`;
-        detail = 'One of three policies goes to the discard pile.';
+        title = tr({ en: `President ${pres} is discarding`, es: `El Presidente ${pres} está descartando` });
+        detail = tr({
+          en: 'One of three policies goes to the discard pile.',
+          es: 'Una de las tres leyes va al descarte.',
+        });
       }
       break;
     case 'legChancellor':
       if (mine) {
-        title = 'Enact one policy';
-        detail =
-          'Click the card to enact; the other is discarded.' +
-          (v.vetoUnlocked && !v.vetoRefused ? ' Or stamp VETO.' : '');
+        const vetoHint = v.vetoUnlocked && !v.vetoRefused;
+        title = tr({ en: 'Enact one policy', es: 'Promulga una ley' });
+        detail = tr({
+          en: 'Click the card to enact; the other is discarded.' + (vetoHint ? ' Or stamp VETO.' : ''),
+          es: 'Haz clic en la carta para promulgarla; la otra se descarta.' + (vetoHint ? ' O sella el VETO.' : ''),
+        });
         verb = 'enact';
       } else {
-        title = `Chancellor ${chanc} is enacting`;
-        detail = 'One of two policies becomes law.';
+        title = tr({ en: `Chancellor ${chanc} is enacting`, es: `El Canciller ${chanc} está promulgando` });
+        detail = tr({ en: 'One of two policies becomes law.', es: 'Una de las dos leyes se convierte en ley.' });
       }
       break;
     case 'veto':
       if (mine) {
-        title = 'Accept the veto?';
-        detail = `Chancellor ${chanc} wants to discard both. Slam JA! or NEIN.`;
+        title = tr({ en: 'Accept the veto?', es: '¿Aceptas el veto?' });
+        detail = tr({
+          en: `Chancellor ${chanc} wants to discard both. Slam JA! or NEIN.`,
+          es: `El Canciller ${chanc} quiere descartar ambas. Golpea JA! o NEIN.`,
+        });
         verb = 'veto';
       } else {
-        title = `President ${pres} is considering the veto`;
-        detail = `Chancellor ${chanc} wants to discard both policies. A veto advances the election tracker.`;
+        title = tr({
+          en: `President ${pres} is considering the veto`,
+          es: `El Presidente ${pres} está considerando el veto`,
+        });
+        detail = tr({
+          en: `Chancellor ${chanc} wants to discard both policies. A veto advances the election tracker.`,
+          es: `El Canciller ${chanc} quiere descartar ambas leyes. Un veto avanza el contador de elecciones.`,
+        });
       }
       break;
     case 'peek':
       if (mine) {
-        title = 'Peek at the deck';
-        detail = 'These are the next three policies. Click them to put them back.';
+        title = tr({ en: 'Peek at the deck', es: 'Mira el mazo' });
+        detail = tr({
+          en: 'These are the next three policies. Click them to put them back.',
+          es: 'Estas son las próximas tres leyes. Haz clic en ellas para devolverlas.',
+        });
         verb = 'peek';
       } else {
-        title = `President ${pres} is peeking`;
-        detail = 'Only the President sees the top three policies.';
+        title = tr({ en: `President ${pres} is peeking`, es: `El Presidente ${pres} está mirando` });
+        detail = tr({
+          en: 'Only the President sees the top three policies.',
+          es: 'Solo el Presidente ve las tres leyes de arriba.',
+        });
       }
       break;
     case 'investigate':
       if (mine) {
-        title = 'Investigate a player';
-        detail = 'Click a player to see their party membership.';
+        title = tr({ en: 'Investigate a player', es: 'Investiga a un jugador' });
+        detail = tr({
+          en: 'Click a player to see their party membership.',
+          es: 'Haz clic en un jugador para ver su carné de partido.',
+        });
         verb = 'investigate';
       } else {
-        title = `President ${pres} is investigating`;
-        detail = 'Choosing whom to investigate. Only the President sees the party card.';
+        title = tr({ en: `President ${pres} is investigating`, es: `El Presidente ${pres} está investigando` });
+        detail = tr({
+          en: 'Choosing whom to investigate. Only the President sees the party card.',
+          es: 'Eligiendo a quién investigar. Solo el Presidente ve el carné de partido.',
+        });
       }
       break;
     case 'special':
       if (mine) {
-        title = 'Choose the next President';
-        detail = 'Click a player at the table.';
+        title = tr({ en: 'Choose the next President', es: 'Elige al próximo Presidente' });
+        detail = tr({ en: 'Click a player at the table.', es: 'Haz clic en un jugador de la mesa.' });
         verb = 'elect';
       } else {
-        title = `President ${pres} is choosing the next President`;
-        detail = 'Whoever they pick is the next President; then the order resumes.';
+        title = tr({
+          en: `President ${pres} is choosing the next President`,
+          es: `El Presidente ${pres} está eligiendo al próximo Presidente`,
+        });
+        detail = tr({
+          en: 'Whoever they pick is the next President; then the order resumes.',
+          es: 'Quien elija será el próximo Presidente; luego se retoma el orden.',
+        });
       }
       break;
     case 'execute':
       if (mine) {
-        title = 'Execute a player';
-        detail = 'Aim the revolver and click your target.';
+        title = tr({ en: 'Execute a player', es: 'Ejecuta a un jugador' });
+        detail = tr({ en: 'Aim the revolver and click your target.', es: 'Apunta el revólver y haz clic en tu objetivo.' });
         verb = 'shoot';
       } else {
-        title = `President ${pres} has the revolver`;
-        detail = 'Choosing whom to shoot. If it is Hitler, the Liberals win.';
+        title = tr({ en: `President ${pres} has the revolver`, es: `El Presidente ${pres} tiene el revólver` });
+        detail = tr({
+          en: 'Choosing whom to shoot. If it is Hitler, the Liberals win.',
+          es: 'Eligiendo a quién disparar. Si es Hitler, ganan los Liberales.',
+        });
       }
       break;
     case 'gameOver':
       // the ceremony announces the winner while roles are held
-      if (!opts.heldRoles) title = v.winner === 'liberal' ? 'The Liberals win' : 'The Fascists win';
+      if (!opts.heldRoles) {
+        title = tr(
+          v.winner === 'liberal'
+            ? { en: 'The Liberals win', es: 'Ganan los Liberales' }
+            : { en: 'The Fascists win', es: 'Ganan los Fascistas' },
+        );
+      }
       break;
   }
-  if (!alive && !over) detail = 'You are dead: watch in silence. ' + detail;
+  if (!alive && !over) {
+    detail = tr({ en: 'You are dead: watch in silence. ', es: 'Estás muerto: mira en silencio. ' }) + detail;
+  }
 
   const index = stepIndex(v.phase);
   const acting = actingSeats(v);
@@ -293,7 +387,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
   return {
     status: {
       role: v.yourRole,
-      roleLabel: v.yourRole ? ROLE_LABELS[v.yourRole] : '',
+      roleLabel: v.yourRole ? roleLabel(v.yourRole) : '',
       alive,
       liberal: shown.liberal,
       fascist: shown.fascist,
@@ -303,7 +397,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
       round: v.round,
       powers: v.powers,
     },
-    step: index === null ? null : { index, labels: STEP_LABELS },
+    step: index === null ? null : { index, labels: stepLabels() },
     action: { mine, title, detail, verb, waitingOn },
     roster,
   };
@@ -311,15 +405,15 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
 
 /** Edge-marker label for your next move. */
 export function actionLabel(phase: GameView['phase'] | undefined, vetoToken: boolean): string {
-  return phase === 'nominate' ? 'Pick a Chancellor'
-    : phase === 'investigate' ? 'Investigate a player'
-    : phase === 'special' ? 'Pick the next President'
-    : phase === 'execute' ? 'Pick who to shoot'
-    : phase === 'vote' ? 'Vote JA or NEIN'
-    : phase === 'veto' ? 'JA or NEIN on the veto'
-    : phase === 'legChancellor' && vetoToken ? 'Veto token'
-    : phase === 'night' ? 'Your envelope'
-    : 'Your move';
+  if (phase === 'nominate') return tr({ en: 'Pick a Chancellor', es: 'Elige un Canciller' });
+  if (phase === 'investigate') return tr({ en: 'Investigate a player', es: 'Investiga a un jugador' });
+  if (phase === 'special') return tr({ en: 'Pick the next President', es: 'Elige al próximo Presidente' });
+  if (phase === 'execute') return tr({ en: 'Pick who to shoot', es: 'Elige a quién disparar' });
+  if (phase === 'vote') return tr({ en: 'Vote JA or NEIN', es: 'Vota JA o NEIN' });
+  if (phase === 'veto') return tr({ en: 'JA or NEIN on the veto', es: 'JA o NEIN al veto' });
+  if (phase === 'legChancellor' && vetoToken) return tr({ en: 'Veto token', es: 'Ficha de veto' });
+  if (phase === 'night') return tr({ en: 'Your envelope', es: 'Tu sobre' });
+  return tr({ en: 'Your move', es: 'Tu turno' });
 }
 
 export type ScreenBlood = 'none' | 'spatter' | 'victim';

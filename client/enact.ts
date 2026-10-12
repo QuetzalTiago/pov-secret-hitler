@@ -1,4 +1,6 @@
 // Pure copy/model for the policy-enacted banner (kept DOM- and audio-free so tests can import it).
+import { tr } from './i18n';
+
 interface EnactBanner {
   title: string;
   subtitle: string;
@@ -14,9 +16,9 @@ export function enactBanner(policy: 'L' | 'F', count: number, chaos: boolean): E
   const len = lib ? 5 : 6;
   const filled = Math.max(0, Math.min(len, Math.floor(count) || 0));
   return {
-    title: lib ? 'LIBERAL POLICY' : 'FASCIST POLICY',
-    subtitle: 'ENACTED',
-    kicker: chaos ? 'CHAOS' : '',
+    title: tr(lib ? { en: 'LIBERAL POLICY', es: 'LEY LIBERAL' } : { en: 'FASCIST POLICY', es: 'LEY FASCISTA' }),
+    subtitle: tr({ en: 'ENACTED', es: 'PROMULGADA' }),
+    kicker: chaos ? tr({ en: 'CHAOS', es: 'CAOS' }) : '',
     masthead: 'Extrablatt',
     dateline: 'BERLIN · SONDERAUSGABE · 10 PFENNIG',
     cls: lib ? 'liberal' : 'fascist',

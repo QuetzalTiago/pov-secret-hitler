@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { setLang } from '../client/i18n';
 import { ENACT_BANNER_DELAY_MS, ENACT_BANNER_MS, ceremonyEndsAt, enactBanner } from '../client/enact';
 
 describe('enactBanner', () => {
@@ -52,5 +53,25 @@ describe('ceremonyEndsAt', () => {
 
   it('ends after the banner delay plus its duration', () => {
     expect(ceremonyEndsAt(10)).toBeCloseTo(13.15);
+  });
+});
+
+describe('enactBanner in Spanish', () => {
+  beforeEach(() => setLang('es'));
+  afterEach(() => setLang('en'));
+
+  it('translates the copy, keeps the German masthead and dateline', () => {
+    const b = enactBanner('F', 2, true);
+    expect(b.title).toBe('LEY FASCISTA');
+    expect(b.subtitle).toBe('PROMULGADA');
+    expect(b.kicker).toBe('CAOS');
+    expect(b.masthead).toBe('Extrablatt');
+    expect(b.dateline).toBe('BERLIN · SONDERAUSGABE · 10 PFENNIG');
+    expect(enactBanner('L', 1, false).title).toBe('LEY LIBERAL');
+  });
+
+  it('switching back to English returns English', () => {
+    setLang('en');
+    expect(enactBanner('L', 1, false).title).toBe('LIBERAL POLICY');
   });
 });

@@ -1,11 +1,21 @@
 // Pure copy/timing/particle model for the win ceremony (kept DOM- and audio-free so tests can import it).
 import type { Party, WinReason } from '../shared/types';
+import { tr } from './i18n';
 
+// Getters, so ui.ts's REASONS[key] reads follow the current language.
 export const REASONS: Record<string, string> = {
-  liberalPolicies: 'Five Liberal policies were enacted.',
-  hitlerExecuted: 'Hitler was executed.',
-  fascistPolicies: 'Six Fascist policies were enacted.',
-  hitlerElected: 'Hitler was elected Chancellor.',
+  get liberalPolicies() {
+    return tr({ en: 'Five Liberal policies were enacted.', es: 'Se promulgaron cinco leyes liberales.' });
+  },
+  get hitlerExecuted() {
+    return tr({ en: 'Hitler was executed.', es: 'Hitler fue ejecutado.' });
+  },
+  get fascistPolicies() {
+    return tr({ en: 'Six Fascist policies were enacted.', es: 'Se promulgaron seis leyes fascistas.' });
+  },
+  get hitlerElected() {
+    return tr({ en: 'Hitler was elected Chancellor.', es: 'Hitler fue elegido Canciller.' });
+  },
 };
 
 export interface VictoryBanner {
@@ -14,18 +24,25 @@ export interface VictoryBanner {
   dateline: string;
   headline: string;
   reason: string;
-  stamp: 'VICTORY' | 'DEFEAT' | '';
+  stamp: 'VICTORY' | 'DEFEAT' | ''; // stable code: ui.ts picks the style from it
+  stampLabel: string; // the stamp as shown
   cls: 'liberal' | 'fascist';
 }
 
 export function victoryBanner(winner: Party, reason: WinReason | null, mine: Party | null): VictoryBanner {
+  const stamp = mine === null ? '' : mine === winner ? 'VICTORY' : 'DEFEAT';
   return {
-    title: winner === 'liberal' ? 'LIBERALS WIN' : 'FASCISTS WIN',
+    title: tr(winner === 'liberal' ? { en: 'LIBERALS WIN', es: 'GANAN LOS LIBERALES' } : { en: 'FASCISTS WIN', es: 'GANAN LOS FASCISTAS' }),
     masthead: 'Der Abend',
     dateline: 'BERLIN · LETZTE AUSGABE',
-    headline: winner === 'liberal' ? 'LIBERALS TRIUMPH' : 'FASCISTS SEIZE POWER',
+    headline: tr(
+      winner === 'liberal'
+        ? { en: 'LIBERALS TRIUMPH', es: 'TRIUNFO LIBERAL' }
+        : { en: 'FASCISTS SEIZE POWER', es: 'LOS FASCISTAS TOMAN EL PODER' },
+    ),
     reason: REASONS[reason ?? ''] ?? '',
-    stamp: mine === null ? '' : mine === winner ? 'VICTORY' : 'DEFEAT',
+    stamp,
+    stampLabel: stamp === 'VICTORY' ? tr({ en: 'VICTORY', es: 'VICTORIA' }) : stamp === 'DEFEAT' ? tr({ en: 'DEFEAT', es: 'DERROTA' }) : '',
     cls: winner,
   };
 }
