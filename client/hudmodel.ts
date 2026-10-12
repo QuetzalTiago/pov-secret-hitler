@@ -100,6 +100,24 @@ export function edgeMarker(
   return { x: (x * margin) / m, y: (y * margin) / m, angle: Math.atan2(y, x) };
 }
 
+/**
+ * The candidate an edge arrow should point at: null when there are none or any is on screen
+ * (an arrow is only for when you cannot see a move), else the one nearest the view direction (smallest angle).
+ */
+export function guideTarget<T extends { ndc: { x: number; y: number; z: number }; angle: number }>(cands: T[]): T | null {
+  let best: T | null = null;
+  for (const c of cands) {
+    if (edgeMarker(c.ndc) === null) return null;
+    if (!best || c.angle < best.angle) best = c;
+  }
+  return best;
+}
+
+/** Slow 0..1 sine for idle glows on clickable things (same rate as the envelope pulse). */
+export function idlePulse(t: number): number {
+  return 0.5 + 0.5 * Math.sin(t * 4);
+}
+
 export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
   const me = room.you;
   const name = (seat: number | null) => (seat === null ? '?' : (v.players[seat]?.name ?? '?'));

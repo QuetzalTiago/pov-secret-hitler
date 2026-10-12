@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardConfirmCopy, edgeMarker, hudModel, type HudOpts } from '../client/hudmodel';
+import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, type HudOpts } from '../client/hudmodel';
 import type { RoomView } from '../shared/protocol';
 import type { GameView } from '../shared/view';
 
@@ -142,6 +142,42 @@ describe('edgeMarker', () => {
   it('flips a point behind the camera', () => {
     const m = edgeMarker({ x: 0.5, y: 0, z: 1.5 })!;
     expect(m.x).toBeLessThan(0);
+  });
+});
+
+describe('guideTarget', () => {
+  const on = { ndc: { x: 0, y: 0, z: 0.5 }, angle: 0.1 };
+  const left = { ndc: { x: -3, y: 0, z: 0.5 }, angle: 1.2 };
+  const behind = { ndc: { x: 0, y: 0, z: 1.5 }, angle: 2.5 };
+
+  it('is null with no candidates', () => {
+    expect(guideTarget([])).toBeNull();
+  });
+
+  it('is null when any candidate is on screen', () => {
+    expect(guideTarget([left, on, behind])).toBeNull();
+  });
+
+  it('picks the smallest angle when all are off screen', () => {
+    expect(guideTarget([behind, left])).toBe(left);
+  });
+
+  it('counts a behind-camera candidate as off screen', () => {
+    expect(guideTarget([behind])).toBe(behind);
+  });
+});
+
+describe('idlePulse', () => {
+  it('starts at the midpoint and peaks at PI/8', () => {
+    expect(idlePulse(0)).toBeCloseTo(0.5);
+    expect(idlePulse(Math.PI / 8)).toBeCloseTo(1);
+  });
+
+  it('stays within 0..1', () => {
+    for (let t = 0; t < 20; t += 0.05) {
+      expect(idlePulse(t)).toBeGreaterThanOrEqual(0);
+      expect(idlePulse(t)).toBeLessThanOrEqual(1);
+    }
   });
 });
 

@@ -463,7 +463,7 @@ export class UI {
   }
 
   /** Shows or moves an edge marker (ndc x/y, arrow angle); touches the DOM only when the rounded value changed. */
-  setMarker(id: 'pres' | 'nom', m: { x: number; y: number; angle: number; label: string } | null) {
+  setMarker(id: 'pres' | 'nom' | 'act', m: { x: number; y: number; angle: number; label: string } | null) {
     const el = $(`mk-${id}`);
     let st = this.markers.get(id);
     if (!st) this.markers.set(id, (st = { key: '', label: '', w: 0, h: 0 }));

@@ -344,8 +344,8 @@ export class Character implements Patron {
     this.lookTarget = target;
   }
 
-  setHighlight(on: boolean) {
-    this.highlightTarget = on ? 1 : 0;
+  setHighlight(v: number) {
+    this.highlightTarget = Math.min(1, Math.max(0, v));
   }
 
   private restArm: THREE.Mesh[] = [];

@@ -239,6 +239,9 @@ input:disabled { opacity: 0.5; }
   border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: var(--ink);
 }
 .marker.nom { border-style: dashed; }
+.marker.act { background: var(--parch) var(--grain); color: var(--parch-ink); border: 1px solid rgba(40, 28, 15, 0.6); }
+.marker.act .mk-arrow { color: var(--parch-ink); animation: pulse 0.9s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .marker.act .mk-arrow { animation: none; } }
 .mk-arrow { display: inline-block; color: var(--accent); }
 
 #top-right { position: absolute; top: 12px; right: 14px; display: flex; gap: 6px; align-items: center; }

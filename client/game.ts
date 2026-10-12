@@ -5,7 +5,7 @@ import type { ActionBody, GameEvent, Party, Policy, Power } from '../shared/type
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
 import { ENACT_BANNER_DELAY_MS, ceremonyEndsAt } from './enact';
-import { cardConfirmCopy, edgeMarker, hudModel } from './hudmodel';
+import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse } from './hudmodel';
 import type { Interactable, Interactor } from './interact';
 import { createCharacter, type Patron } from './scene/characters';
 import { disposeObject } from './scene/dispose';
@@ -157,6 +157,10 @@ export class Game {
   /** Head positions per seat (layout-fixed), and a scratch vector for projecting them. */
   private heads: THREE.Vector3[] = [];
   private proj = new THREE.Vector3();
+  private guideBox = new THREE.Box3();
+  private guideCentre = new THREE.Vector3();
+  private guideDir = new THREE.Vector3();
+  private guideFwd = new THREE.Vector3();
 
   constructor(
     private world: World,
@@ -1005,6 +1009,8 @@ export class Game {
     const now = this.now;
     const hovered = this.interactor.hovered;
     this.world.camera.updateMatrixWorld();
+    const acting = new Set([...this.interactor.items.values()].filter((i) => i.action).map((i) => i.id));
+    const wave = idlePulse(now);
 
     // Envelope and role card.
     const envPos = L.front(me, -0.3, 0.02);
@@ -1050,7 +1056,7 @@ export class Game {
         const [pos, q] = this.handPose(i, held.length, hover ? -0.36 : -0.42, hover ? -0.045 : -0.07);
         p.mover.set(pos, q, 10);
         // Red when the click discards the card, green when it enacts it.
-        p.card.setGlow(hover ? 0.5 : 0, v?.phase === 'legPresident' ? 'discard' : v?.phase === 'legChancellor' ? 'enact' : undefined);
+        p.card.setGlow(hover ? 0.5 : acting.has(`hand-${i}`) ? 0.12 + 0.18 * wave : 0, v?.phase === 'legPresident' ? 'discard' : v?.phase === 'legChancellor' ? 'enact' : undefined);
       } else {
         const off = i - (held.length - 1) / 2;
         const pos = L.front(p.holder, off * 0.09, 0.02, 0.86);
@@ -1089,7 +1095,8 @@ export class Game {
     const myChoice = revealing ? revealing.votes[me] : v?.phase === 'vote' ? this.myVote : null;
     for (const [ballot, mover, ja] of [[this.ja, this.jaMover, true], [this.nein, this.neinMover, false]] as const) {
       const rest = L.front(me, ja ? 0.17 : 0.33, 0.03);
-      const hover = hovered === (ja ? 'vote-ja' : 'vote-nein');
+      const bid = ja ? 'vote-ja' : 'vote-nein';
+      const hover = hovered === bid;
       if (myChoice === ja) {
         const pos = playedSlot(me);
         if (revealing) {
@@ -1100,7 +1107,7 @@ export class Game {
         rest.y += hover ? 0.04 : 0;
         mover.set(rest, mul(Q('y', 0.08), Q('x', hover ? 0.3 : 0)), 12);
       }
-      ballot.setGlow(hover ? 0.25 : 0);
+      ballot.setGlow(hover ? 0.25 : acting.has(bid) ? 0.06 + 0.12 * wave : 0);
       mover.visible = !!v && v.players[me]?.alive !== false;
     }
     if (v) {
@@ -1150,6 +1157,7 @@ export class Game {
     vt.y += vetoLegal ? 0.012 + (hovered === 'veto' ? 0.03 : 0) : -0.05;
     this.vetoMover.set(vt, IDENTITY_Q, 8);
     this.vetoMover.visible = vetoLegal;
+    (this.vetoToken.material as THREE.MeshStandardMaterial[])[2].emissiveIntensity = hovered === 'veto' ? 0.9 : acting.has('veto') ? 0.3 + 0.5 * wave : 0.3;
 
     // Revolver.
     const gunRest = this.gunRest.set(this.board.w / 2 + 0.1, TABLE_Y + 0.02, this.board.h / 2 + 0.08);
@@ -1265,6 +1273,7 @@ export class Game {
     const L = this.world.layout;
     const me = room.you;
     const camPos = this.world.camera.position;
+    const wave = idlePulse(this.now);
     const focusPoint = (seat: number) => (seat === me ? camPos.clone() : L.head(seat));
     let focus: number | null = null;
     if (v) {
@@ -1302,7 +1311,7 @@ export class Game {
       if (!v) target = camPos.clone();
       if (pointing && pointing.seat === seat) target = pointing.at; // eyes follow the finger
       c.lookAt(target);
-      c.setHighlight(hovered === `seat-${seat}`);
+      c.setHighlight(hovered === `seat-${seat}` ? 1 : this.interactor.items.get(`seat-${seat}`)?.action ? 0.2 + 0.25 * wave : 0);
       const role = v?.players[seat]?.role;
       c.setTeamGlow(!!knowsTeam && v?.phase === 'night' && !!role && role !== 'liberal');
       c.chair = this.world.chairObject(seat);
@@ -1332,6 +1341,43 @@ export class Game {
     const live = !!v && v.phase !== 'night' && v.phase !== 'gameOver';
     this.marker('pres', live && v!.president !== me ? v!.president : null, 'PRESIDENT');
     this.marker('nom', live && v!.phase === 'vote' && v!.nominee !== me ? v!.nominee : null, 'NOMINEE');
+    this.actionMarker();
+  }
+
+  /** Edge arrow to your nearest clickable move while none of them is on screen. */
+  private actionMarker() {
+    const v = this.view;
+    const me = this.room?.you;
+    const cam = this.world.camera;
+    const cands: { ndc: THREE.Vector3; angle: number }[] = [];
+    if (v && me !== undefined && !this.interactor.cardMode()) {
+      const env = v.phase === 'night' && !v.players[me]?.acked && !this.envelopeOpen ? this.interactor.items.get('envelope') : undefined;
+      cam.getWorldDirection(this.guideFwd);
+      for (const item of this.interactor.items.values()) {
+        if (item !== env && (!item.action || item.id.startsWith('hand-') || item.id.startsWith('peek-'))) continue;
+        this.guideBox.makeEmpty();
+        for (const o of item.objects) this.guideBox.expandByObject(o);
+        if (this.guideBox.isEmpty()) continue;
+        this.guideBox.getCenter(this.guideCentre);
+        cands.push({
+          ndc: this.guideCentre.clone().project(cam),
+          angle: this.guideFwd.angleTo(this.guideDir.copy(this.guideCentre).sub(cam.position)),
+        });
+      }
+    }
+    const t = guideTarget(cands);
+    const m = t && edgeMarker(t.ndc);
+    const label =
+      v?.phase === 'nominate' ? 'Pick a Chancellor'
+      : v?.phase === 'investigate' ? 'Investigate a player'
+      : v?.phase === 'special' ? 'Pick the next President'
+      : v?.phase === 'execute' ? 'Pick who to shoot'
+      : v?.phase === 'vote' ? 'Vote JA or NEIN'
+      : v?.phase === 'veto' ? 'JA or NEIN on the veto'
+      : v?.phase === 'legChancellor' && this.interactor.items.has('veto') ? 'Veto token'
+      : v?.phase === 'night' ? 'Your envelope'
+      : 'Your move';
+    this.ui.setMarker('act', m && { ...m, label });
   }
 
   private marker(id: 'pres' | 'nom', seat: number | null, tag: string) {
