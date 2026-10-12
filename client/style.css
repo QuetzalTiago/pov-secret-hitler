@@ -102,12 +102,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); c
 .hidden { display: none !important; }
 
 /* Typography */
-h1 { font-family: var(--font-display); font-size: 48px; line-height: 1.1; font-weight: 800; margin: 0; letter-spacing: -0.01em; text-transform: uppercase; color: var(--accent); text-shadow: 0 0 24px rgba(201, 162, 74, 0.3); }
+h1 { font-family: var(--font-block); font-size: 48px; line-height: 1.1; font-weight: 800; margin: 0; letter-spacing: -0.01em; text-transform: uppercase; color: var(--accent); }
 h1 span {
   display: inline-block; font-size: 0.45em; vertical-align: middle; background: var(--hitler); color: var(--ink); padding: 2px 8px;
   border-radius: 3px; transform: rotate(-4deg); font-style: normal; text-shadow: none;
 }
-h2 { font-family: var(--font-display); font-size: 22px; font-weight: 700; margin: 0; text-transform: uppercase; letter-spacing: 0.02em; color: var(--accent); }
+h2 { font-family: var(--font-block); font-size: 22px; font-weight: 700; margin: 0; text-transform: uppercase; letter-spacing: 0.02em; color: var(--accent); }
 h3 { margin: var(--space-2) 0 0; color: var(--accent); font-family: var(--font-display); font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
 p { margin: 0; }
 .sub { color: var(--ink-dim); margin: 0; font-size: 13px; }
@@ -166,7 +166,7 @@ input:disabled { opacity: 0.5; }
 }
 
 /* Home / lobby */
-#home h1 { margin-bottom: -4px; font-family: var(--font-black); text-transform: none; font-weight: 400; letter-spacing: 0; font-size: 52px; }
+#home h1 { margin-bottom: -4px; font-family: var(--font-block); text-transform: uppercase; font-weight: 800; letter-spacing: 0.02em; font-size: 52px; }
 #home h1 span { font-family: var(--font-display); }
 .era { margin: 0; font-family: var(--font-type); font-size: 12px; letter-spacing: 0.35em; text-transform: uppercase; color: var(--ink-dim); }
 #home .sub { font-size: 14px; }
@@ -185,7 +185,8 @@ input:disabled { opacity: 0.5; }
   display: flex; align-items: center; gap: var(--space-3); padding: 6px 10px; background: transparent;
   border-bottom: 1px solid var(--glass-edge);
 }
-#gameover-roles li { justify-content: space-between; }
+#gameover-roles li { justify-content: flex-start; }
+#gameover-roles li .tag { margin-left: auto; }
 #seats .avatar {
   --hue: 30;
   flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
@@ -403,6 +404,9 @@ input:disabled { opacity: 0.5; }
 #confirm-card button.primary:hover:not(:disabled) { filter: brightness(1.12); }
 #confirm-card.discard button.primary { background: var(--hitler); border-color: var(--hitler); color: var(--ink); }
 #confirm-card.enact button.primary { background: var(--ok); border-color: var(--ok); color: var(--ink); }
+#gameover-title { font-family: var(--font-block); }
+#gameover-roles img.portrait { width: 48px; height: 60px; border: 2px solid var(--ink-faint); border-radius: 2px; vertical-align: middle; margin-right: 10px; image-rendering: auto; }
+#sb-role img.seal { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; }
 #gameover-title.liberal { color: var(--lib); }
 #gameover-title.fascist { color: var(--fas); }
 #gameover-roles { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -417,7 +421,8 @@ input:disabled { opacity: 0.5; }
 /* policy-enacted ceremony banner: an "Extrablatt" special edition on muted newsprint that spins in like a newsreel headline */
 #enact { position: fixed; inset: 0; z-index: 16; pointer-events: none; display: flex; align-items: center; justify-content: center; opacity: 0; --tint: var(--lib); --headline: var(--lib-deep); }
 #enact.fascist { --tint: var(--fas); --headline: var(--hitler); }
-#enact::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 30%, color-mix(in srgb, var(--tint) 45%, transparent) 100%); }
+#enact::before { content: ''; position: absolute; inset: 0; background: color-mix(in srgb, var(--tint) 22%, transparent); }
+#enact-seal { display: block; width: clamp(56px, 9vw, 96px); height: auto; margin: 0 auto 8px; }
 #enact.on { animation: enact-fade 2.5s ease-out forwards; }
 #enact .box {
   position: relative; text-align: center; padding: 18px 40px 22px; transform: rotate(-3deg); max-width: min(900px, calc(100vw - 32px)); box-sizing: border-box;
@@ -429,7 +434,7 @@ input:disabled { opacity: 0.5; }
 #enact-dateline { font-family: var(--font-type); font-size: 12px; letter-spacing: 0.25em; margin-right: -0.25em; padding: 5px 0; border-bottom: 3px double var(--parch-ink); margin-bottom: 14px; color: var(--parch-ink); }
 #enact-kicker { font-family: var(--font-type); font-size: clamp(16px, 3.5vw, 32px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4em; margin-right: -0.4em; color: var(--parch-ink); }
 #enact-kicker:empty { display: none; }
-#enact-title { font-family: var(--font-display); font-size: clamp(32px, 8vw, 100px); font-weight: 800; text-transform: uppercase; line-height: 1.05; letter-spacing: 0.08em; margin-right: -0.08em; color: var(--headline); }
+#enact-title { font-family: var(--font-block); font-size: clamp(32px, 8vw, 100px); font-weight: 800; text-transform: uppercase; line-height: 1.05; letter-spacing: 0.08em; margin-right: -0.08em; color: var(--headline); }
 #enact-sub {
   display: inline-block; margin-top: 6px; background: transparent; color: var(--headline); border: 3px solid var(--headline); border-radius: 3px; transform: rotate(-4deg);
   font-family: var(--font-display); font-size: clamp(18px, 4vw, 40px); font-weight: 800; padding: 2px 18px 2px calc(18px + 0.5em); letter-spacing: 0.5em;
@@ -458,7 +463,7 @@ input:disabled { opacity: 0.5; }
 }
 #victory-masthead { align-self: stretch; font-family: var(--font-black); font-size: clamp(36px, 7vw, 84px); line-height: 1.1; border-bottom: 3px double var(--parch-ink); }
 #victory-dateline { align-self: stretch; font-family: var(--font-type); font-size: 12px; letter-spacing: 0.25em; padding-bottom: 6px; border-bottom: 3px double var(--parch-ink); }
-#victory-title { font-family: var(--font-display); font-size: clamp(32px, 8vw, 110px); font-weight: 800; text-transform: uppercase; line-height: 1.05; letter-spacing: 0.04em; color: var(--headline); animation: victory-slam 0.35s 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+#victory-title { font-family: var(--font-block); font-size: clamp(32px, 8vw, 110px); font-weight: 800; text-transform: uppercase; line-height: 1.05; letter-spacing: 0.04em; color: var(--headline); animation: victory-slam 0.35s 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
 #victory-reason { font-family: var(--font-type); font-size: clamp(15px, 2.4vw, 26px); letter-spacing: 0.04em; color: var(--parch-ink); animation: victory-rise 0.5s 0.9s ease-out both; }
 #victory-stamp { font-family: var(--font-display); font-size: clamp(24px, 5vw, 60px); font-weight: 800; text-transform: uppercase; letter-spacing: 0.3em; padding: 0.1em 0.3em 0.1em 0.6em; border: 4px solid currentColor; border-radius: 3px; transform: rotate(-6deg); animation: victory-stamp 0.3s 1.2s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
 #victory-stamp.victory { color: var(--hitler); }

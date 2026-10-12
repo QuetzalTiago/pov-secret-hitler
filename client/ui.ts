@@ -1,8 +1,9 @@
 // DOM overlay: lobby, HUD, prompt, timer, chat, toasts, credits, game over. Always textContent, never innerHTML with user data.
 import type { RoomView } from '../shared/protocol';
 import type { Power } from '../shared/types';
-import type { GameView } from '../shared/view';
+import type { GameView, PlayerView } from '../shared/view';
 import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
+import { portraitUrl, sealUrl } from './art';
 import { isMuted, setMuted } from './audio';
 import { ENACT_BANNER_MS, enactBanner } from './enact';
 import { REASONS, VICTORY_MS, victoryParticles, type VictoryBanner } from './victory';
@@ -24,7 +25,26 @@ export interface UIHandlers {
 
 const POWER_GLYPHS: Record<Power, string> = { peek: '👁', investigate: '🔍', special: '★', execute: '✕' };
 
+/** One game-over roster row: portrait (same seed as the 3D role card), name, role tag. */
+export function gameOverRow(p: PlayerView, you: number): HTMLLIElement {
+  const li = document.createElement('li');
+  const img = document.createElement('img');
+  img.className = 'portrait';
+  img.alt = '';
+  img.width = 48;
+  img.height = 60;
+  img.src = portraitUrl(p.role === 'hitler' ? 'hitler' : p.role === 'fascist' ? 'fascist' : 'liberal', p.seat);
+  li.appendChild(img);
+  li.appendChild(document.createTextNode(`${p.name}${p.seat === you ? ' (you)' : ''}`));
+  const span = document.createElement('span');
+  span.className = `tag ${p.role === 'liberal' ? 'liberal' : 'fascist'}`;
+  span.textContent = `${p.role === 'hitler' ? 'Hitler' : p.role === 'fascist' ? 'Fascist' : 'Liberal'}${p.alive ? '' : ' ✝'}`;
+  li.appendChild(span);
+  return li;
+}
+
 export class UI {
+  private chipKey = '';
   private chatOpen = false;
   private timerText: string | null = null;
   private timerClass: string | null = null;
@@ -362,8 +382,24 @@ export class UI {
     const st = model.status;
     const me = model.roster.find((r) => r.you);
     const chip = $('sb-role');
-    chip.textContent = [me?.name, st.alive ? st.roleLabel : '✝'].filter(Boolean).join(' · ');
-    chip.className = `chip ${!st.alive ? 'dead' : st.role === 'liberal' ? 'lib' : st.role ? 'fas' : ''}`;
+    const text = [me?.name, st.alive ? st.roleLabel : '✝'].filter(Boolean).join(' · ');
+    const party = st.alive && st.role ? (st.role === 'liberal' ? 'L' : 'F') : null;
+    const className = `chip ${!st.alive ? 'dead' : st.role === 'liberal' ? 'lib' : st.role ? 'fas' : ''}`;
+    const chipKey = `${text}|${party}|${className}`;
+    if (chipKey !== this.chipKey) {
+      this.chipKey = chipKey;
+      const nodes: Node[] = [];
+      if (party) {
+        const seal = document.createElement('img');
+        seal.className = 'seal';
+        seal.alt = '';
+        seal.src = sealUrl(party, 32);
+        nodes.push(seal);
+      }
+      nodes.push(document.createTextNode(text));
+      chip.replaceChildren(...nodes);
+      chip.className = className;
+    }
     const pips = (id: string, total: number, filled: number, powers?: (Power | null)[]) => {
       $(id).replaceChildren(
         ...Array.from({ length: total }, (_, i) => {
@@ -541,6 +577,7 @@ export class UI {
   enact(policy: 'L' | 'F', count: number, chaos: boolean) {
     const el = $('enact');
     const b = enactBanner(policy, count, chaos);
+    $<HTMLImageElement>('enact-seal').src = sealUrl(policy, 96);
     $('enact-masthead').textContent = b.masthead;
     $('enact-dateline').textContent = b.dateline;
     $('enact-kicker').textContent = b.kicker;
@@ -647,15 +684,7 @@ export class UI {
     $('gameover-reason').textContent = REASONS[v.winReason ?? ''] ?? '';
     const list = $('gameover-roles');
     list.replaceChildren();
-    for (const p of v.players) {
-      const li = document.createElement('li');
-      li.textContent = `${p.name}${p.seat === room.you ? ' (you)' : ''}`;
-      const span = document.createElement('span');
-      span.className = `tag ${p.role === 'liberal' ? 'liberal' : 'fascist'}`;
-      span.textContent = `${p.role === 'hitler' ? 'Hitler' : p.role === 'fascist' ? 'Fascist' : 'Liberal'}${p.alive ? '' : ' ✝'}`;
-      li.appendChild(span);
-      list.appendChild(li);
-    }
+    for (const p of v.players) list.appendChild(gameOverRow(p, room.you));
     $('rematch').classList.toggle('hidden', room.you !== room.host);
   }
 
