@@ -114,6 +114,46 @@ export function spray(
   return out;
 }
 
+/** A droplet falling straight down from `start` to the floor (y=0), for the head drip. */
+export function drip(start: THREE.Vector3, size = 0.02): Droplet {
+  return {
+    start: start.clone(),
+    vel: new THREE.Vector3(),
+    t: fallTime(start.y, 0, 0),
+    land: new THREE.Vector3(start.x, 0, start.z),
+    surface: 'floor',
+    size,
+  };
+}
+
+/** A flat rectangle on the table that a splat can stick to; yaw is rotation about +Y (three.js convention). */
+export interface AnchorRect { cx: number; cz: number; halfW: number; halfD: number; yaw: number; top: number }
+export type AnchorPick =
+  | { kind: 'card'; index: number; y: number }
+  | { kind: 'board'; y: number }
+  | { kind: 'table'; y: number }
+  | { kind: 'floor'; y: number };
+
+function inside(r: AnchorRect, x: number, z: number): boolean {
+  const dx = x - r.cx;
+  const dz = z - r.cz;
+  const c = Math.cos(r.yaw);
+  const s = Math.sin(r.yaw);
+  return Math.abs(dx * c - dz * s) <= r.halfW && Math.abs(dx * s + dz * c) <= r.halfD;
+}
+
+/** What a droplet landing at (x, z) sticks to: the topmost face-up card, else the board, else the table or floor. */
+export function pickAnchor(x: number, z: number, surface: Surface, board: AnchorRect | null, cards: readonly AnchorRect[]): AnchorPick {
+  if (surface === 'floor') return { kind: 'floor', y: 0 };
+  let best = -1;
+  for (let i = 0; i < cards.length; i++) {
+    if (inside(cards[i], x, z) && (best < 0 || cards[i].top > cards[best].top)) best = i;
+  }
+  if (best >= 0) return { kind: 'card', index: best, y: cards[best].top };
+  if (board && inside(board, x, z)) return { kind: 'board', y: board.top };
+  return { kind: 'table', y: TABLE_Y };
+}
+
 export type BloodPart = 'all' | 'upper' | 'gunArm';
 
 /** Dark flat blood ink, linear RGB. */
@@ -217,6 +257,42 @@ interface Splat {
 const mA = new THREE.Matrix4();
 const mS = new THREE.Matrix4();
 
+/** Instanced flat quads (1x1 in XZ, facing +Y) drawing one atlas tile per instance; shared by splats and the pool. */
+export function splatMesh(map: THREE.Texture | null, cap: number, tiles: number) {
+  const geo = new THREE.PlaneGeometry(1, 1);
+  geo.rotateX(-Math.PI / 2);
+  const tileAttr = new THREE.InstancedBufferAttribute(new Float32Array(cap), 1);
+  geo.setAttribute('tile', tileAttr);
+  const mat = new THREE.MeshBasicMaterial({
+    map,
+    transparent: true,
+    depthWrite: false,
+    alphaTest: 0.02,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+    toneMapped: true,
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float tile;')
+      .replace(
+        '#include <uv_vertex>',
+        `#include <uv_vertex>\n#ifdef USE_MAP\nvMapUv.x = (vMapUv.x + tile) / ${tiles}.0;\n#endif`,
+      );
+  };
+  mat.customProgramCacheKey = () => 'blood-splats-' + tiles;
+  const mesh = new THREE.InstancedMesh(geo, mat, cap);
+  mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.frustumCulled = false;
+  mesh.castShadow = mesh.receiveShadow = false;
+  mesh.renderOrder = 1;
+  mesh.matrixAutoUpdate = false;
+  mesh.count = 0;
+  mesh.visible = false;
+  return { mesh, tileAttr };
+}
+
 /**
  * One draw call for every blood splat: a single InstancedMesh of quads (one atlas tile each).
  * Each splat follows its anchor, so blood on a card moves with the card.
@@ -231,37 +307,9 @@ export class BloodSplats {
   private time = 0;
 
   constructor(map: THREE.Texture | null = null, cap = SPLAT_CAP, tiles = 4) {
-    const geo = new THREE.PlaneGeometry(1, 1);
-    geo.rotateX(-Math.PI / 2);
-    this.tileAttr = new THREE.InstancedBufferAttribute(new Float32Array(cap), 1);
-    geo.setAttribute('tile', this.tileAttr);
-    const mat = new THREE.MeshBasicMaterial({
-      map,
-      transparent: true,
-      depthWrite: false,
-      alphaTest: 0.02,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
-      toneMapped: true,
-    });
-    mat.onBeforeCompile = (shader) => {
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float tile;')
-        .replace(
-          '#include <uv_vertex>',
-          `#include <uv_vertex>\n#ifdef USE_MAP\nvMapUv.x = (vMapUv.x + tile) / ${tiles}.0;\n#endif`,
-        );
-    };
-    mat.customProgramCacheKey = () => 'blood-splats-' + tiles;
-    this.mesh = new THREE.InstancedMesh(geo, mat, cap);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.frustumCulled = false;
-    this.mesh.castShadow = this.mesh.receiveShadow = false;
-    this.mesh.renderOrder = 1;
-    this.mesh.matrixAutoUpdate = false;
-    this.mesh.count = 0;
-    this.mesh.visible = false;
+    const { mesh, tileAttr } = splatMesh(map, cap, tiles);
+    this.mesh = mesh;
+    this.tileAttr = tileAttr;
     this.ring = new Array<Splat | null>(cap).fill(null);
   }
 

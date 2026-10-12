@@ -11,11 +11,12 @@ import { eventCopy, powerCopy } from './eventcopy';
 import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, type Mark } from './hudmodel';
 import { loadMarks, saveMarks } from './marks';
 import type { Interactable, Interactor } from './interact';
-import { bloodSeed } from './scene/blood';
+import { bloodSeed, pickAnchor, type AnchorRect } from './scene/blood';
+import { Bloodshed, type BloodShot, type ResolveAnchor } from './scene/bloodfx';
 import { createCharacter, type Patron } from './scene/characters';
 import { disposeObject } from './scene/dispose';
-import { ActingRings, Board, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
-import { COLORS, ballotFace, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
+import { ActingRings, Board, CARD_H, CARD_W, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
+import { COLORS, ballotFace, bloodAtlas, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
 import { slowmoScale, tweens } from './scene/tween';
 import { Mover, TABLE_Y, type World } from './scene/world';
 import { flagTab, unflagTab } from './tabflag';
@@ -160,6 +161,17 @@ export class Game {
   private bloodA = new THREE.Vector3(); // victim head
   private bloodB = new THREE.Vector3(); // other head
   private bloodDir = new THREE.Vector3();
+  private blood: Bloodshed;
+  /** Seats whose execution already has blood, so a snapshot does not rebuild it twice. */
+  private bloodied = new Set<number>();
+  /** Identity anchor (never in the scene) for blood that lands on the table or floor. */
+  private static bloodGround = new THREE.Object3D();
+  private bloodVictim = new THREE.Vector3();
+  private bloodShooter = new THREE.Vector3();
+  private bloodHead = new THREE.Vector3();
+  private bloodQ = new THREE.Quaternion();
+  private bloodE = new THREE.Euler();
+  private bloodP = new THREE.Vector3();
   // Per-frame scratch (see computeTargets); each is consumed before it is written again.
   private pointV = new THREE.Vector3(); // pointing() result, read at once by setAim/setOwnArm/lookAt
   private envV = new THREE.Vector3(); // envelope spot, alive across the role card block
@@ -204,6 +216,7 @@ export class Game {
     private ui: UI,
     private send: (a: ActionBody) => void,
   ) {
+    this.blood = new Bloodshed(this.world.scene, bloodAtlas());
     ui.onEnactSkip = () => {
       this.ceremonyUntil = Math.min(this.ceremonyUntil, this.now);
       if (this.deferredPower) this.deferredPower.at = this.now;
@@ -287,6 +300,7 @@ export class Game {
       this.marks = {}; // a new deal (also a rematch): fresh suspicions
       saveMarks(room.code, this.marks);
       for (const c of this.chars.values()) c.clearBlood();
+      this.clearBloodshed();
     }
     this.rings.set(this.view ? actingSeats(this.view) : []);
     const n = room.game ? room.game.players.length : room.seats.length;
@@ -329,6 +343,14 @@ export class Game {
       if (v.phase !== 'night' && prevPhase === 'night') this.envelopeOpen = false;
       this.reconcilePool();
       this.syncTiles(prevPhase === undefined);
+      if (prevPhase === undefined) {
+        const pending = new Set(room.events.flatMap((e) => (e.k === 'executed' ? [e.target] : [])));
+        for (const p of v.players) {
+          if (p.alive || this.bloodied.has(p.seat) || pending.has(p.seat)) continue;
+          this.bloodied.add(p.seat);
+          this.blood.settle(this.bloodShot(null, p.seat));
+        }
+      }
     } else {
       this.clearTable();
     }
@@ -352,8 +374,7 @@ export class Game {
   private bloodOnPatrons(by: number, target: number) {
     const n = this.view?.players.length ?? 0;
     if (n === 0) return;
-    const kill = this.view!.players.filter((p) => !p.alive).length;
-    const seed = bloodSeed(target, kill);
+    const seed = bloodSeed(target, 0); // a seat dies once per game and a snapshot cannot tell the kill order
     const head = (seat: number, out: THREE.Vector3) => this.chars.get(seat)?.headWorld(out) ?? this.world.layout.head(seat, out);
     const victim = this.chars.get(target);
     head(target, this.bloodA);
@@ -365,6 +386,42 @@ export class Game {
       this.chars.get(seat)?.bloody(this.bloodDir.copy(this.bloodA).sub(head(seat, this.bloodB)).normalize(), 0.55, seed + 7919 * (seat + 1), 'all');
     }
     this.chars.get(by)?.bloody(this.bloodDir.copy(this.bloodA).sub(head(by, this.bloodB)).normalize(), 0.3, seed + 104729, 'gunArm');
+  }
+
+  private clearBloodshed() {
+    this.blood.clear();
+    this.bloodied.clear();
+  }
+
+  /** Where a droplet landing at (x, z) sticks: a face-up card on the board, the board, the table or the floor. */
+  private resolveBlood: ResolveAnchor = (x, z, surface) => {
+    const group = this.board.group;
+    group.getWorldPosition(this.bloodP);
+    const board: AnchorRect = { cx: this.bloodP.x, cz: this.bloodP.z, halfW: this.board.w / 2, halfD: this.board.h / 2, yaw: 0, top: this.bloodP.y + 0.006 };
+    const cards = this.pool.filter((p) => p.where === 'board');
+    const rects = cards.map((p) => {
+      const mesh = p.card.mesh;
+      mesh.getWorldPosition(this.bloodP);
+      const yaw = this.bloodE.setFromQuaternion(mesh.getWorldQuaternion(this.bloodQ), 'YXZ').y;
+      return { cx: this.bloodP.x, cz: this.bloodP.z, halfW: CARD_W / 2, halfD: CARD_H / 2, yaw, top: this.bloodP.y + 0.0015 };
+    });
+    const pick = pickAnchor(x, z, surface, board, rects);
+    const anchor = pick.kind === 'card' ? cards[pick.index].card.mesh : pick.kind === 'board' ? group : Game.bloodGround;
+    return { anchor, y: pick.y };
+  };
+
+  /** Everything Bloodshed needs for one seat's execution; `by` null stands the table centre in for an unknown shooter. */
+  private bloodShot(by: number | null, target: number): BloodShot {
+    const L = this.world.layout;
+    const headOf = (seat: number, out: THREE.Vector3) => this.chars.get(seat)?.headWorld(out) ?? L.head(seat, out);
+    return {
+      seed: bloodSeed(target, 0),
+      victimHead: headOf(target, this.bloodVictim),
+      shooterHead: by === null ? this.bloodShooter.set(0, 1.32, 0) : headOf(by, this.bloodShooter),
+      layout: L,
+      chair: L.chair(target),
+      resolve: this.resolveBlood,
+    };
   }
 
   /** Plays the beats now due; once the queue is empty the board snaps to the view's counts. */
@@ -493,6 +550,7 @@ export class Game {
     this.deadlineAt = null;
     this.lastSecond = -1;
     this.disposePatrons();
+    this.clearBloodshed();
     for (const vc of this.voteCards.values()) {
       this.world.scene.remove(vc.card.mesh);
       disposeObject(vc.card.mesh);
@@ -516,6 +574,7 @@ export class Game {
     if (key === this.layoutKey) return;
     this.layoutKey = key;
     this.world.setLayout(n, me);
+    this.clearBloodshed();
     this.heads = Array.from({ length: Math.max(5, n) }, (_, s) => this.world.layout.head(s));
     this.disposePatrons();
     const L = this.world.layout;
@@ -812,6 +871,10 @@ export class Game {
         shooter?.recoil();
         this.chars.get(e.target)?.die();
         this.bloodOnPatrons(e.by, e.target);
+        if (!this.bloodied.has(e.target)) {
+          this.bloodied.add(e.target);
+          this.blood.execute(this.bloodShot(e.by, e.target), () => this.chars.get(e.target)?.headWorld(this.bloodHead) ?? null);
+        }
         voice.gunshot();
         voice.death();
         this.world.addShake(e.target === me ? 1.5 : 1.0);
@@ -1577,6 +1640,7 @@ export class Game {
   update(dt: number) {
     this.now += dt;
     tweens.update(dt);
+    this.blood.update(dt);
     this.drainBeats();
     if (this.inFlight && this.now - this.inFlight.at > 5) this.actionRejected();
     const v = this.view;

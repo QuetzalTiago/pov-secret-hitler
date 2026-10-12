@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { TABLE_Y, Layout } from '../client/scene/world';
-import { BloodSplats, bloodSeed, dropletAt, paintBlood, spray } from '../client/scene/blood';
+import { BloodSplats, bloodSeed, drip, dropletAt, paintBlood, pickAnchor, spray, type AnchorRect } from '../client/scene/blood';
 
 const cases = [7, 5, 10];
 
@@ -185,5 +185,68 @@ describe('BloodSplats', () => {
     b.update(1);
     expect(b.count).toBe(1);
     expect(pos(b, 0).x).toBeCloseTo(3);
+  });
+});
+
+describe('pickAnchor', () => {
+  const rect = (cx: number, cz: number, top: number, yaw = 0, halfW = 0.065, halfD = 0.09): AnchorRect => ({ cx, cz, halfW, halfD, yaw, top });
+  const board = rect(0, 0, TABLE_Y + 0.012, 0, 0.5, 0.3125);
+
+  it('floor landings stay on the floor even over the board', () => {
+    expect(pickAnchor(0, 0, 'floor', board, [rect(0, 0, 1)])).toEqual({ kind: 'floor', y: 0 });
+  });
+
+  it('table points off the board and cards land on the table', () => {
+    expect(pickAnchor(1.2, 0.9, 'table', board, [rect(0.7, 0.7, 1)])).toEqual({ kind: 'table', y: TABLE_Y });
+    expect(pickAnchor(1.2, 0.9, 'table', null, [])).toEqual({ kind: 'table', y: TABLE_Y });
+  });
+
+  it('a card on the board wins over the board', () => {
+    const card = rect(0.2, 0.1, TABLE_Y + 0.0135);
+    expect(pickAnchor(0.3, 0.2, 'table', board, [card])).toEqual({ kind: 'board', y: board.top });
+    expect(pickAnchor(0.2, 0.1, 'table', board, [card])).toEqual({ kind: 'card', index: 0, y: card.top });
+  });
+
+  it('overlapping cards: the higher top wins, ties take the lowest index', () => {
+    const lo = rect(0, 0, 1);
+    const hi = rect(0.01, 0, 1.01);
+    expect(pickAnchor(0, 0, 'table', null, [lo, hi])).toEqual({ kind: 'card', index: 1, y: 1.01 });
+    expect(pickAnchor(0, 0, 'table', null, [lo, rect(0, 0, 1)])).toEqual({ kind: 'card', index: 0, y: 1 });
+  });
+
+  it('honours the yaw of a rotated card', () => {
+    const yaw = Math.PI / 4;
+    const card = rect(0.3, -0.2, 1, yaw, 0.03);
+    const o = new THREE.Object3D();
+    o.position.set(card.cx, 0, card.cz);
+    o.rotation.y = yaw;
+    o.updateMatrixWorld();
+    const world = (u: number, v: number) => o.localToWorld(new THREE.Vector3(u, 0, v));
+    // Inside the rotated rect (near its long end) but outside the axis-aligned one.
+    const a = world(0, 0.085);
+    expect(Math.abs(a.x - card.cx)).toBeGreaterThan(card.halfW);
+    expect(pickAnchor(a.x, a.z, 'table', null, [card]).kind).toBe('card');
+    // Inside the axis-aligned rect but outside the rotated one.
+    const x = card.cx + 0.025;
+    const z = card.cz + 0.085;
+    const p = o.worldToLocal(new THREE.Vector3(x, 0, z));
+    expect(Math.abs(x - card.cx) <= card.halfW && Math.abs(z - card.cz) <= card.halfD).toBe(true);
+    expect(Math.abs(p.x) > card.halfW || Math.abs(p.z) > card.halfD).toBe(true);
+    expect(pickAnchor(x, z, 'table', null, [card]).kind).toBe('table');
+    // Just past the rotated rect's long end.
+    const b = world(0, 0.095);
+    expect(pickAnchor(b.x, b.z, 'table', null, [card]).kind).toBe('table');
+  });
+});
+
+describe('drip', () => {
+  it('falls straight down to the floor under its start', () => {
+    const d = drip(new THREE.Vector3(0.4, 1.1, -0.7));
+    expect(d.surface).toBe('floor');
+    expect(d.land.x).toBe(0.4);
+    expect(d.land.z).toBe(-0.7);
+    expect(d.land.y).toBe(0);
+    expect(dropletAt(d, d.t, new THREE.Vector3()).y).toBeCloseTo(0, 6);
+    expect(dropletAt(d, d.t / 2, new THREE.Vector3()).x).toBe(0.4);
   });
 });
