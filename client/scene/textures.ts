@@ -3,6 +3,8 @@ import * as THREE from 'three';
 
 const DISPLAY = '"Jost", "Futura", "Century Gothic", "Trebuchet MS", sans-serif';
 const MONO = '"Courier Prime", "Courier New", Courier, monospace';
+/** Blackletter for period headings (sign, posters, card backs); never for small or game-critical text. */
+const BLACK = '"UnifrakturMaguntia", "Old English Text MT", "Times New Roman", serif';
 const cache = new Map<string, THREE.CanvasTexture>();
 const redraws = new WeakMap<THREE.CanvasTexture, () => void>();
 const owned = new WeakSet<THREE.Texture>();

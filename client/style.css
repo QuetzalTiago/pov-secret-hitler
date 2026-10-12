@@ -37,6 +37,9 @@
 
   --font-ui: 'Courier Prime', 'Courier New', Courier, monospace;
   --font-display: 'Jost', 'Futura', 'Century Gothic', 'Trebuchet MS', sans-serif;
+  /* 1930s period faces: blackletter for titles and mastheads only, typewriter for telegrams and chat. */
+  --font-black: 'UnifrakturMaguntia', 'Old English Text MT', 'Times New Roman', serif;
+  --font-type: 'Special Elite', 'Courier Prime', 'Courier New', monospace;
   font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.45;
