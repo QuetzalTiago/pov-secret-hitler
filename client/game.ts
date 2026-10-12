@@ -1,7 +1,7 @@
 // Turns server RoomViews + events into a physical, animated table. Holds no authority.
 import * as THREE from 'three';
 import type { RoomView } from '../shared/protocol';
-import type { ActionBody, GameEvent, Policy, Power } from '../shared/types';
+import type { ActionBody, GameEvent, Party, Policy, Power } from '../shared/types';
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
 import { ENACT_BANNER_DELAY_MS, ceremonyEndsAt } from './enact';
@@ -14,6 +14,7 @@ import { ballotFace, cardBack, labelTexture, membershipCard, policyFace, roleCar
 import { slowmoScale, tweens } from './scene/tween';
 import { Mover, TABLE_Y, type World } from './scene/world';
 import type { UI } from './ui';
+import { victoryBanner, victoryDelay, type VictoryBanner } from './victory';
 
 type Where = 'pile' | 'held' | 'discard' | 'board';
 interface PoolCard {
@@ -97,6 +98,8 @@ export class Game {
   private pendingIndex: number | null = null;
   /** Last seat the policies were passed to; the view may already have cleared its chancellor on 'enacted'. */
   private lastChancellor: number | null = null;
+  private ceremony = false;
+  private ceremonyTimer: ReturnType<typeof setTimeout> | undefined;
   private shot: { by: number; target: number; until: number } | null = null;
   private executeSince = -1;
   private slowmoClock = Infinity;
@@ -250,10 +253,40 @@ export class Game {
     if (this.inFlight && this.flightKey() !== this.inFlight.key) this.settle();
     this.refreshInteractables();
     this.refreshHud();
-    if (v?.phase === 'gameOver') this.ui.showGameOver(v, room);
-    else this.ui.hideGameOver();
+    if (v?.phase !== 'gameOver' && this.ceremony) this.cancelVictory();
+    this.syncGameOverPanel();
     const me = v?.players[room.you];
     this.ui.setChatEnabled(!v || v.phase === 'gameOver' || !!me?.alive);
+  }
+
+  /** The roles panel shows once the game is over and no win ceremony is running. */
+  private syncGameOverPanel() {
+    const v = this.view;
+    if (v?.phase === 'gameOver' && this.room && !this.ceremony) this.ui.showGameOver(v, this.room);
+    else this.ui.hideGameOver();
+  }
+
+  private startVictory(winner: Party, banner: VictoryBanner, mine: Party | null) {
+    if (!this.ceremony) return;
+    sfx.victory(winner, mine === null ? null : mine === winner);
+    duckMusic(6);
+    this.world.addShake(0.7);
+    for (const p of this.view?.players ?? []) {
+      if (!p.alive || !p.role) continue;
+      const party = p.role === 'liberal' ? 'liberal' : 'fascist';
+      this.chars.get(p.seat)?.react(party === winner ? 'fist' : 'shake', 0.1 * p.seat);
+    }
+    this.ui.victory(banner, () => {
+      this.ceremony = false;
+      this.syncGameOverPanel();
+    });
+  }
+
+  private cancelVictory() {
+    clearTimeout(this.ceremonyTimer);
+    this.ceremonyTimer = undefined;
+    if (this.ceremony) this.ui.cancelVictory();
+    this.ceremony = false;
   }
 
   /** The state our in-flight action answers; null with no game. */
@@ -291,6 +324,7 @@ export class Game {
   }
 
   private clearTable() {
+    this.cancelVictory();
     this.tiles = { liberal: 0, fascist: 0 };
     this.tokenMover.set(this.board.slot('tracker', 0).setY(0.014));
     this.board.liberalTiles.concat(this.board.fascistTiles).forEach((t) => (t.visible = false));
@@ -613,7 +647,10 @@ export class Game {
         break;
       case 'gameOver': {
         const mine = v?.yourRole ? (v.yourRole === 'liberal' ? 'liberal' : 'fascist') : null;
-        sfx.chime(mine === e.winner);
+        const banner = victoryBanner(e.winner, e.reason, mine);
+        this.ceremony = true;
+        clearTimeout(this.ceremonyTimer);
+        this.ceremonyTimer = setTimeout(() => this.startVictory(e.winner, banner, mine), victoryDelay(e.reason));
         break;
       }
       case 'acked':
