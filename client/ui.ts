@@ -61,6 +61,12 @@ export function gameOverRow(p: PlayerView, you: number): HTMLLIElement {
   return li;
 }
 
+/** Game-over roster order: Hitler, then Fascists, then Liberals, each by seat. */
+export function gameOverOrder(players: PlayerView[]): PlayerView[] {
+  const rank = (p: PlayerView) => (p.role === 'hitler' ? 0 : p.role === 'fascist' ? 1 : p.role === 'liberal' ? 2 : 3);
+  return [...players].sort((a, b) => rank(a) - rank(b) || a.seat - b.seat);
+}
+
 export class UI {
   private chipKey = '';
   private timerText: string | null = null;
@@ -888,7 +894,7 @@ export class UI {
     $('gameover-reason').textContent = REASONS[v.winReason ?? ''] ?? '';
     const list = $('gameover-roles');
     list.replaceChildren();
-    for (const p of v.players) list.appendChild(gameOverRow(p, room.you));
+    for (const p of gameOverOrder(v.players)) list.appendChild(gameOverRow(p, room.you));
     const names = room.seats.map((s) => s.name);
     $('gameover-series').textContent = seriesLine(room.series, names);
     $('gameover-series').classList.toggle('hidden', !room.series.liberal && !room.series.fascist);

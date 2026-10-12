@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlayerView } from '../shared/view';
-import { gameOverRow } from '../client/ui';
+import { gameOverOrder, gameOverRow } from '../client/ui';
 
 interface Node {
   tag: string;
@@ -52,5 +52,20 @@ describe('gameOverRow', () => {
     expect(String(rows[1].children[0].src)).toMatch(/role-hitler\.webp/);
     expect(rows[0].children[1].text).toBe('Ann (you)');
     expect(rows[1].children[2].textContent).toBe('Hitler ✝');
+  });
+});
+
+describe('gameOverOrder', () => {
+  it('lists Hitler, then Fascists, then Liberals, each by seat, without mutating the input', () => {
+    const players = [
+      { seat: 0, role: 'liberal' },
+      { seat: 1, role: 'fascist' },
+      { seat: 2, role: 'liberal' },
+      { seat: 3, role: 'hitler' },
+      { seat: 4, role: 'fascist' },
+    ] as PlayerView[];
+    const out = gameOverOrder(players);
+    expect(out.map((p) => p.seat)).toEqual([3, 1, 4, 0, 2]);
+    expect(players.map((p) => p.seat)).toEqual([0, 1, 2, 3, 4]);
   });
 });
