@@ -351,7 +351,7 @@ export class Game {
     for (const p of this.view?.players ?? []) {
       if (!p.alive || !p.role) continue;
       const party = p.role === 'liberal' ? 'liberal' : 'fascist';
-      this.chars.get(p.seat)?.react(party === winner ? 'fist' : 'shake', 0.1 * p.seat);
+      this.chars.get(p.seat)?.react(party === winner ? 'fist' : 'thumbsDown', 0.1 * p.seat);
     }
     this.ui.victory(banner, () => {
       this.ceremony = false;
@@ -594,7 +594,7 @@ export class Game {
         setTimeout(() => voice.vote(e.passed), 300);
         this.ui.toast(e.passed ? `JA! ${ja} to ${nein}. The government is elected.` : `NEIN. ${ja} to ${nein}. The election fails.`, e.passed ? 'good' : 'bad');
         e.votes.forEach((vote, i) => {
-          if (vote !== null) this.chars.get(i)?.react(vote ? 'nod' : 'shake', 0.35 + 0.08 * i);
+          if (vote !== null) this.chars.get(i)?.react(vote ? 'thumbsUp' : 'thumbsDown', 0.35 + 0.08 * i);
         });
         break;
       }

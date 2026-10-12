@@ -1,34 +1,40 @@
 // Pure math for patron liveliness (blink, mouth flap, one-shot reactions). No three.js so it runs in node tests.
 import { ease } from './tween';
 
-export type Reaction = 'nod' | 'shake' | 'recoil' | 'fist';
+export type Reaction = 'thumbsUp' | 'thumbsDown' | 'recoil' | 'fist';
 
-export const REACTION_DUR: Record<Reaction, number> = { nod: 0.9, shake: 1.0, recoil: 0.8, fist: 0.9 };
+export const REACTION_DUR: Record<Reaction, number> = { thumbsUp: 1.4, thumbsDown: 1.4, recoil: 0.8, fist: 0.9 };
 
-/** Radians. lean is extra body.rotation.x (negative = back); armLift raises the right arm above rest. */
+/** Radians. lean is extra body.rotation.x (negative = back); armLift raises the right arm above rest.
+ * thumb is the signed 0..1 envelope of the thumbs vote: +1 thumb up held, -1 thumb down held, 0 arm at rest. */
 export interface ReactionPose {
   pitch: number;
   yaw: number;
   lean: number;
   armLift: number;
+  thumb: number;
 }
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const smooth = (a: number) => a * a * (3 - 2 * a);
 
 export function reactionPose(kind: Reaction, t: number, out: ReactionPose): ReactionPose {
-  out.pitch = out.yaw = out.lean = out.armLift = 0;
+  out.pitch = out.yaw = out.lean = out.armLift = out.thumb = 0;
   const dur = REACTION_DUR[kind];
   if (t <= 0 || t >= dur) return out;
   const u = t / dur;
   const env = Math.sin(Math.PI * u);
   switch (kind) {
-    case 'nod':
-      out.pitch = 0.25 * env * (0.5 - 0.5 * Math.cos(2 * Math.PI * 2 * u));
+    case 'thumbsUp':
+    case 'thumbsDown': {
+      // Fist up, held, back down; the head only tips a little (never yaws).
+      const e = u < 0.22 ? smooth(u / 0.22) : u > 0.78 ? 1 - smooth((u - 0.78) / 0.22) : 1;
+      const sign = kind === 'thumbsUp' ? 1 : -1;
+      out.thumb = sign * e;
+      out.armLift = 0.55 * e;
+      out.pitch = 0.04 * e;
       break;
-    case 'shake':
-      out.yaw = 0.35 * env * Math.sin(2 * Math.PI * 3 * u);
-      break;
+    }
     case 'recoil': {
       // Quick out, slow back.
       const a = smooth(u < 0.15 ? u / 0.15 : 1 - (u - 0.15) / 0.85);

@@ -2,26 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { DEATH_DUR, REACTION_DUR, SMOKE_CYCLE, SMOKE_DUR, blinkScale, deathPose, isSmoker, mouthOpen, nextBlinkDelay, nextDragDelay, reactionPose, smokePose, type Reaction, type ReactionPose, type SmokePose } from '../client/scene/life';
 
 const kinds = Object.keys(REACTION_DUR) as Reaction[];
-const pose = (): ReactionPose => ({ pitch: 9, yaw: 9, lean: 9, armLift: 9 });
+const pose = (): ReactionPose => ({ pitch: 9, yaw: 9, lean: 9, armLift: 9, thumb: 9 });
 const sweep = (k: Reaction) => Array.from({ length: 201 }, (_, i) => ({ ...reactionPose(k, (i / 200) * REACTION_DUR[k], pose()) }));
 
 describe('reactionPose', () => {
   it('is zero at start and end', () => {
     for (const k of kinds) {
       for (const t of [0, REACTION_DUR[k], -1, 99]) {
-        expect(reactionPose(k, t, pose())).toEqual({ pitch: 0, yaw: 0, lean: 0, armLift: 0 });
+        expect(reactionPose(k, t, pose())).toEqual({ pitch: 0, yaw: 0, lean: 0, armLift: 0, thumb: 0 });
       }
     }
   });
-  it('nod pitches down without yaw', () => {
-    const s = sweep('nod');
-    expect(Math.max(...s.map((p) => p.pitch))).toBeGreaterThan(0.1);
-    expect(s.every((p) => p.yaw === 0 && p.pitch >= 0)).toBe(true);
-  });
-  it('shake yaws both ways', () => {
-    const s = sweep('shake');
-    expect(Math.max(...s.map((p) => Math.abs(p.yaw)))).toBeGreaterThan(0.2);
-    expect(s.some((p) => p.yaw > 0.1) && s.some((p) => p.yaw < -0.1)).toBe(true);
+  it.each([['thumbsUp', 1], ['thumbsDown', -1]] as const)('%s holds the thumb without yawing', (k, sign) => {
+    const dur = REACTION_DUR[k];
+    expect(reactionPose(k, 0.5 * dur, pose()).thumb * sign).toBeGreaterThan(0.99);
+    expect(Math.abs(reactionPose(k, 0.02 * dur, pose()).thumb)).toBeLessThan(0.1);
+    expect(Math.abs(reactionPose(k, 0.98 * dur, pose()).thumb)).toBeLessThan(0.1);
+    const s = sweep(k);
+    expect(s.every((p) => p.yaw === 0 && p.thumb * sign >= 0 && p.pitch >= 0 && p.pitch < 0.1)).toBe(true);
   });
   it('recoil leans back fast', () => {
     expect(reactionPose('recoil', 0.15 * REACTION_DUR.recoil, pose()).lean).toBeLessThan(-0.15);
@@ -32,7 +30,7 @@ describe('reactionPose', () => {
   });
   it('returns the same object', () => {
     const o = pose();
-    expect(reactionPose('nod', 0.3, o)).toBe(o);
+    expect(reactionPose('thumbsUp', 0.3, o)).toBe(o);
   });
 });
 

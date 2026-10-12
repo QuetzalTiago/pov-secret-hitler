@@ -36,6 +36,13 @@ const HEAD_Y = 1.4;
 /** Group-space directions of the surrender pose: the left upper arm (mirrored for the right) and the forearms. */
 const UP_UPPER = new THREE.Vector3(0.85, 0.25, 0.35).normalize();
 const UP_FORE = new THREE.Vector3(0, 1, 0.15).normalize();
+/** Patron-space directions of the thumbs vote (right arm): the upper arm forward, down and out, the forearm forward and up. */
+const THUMB_UPPER = new THREE.Vector3(-0.3, -0.7, 0.5).normalize();
+const THUMB_FORE = new THREE.Vector3(0.2, 0.5, 0.8).normalize();
+/** Where the thumbs-up palm faces (the body midline, patron space); thumbs down faces the opposite way. */
+const THUMB_FACE = new THREE.Vector3(1, 0, 0);
+/** Thumb1R bend about its parent-space Z (away from the forearm line, so the thumb sticks out of the fist), radians. */
+const THUMB_BEND = 1;
 /** The raised elbow's pull, down and outward (group space, left arm). */
 const ELBOW_HINT = new THREE.Vector3(0.6, -1, -0.2).normalize();
 /** Cigarette in the left hand (MiddleHandL space): the filter end between the fingers, the lit end along CIG_AXIS. */
@@ -185,6 +192,7 @@ export class RiggedCharacter implements Patron {
   private neck: THREE.Bone;
   private head: THREE.Bone;
   private fingersR: THREE.Bone;
+  private thumb1R: THREE.Bone;
   private armL!: Arm;
   private armR!: Arm;
   /** Metres per bone-local unit (the armature is scaled). */
@@ -209,7 +217,7 @@ export class RiggedCharacter implements Patron {
   private handsUp = false;
   private recoilKick = 0;
   private reaction: { kind: Reaction; t: number } | null = null;
-  private pose: ReactionPose = { pitch: 0, yaw: 0, lean: 0, armLift: 0 };
+  private pose: ReactionPose = { pitch: 0, yaw: 0, lean: 0, armLift: 0, thumb: 0 };
   private deathPoseState: DeathPose = { lean: 0, drop: 0, push: 0, roll: 0, headPitch: 0, chairTip: 0, chairYaw: 0 };
   private headYaw = 0;
   private headPitch = 0;
@@ -274,6 +282,7 @@ export class RiggedCharacter implements Patron {
     this.neck = bone('Neck');
     this.head = bone('Head');
     this.fingersR = bone('FingersR');
+    this.thumb1R = bone('Thumb1R');
 
     this.tint(tpl, styleIndex, outfit, hitler);
     this.group.updateMatrixWorld(true);
@@ -683,6 +692,18 @@ export class RiggedCharacter implements Patron {
     this.fingersR.quaternion.premultiply(this.qa.setFromAxisAngle(this.xAxis, curl));
   }
 
+  /** Right fist held up for a vote, thumb up or down; aiming and surrendering take over the arm. */
+  private updateThumb() {
+    const w = Math.abs(this.pose.thumb);
+    if (w < 0.02 || this.dead || this.aimAmount > 0.02 || this.handsUpAmount > 0.02) return;
+    const upper = this.v2.copy(THUMB_UPPER).applyQuaternion(this.qg);
+    const fore = this.v3.copy(THUMB_FORE).applyQuaternion(this.qg);
+    const face = this.v4.copy(THUMB_FACE).multiplyScalar(Math.sign(this.pose.thumb)).applyQuaternion(this.qg);
+    this.armPose(this.armR, upper, fore, w, face);
+    this.fingersR.quaternion.premultiply(this.qa.setFromAxisAngle(this.xAxis, CURL.gun * w));
+    this.thumb1R.quaternion.premultiply(this.qa.setFromAxisAngle(this.zAxis, THUMB_BEND * w));
+  }
+
   /** Both arms to the surrender pose, over whatever else they were doing. */
   private updateHandsUp(now: number) {
     const a = this.handsUpAmount;
@@ -732,7 +753,7 @@ export class RiggedCharacter implements Patron {
       if (this.reaction.t >= REACTION_DUR[this.reaction.kind]) this.reaction = null;
     }
     if (this.reaction) reactionPose(this.reaction.kind, Math.max(0, this.reaction.t), this.pose);
-    else this.pose.pitch = this.pose.yaw = this.pose.lean = this.pose.armLift = 0;
+    else this.pose.pitch = this.pose.yaw = this.pose.lean = this.pose.armLift = this.pose.thumb = 0;
     if (!this.dead) this.deathT = null;
     else if (this.deathT === null) this.deathT = DEATH_DUR;
     else this.deathT = Math.min(DEATH_DUR, this.deathT + dt);
@@ -754,7 +775,7 @@ export class RiggedCharacter implements Patron {
     if (dp.drop || push) this.shift(this.abdomen, this.v0.set(0, -dp.drop, push));
     this.updateChair(dp);
 
-    // Head: look at the target (40% neck, 60% head), nod and shake on top, a small bob while talking.
+    // Head: look at the target (40% neck, 60% head), reactions on top, a small bob while talking.
     const k = 1 - Math.exp(-4 * dt);
     let yaw = Math.sin(t * 0.3) * 0.15;
     let pitch = 0;
@@ -783,6 +804,7 @@ export class RiggedCharacter implements Patron {
     this.handsUpAmount += ((this.handsUp && !this.dead ? 1 : 0) - this.handsUpAmount) * (1 - Math.exp(-7 * dt));
     if (this.smoker) this.updateSmoke(dt, now);
     this.updateAim(dt);
+    this.updateThumb();
     this.updateHandsUp(now);
 
     // Highlight / death tint, as on the procedural patron.

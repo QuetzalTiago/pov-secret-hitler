@@ -149,7 +149,7 @@ export class Character implements Patron {
   private blinkAt = 0;
   private blinkStart = -1;
   private reaction: { kind: Reaction; t: number } | null = null;
-  private pose: ReactionPose = { pitch: 0, yaw: 0, lean: 0, armLift: 0 };
+  private pose: ReactionPose = { pitch: 0, yaw: 0, lean: 0, armLift: 0, thumb: 0 };
   readonly smoker: boolean;
   private rig: SmokeRig | null = null;
   private fistQuat = new THREE.Quaternion();
@@ -486,7 +486,7 @@ export class Character implements Patron {
     this.aimAmount += ((this.aimTarget && !this.dead ? 1 : 0) - this.aimAmount) * k;
     this.recoilKick = Math.max(0, this.recoilKick - dt * 4);
     // Fist slam reuses the aim arm when not aiming: rest pose rotated about local X (-angle raises the hand).
-    const fist = !this.aimTarget && this.aimAmount <= 0.02 && !this.dead && this.reaction?.kind === 'fist' && this.reaction.t > 0;
+    const fist = !this.aimTarget && this.aimAmount <= 0.02 && !this.dead && (this.reaction?.kind === 'fist' || this.reaction?.kind === 'thumbsUp' || this.reaction?.kind === 'thumbsDown') && this.reaction.t > 0;
     const aiming = this.aimAmount > 0.02;
     this.aimArm.visible = aiming || fist;
     this.finger.visible = this.aimMode === 'point' && !fist;
@@ -603,7 +603,7 @@ export class Character implements Patron {
       if (this.reaction.t >= REACTION_DUR[this.reaction.kind]) this.reaction = null;
     }
     if (this.reaction) reactionPose(this.reaction.kind, Math.max(0, this.reaction.t), this.pose);
-    else this.pose.pitch = this.pose.yaw = this.pose.lean = this.pose.armLift = 0;
+    else this.pose.pitch = this.pose.yaw = this.pose.lean = this.pose.armLift = this.pose.thumb = 0;
     this.updateAim(dt);
     if (this.rig) this.updateSmoke(this.rig, dt, now);
     this.updateHandsUp(dt, now);

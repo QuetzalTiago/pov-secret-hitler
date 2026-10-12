@@ -203,7 +203,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
     c.lookAt(new THREE.Vector3(0, 1, 2));
     c.setAim(new THREE.Vector3(1, 1, 1));
     c.setHandsUp(true);
-    c.react('nod');
+    c.react('thumbsUp');
     c.recoil();
     for (let i = 0; i < 10; i++) c.update(0.05, i * 0.05);
     c.group.updateMatrixWorld(true);
@@ -400,22 +400,51 @@ describe('RiggedCharacter motion', () => {
     expect(forward().y).toBeGreaterThan(0.2);
   });
 
-  it('reactions move the head and the fist reaction lifts the right hand', () => {
+  it('the fist reaction lifts the right hand', () => {
     const c = build(1);
     c.update(1 / 60, 0);
     const rest = bonePos(c, 'PalmR');
     c.react('fist');
     run(c, 0.3);
     expect(bonePos(c, 'PalmR').y).toBeGreaterThan(rest.y + 0.05);
-    const s = build(1);
-    const forwardX = () => new THREE.Vector3(0, 0, 1).applyQuaternion(s.group.getObjectByName('Head')!.getWorldQuaternion(new THREE.Quaternion())).x;
-    s.react('shake');
+  });
+
+  it.each([['thumbsUp', 1], ['thumbsDown', -1]] as const)('%s raises the right fist with the thumb %s', (kind, sign) => {
+    const c = build(1);
+    c.update(1 / 60, 0);
+    const rest = bonePos(c, 'PalmR');
+    const headFwd = (p: Rig) => new THREE.Vector3(0, 0, 1).applyQuaternion(p.group.getObjectByName('Head')!.getWorldQuaternion(new THREE.Quaternion())).x;
+    const control = build(1);
+    // The idle sway is keyed on a random phase; share it so the control differs only by the reaction.
+    (control as any).phase = (c as any).phase;
+    c.react(kind);
     let widest = 0;
-    for (let i = 0; i < 60; i++) {
-      s.update(1 / 60, i / 60);
-      widest = Math.max(widest, Math.abs(forwardX()));
+    for (let i = 1; i <= 84; i++) {
+      c.update(1 / 60, i / 60);
+      control.update(1 / 60, i / 60);
+      widest = Math.max(widest, Math.abs(headFwd(c) - headFwd(control)));
+      if (i === 42) {
+        const palm = bonePos(c, 'PalmR');
+        expect(palm.y).toBeGreaterThan(rest.y + 0.05);
+        expect(palm.z).toBeGreaterThan(rest.z + 0.05);
+        expect(bonePos(c, 'Thumb2R').sub(bonePos(c, 'Thumb1R')).normalize().y * sign).toBeGreaterThan(0.4);
+      }
     }
-    expect(widest).toBeGreaterThan(0.15);
+    expect(widest, `${kind}`).toBeLessThan(0.05);
+  });
+
+  it('aiming keeps the arm while a thumbs reaction plays', () => {
+    const a = build(1);
+    const b = build(1);
+    (b as any).phase = (a as any).phase;
+    a.setAim(TARGET);
+    b.setAim(TARGET);
+    run(a, 1);
+    run(b, 1);
+    b.react('thumbsUp');
+    run(a, 0.7, 1);
+    run(b, 0.7, 1);
+    expect(bonePos(b, 'PalmR').distanceTo(bonePos(a, 'PalmR'))).toBeLessThan(0.01);
   });
 });
 
