@@ -78,9 +78,9 @@ describe('room LLM budget', () => {
 
     await chatUntil(12);
     expect(f.mock.calls.length).toBeLessThanOrEqual(3);
-    expect(r.writtenTotal).toBe(f.mock.calls.length);
-    expect(r.writtenTotal).toBe(3);
-    expect(r.canWrite()).toBe(false);
+    expect(r.talk.writtenTotal).toBe(f.mock.calls.length);
+    expect(r.talk.writtenTotal).toBe(3);
+    expect(r.talk.canWrite()).toBe(false);
 
     // A new deal resets the per-game count but not the room's total.
     room.game = { ...room.game!, phase: 'gameOver', winner: 'liberal', winReason: 'liberalPolicies' };
@@ -88,9 +88,9 @@ describe('room LLM budget', () => {
     expect(room.playAgain(conns[0])).toBeNull();
     expect(room.playAgain(conns[1])).toBeNull();
     expect(room.game!.phase).not.toBe('gameOver');
-    expect(r.written).toBe(0);
-    expect(r.writtenTotal).toBe(3);
-    expect(r.canWrite()).toBe(false);
+    expect(r.talk.written).toBe(0);
+    expect(r.talk.writtenTotal).toBe(3);
+    expect(r.talk.canWrite()).toBe(false);
 
     await chatUntil(6);
     expect(f.mock.calls.length).toBe(3);
@@ -101,10 +101,10 @@ describe('room LLM budget', () => {
     config.llm.key = 'test';
     const room = new Room('ABCD', () => {});
     const r = room as any;
-    r.noteSent();
-    r.resetTalk();
-    expect(r.written).toBe(0);
-    expect(r.writtenTotal).toBe(1);
+    r.talk.noteSent();
+    r.talk.resetTalk();
+    expect(r.talk.written).toBe(0);
+    expect(r.talk.writtenTotal).toBe(1);
     expect(room.botStats.written).toBe(1);
     room.close();
   });
@@ -112,16 +112,16 @@ describe('room LLM budget', () => {
   it('llmCalls survives a snapshot round trip', () => {
     const room = new Room('ABCD', () => {});
     room.join(mk(0), 'A');
-    (room as any).writtenTotal = 42;
+    (room as any).talk.writtenTotal = 42;
     const snap = room.snapshot();
     expect(snap.llmCalls).toBe(42);
 
     const back = Room.restore(JSON.parse(JSON.stringify(snap)), () => {});
-    expect((back as any).writtenTotal).toBe(42);
+    expect((back as any).talk.writtenTotal).toBe(42);
 
     const { llmCalls: _drop, ...old } = snap;
     const legacy = Room.restore(old, () => {});
-    expect((legacy as any).writtenTotal).toBe(0);
+    expect((legacy as any).talk.writtenTotal).toBe(0);
     for (const x of [room, back, legacy]) x.close();
   });
 });

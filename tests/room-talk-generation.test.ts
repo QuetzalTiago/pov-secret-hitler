@@ -27,15 +27,15 @@ describe('table talk generations', () => {
     vi.useFakeTimers();
     const { room, a, b, got } = finished();
     room.leave(b); // B is dropped on the redeal, so the bots below shift down a seat
-    void (room as any).say(4, 'OLD-QUEUED');
-    void (room as any).say(4, 'OLD-QUEUED');
-    (room as any).sayLater(3, 'OLD-LATER', 1000);
+    void (room as any).talk.say(4, 'OLD-QUEUED');
+    void (room as any).talk.say(4, 'OLD-QUEUED');
+    (room as any).talk.sayLater(3, 'OLD-LATER', 1000);
     expect(room.forceRedeal(a)).toBeNull();
     expect(room.seats).toHaveLength(5);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(texts(got)).not.toContain('OLD-QUEUED');
     expect(texts(got)).not.toContain('OLD-LATER');
-    void (room as any).say(3, 'NEW');
+    void (room as any).talk.say(3, 'NEW');
     await vi.advanceTimersByTimeAsync(60_000);
     expect(texts(got)).toContain('NEW');
     room.close();
@@ -45,7 +45,7 @@ describe('table talk generations', () => {
     vi.useFakeTimers();
     const { room, a, b, got } = finished();
     room.leave(b);
-    const spoken = (room as any).speak(4, { kind: 'line', line: 'OLD-SPEAK' }) as Promise<boolean>;
+    const spoken = (room as any).talk.speak(4, { kind: 'line', line: 'OLD-SPEAK' }) as Promise<boolean>;
     expect(room.forceRedeal(a)).toBeNull();
     await spoken;
     await vi.advanceTimersByTimeAsync(60_000);

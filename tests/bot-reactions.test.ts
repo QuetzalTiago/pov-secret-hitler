@@ -437,7 +437,7 @@ describe('a room with talking bots', () => {
     expect(room.start(conn)).toBeNull();
     expect(room.chat(conn, 'nacho sos un pelotudo')).toBeNull();
     expect(seen).toContainEqual({ name: 'Humano', text: 'nacho sos un pelotudo' });
-    const transcript = (room as unknown as { transcript: { text: string }[] }).transcript;
+    const transcript = (room as unknown as { talk: { transcript: { text: string }[] } }).talk.transcript;
     expect(transcript.at(-1)!.text).toBe('nacho sos un pelotudo');
     room.close();
   });
@@ -477,7 +477,7 @@ describe('a room with talking bots', () => {
     const { room, conn } = table();
     expect(room.start(conn)).toBeNull();
     room.chat(conn, 'nacho sos un pelotudo hijo de puta');
-    const moods = (room as unknown as { moods: Map<number, ReturnType<typeof newMood>> }).moods;
+    const moods = (room as unknown as { talk: { moods: Map<number, ReturnType<typeof newMood>> } }).talk.moods;
     const nacho = room.seats.findIndex((s) => s.name === 'Nacho');
     expect(nacho).toBeGreaterThan(0);
     const mood = moods.get(nacho)!;
@@ -493,9 +493,9 @@ describe('a room with talking bots', () => {
   it('drops its timers when the room closes', () => {
     const { room, conn } = table();
     room.start(conn);
-    expect((room as unknown as { moodTimer: unknown }).moodTimer).not.toBeNull();
+    expect((room as unknown as { talk: { moodTimer: unknown } }).talk.moodTimer).not.toBeNull();
     room.close();
-    expect((room as unknown as { moodTimer: unknown }).moodTimer).toBeNull();
+    expect((room as unknown as { talk: { moodTimer: unknown } }).talk.moodTimer).toBeNull();
   });
 });
 
@@ -710,9 +710,9 @@ describe('expecting an answer', () => {
     return { room, conn };
   };
   const awaiting = (room: Room, seat: number) =>
-    (room as unknown as { moods: Map<number, ReturnType<typeof newMood>> }).moods.get(seat)?.awaiting ?? null;
+    (room as unknown as { talk: { moods: Map<number, ReturnType<typeof newMood>> } }).talk.moods.get(seat)?.awaiting ?? null;
   const note = (room: Room, seat: number, text: string) =>
-    (room as unknown as { noteAwaiting: (s: number, t: string) => void }).noteAwaiting(seat, text);
+    (room as unknown as { talk: { noteAwaiting: (s: number, t: string) => void } }).talk.noteAwaiting(seat, text);
 
   it('waits for an answer only when it actually asked one person something', () => {
     const { room } = room5();
@@ -753,14 +753,16 @@ describe('changing its mind', () => {
     for (let i = 0; i < 4; i++) room.addBot(conn);
     room.start(conn);
     const inner = room as unknown as {
-      moods: Map<number, ReturnType<typeof newMood>>;
+      talk: {
+        moods: Map<number, ReturnType<typeof newMood>>;
+        maybeReconsider: (s: number, m: ReturnType<typeof newMood>, now: number) => boolean;
+        written: number;
+      };
       memories: { governments: { round: number; president: number; chancellor: number; result: string }[] }[];
-      maybeReconsider: (s: number, m: ReturnType<typeof newMood>, now: number) => boolean;
-      written: number;
     };
     const bot = 1;
     const mood = newMood();
-    inner.moods.set(bot, mood);
+    inner.talk.moods.set(bot, mood);
     offend(mood, 0, 0.5); // the bot had written the human off
     expect(relation(mood, 0).rapport).toBeLessThan(0);
 
@@ -772,13 +774,13 @@ describe('changing its mind', () => {
     inner.memories[bot].governments.push({ round: 3, president: 0, chancellor: 4, result: 'L' });
 
     let reconsidered = false;
-    for (let i = 0; i < 40 && !reconsidered; i++) reconsidered = inner.maybeReconsider(bot, mood, Date.now());
+    for (let i = 0; i < 40 && !reconsidered; i++) reconsidered = inner.talk.maybeReconsider(bot, mood, Date.now());
     expect(reconsidered).toBe(true);
     expect(relation(mood, 0).rapport).toBeGreaterThan(0); // they are on decent terms now
     expect(mood.recanted.has(0)).toBe(true);
     // Once said, it is not said again: no bot announces the same change of heart twice. (With other
     // candidates present it would simply move on to them, which is why this scenario leaves only one.)
-    for (let i = 0; i < 20; i++) expect(inner.maybeReconsider(bot, mood, Date.now())).toBe(false);
+    for (let i = 0; i < 20; i++) expect(inner.talk.maybeReconsider(bot, mood, Date.now())).toBe(false);
     room.close();
   });
 
@@ -789,14 +791,14 @@ describe('changing its mind', () => {
     for (let i = 0; i < 4; i++) room.addBot(conn);
     room.start(conn);
     const inner = room as unknown as {
+      talk: { maybeReconsider: (s: number, m: ReturnType<typeof newMood>, now: number) => boolean };
       memories: { governments: { round: number; president: number; chancellor: number; result: string }[] }[];
-      maybeReconsider: (s: number, m: ReturnType<typeof newMood>, now: number) => boolean;
     };
     const mood = newMood();
     offend(mood, 0, 0.5);
     room.game!.round = 3;
     inner.memories[1].governments.push({ round: 3, president: 0, chancellor: 2, result: 'F' });
-    for (let i = 0; i < 20; i++) expect(inner.maybeReconsider(1, mood, Date.now())).toBe(false);
+    for (let i = 0; i < 20; i++) expect(inner.talk.maybeReconsider(1, mood, Date.now())).toBe(false);
     room.close();
   });
 });

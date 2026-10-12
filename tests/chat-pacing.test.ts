@@ -3,7 +3,7 @@ import WebSocket from 'ws';
 import type { RoomView, ServerMsg } from '../shared/protocol';
 import { config } from '../server/config';
 import { startServer, type RunningServer } from '../server/index';
-import { Room } from '../server/room';
+import { TableTalk } from '../server/tabletalk';
 
 // Bots speak one at a time and give people time to read: pacing is real here, just 50x faster.
 const PACE = 0.02;
@@ -52,11 +52,10 @@ async function table() {
   await until(() => (room as RoomView | null)?.stage === 'game');
   // Reach into the room to queue bot lines directly (say() is what every bot line goes through).
   const r = server.rooms.get(code)! as unknown as {
-    say(seat: number, text: string): Promise<void>;
+    talk: { say(seat: number, text: string): Promise<void>; chatFreeAt: number };
     game: { players: { alive: boolean }[] };
     botPlans: Map<number, { readyAt: number; timer: NodeJS.Timeout | null }>;
     schedule(): void;
-    chatFreeAt: number;
   };
   return { ws, heard, send, until, room: r };
 }
@@ -65,13 +64,13 @@ describe('bot chat pacing', () => {
   it('posts bot lines one at a time, each after the previous one has had time to be read', async () => {
     const t = await table();
     const lines = ['Yo pasé dos fascistas.', 'No le creo nada a Vera.', 'Che, ¿y vos qué votaste?'];
-    await Promise.all(lines.map((text, i) => t.room.say(i + 1, text)));
+    await Promise.all(lines.map((text, i) => t.room.talk.say(i + 1, text)));
     await t.until(() => t.heard.filter((h) => h.seat !== 0).length === lines.length); // posted, now delivered
     const bot = t.heard.filter((h) => h.seat !== 0);
     expect(bot.map((h) => h.text)).toEqual(lines); // in order, nothing lost
     for (let i = 1; i < bot.length; i++) {
       const gap = bot[i].at - bot[i - 1].at;
-      expect(gap).toBeGreaterThanOrEqual(Room.readMs(bot[i - 1].text) - 5);
+      expect(gap).toBeGreaterThanOrEqual(TableTalk.readMs(bot[i - 1].text) - 5);
     }
     t.ws.terminate();
   });
@@ -82,17 +81,17 @@ describe('bot chat pacing', () => {
     t.send({ t: 'chat', text: long });
     await t.until(() => t.heard.some((h) => h.seat === 0));
     const humanAt = t.heard.find((h) => h.seat === 0)!.at;
-    await t.room.say(1, 'Uh, qué raro.');
+    await t.room.talk.say(1, 'Uh, qué raro.');
     await t.until(() => t.heard.some((h) => h.seat === 1));
     const botAt = t.heard.find((h) => h.seat === 1)!.at;
-    expect(botAt - humanAt).toBeGreaterThanOrEqual(Room.readMs(long) - 20);
+    expect(botAt - humanAt).toBeGreaterThanOrEqual(TableTalk.readMs(long) - 20);
     t.ws.terminate();
   });
 
   it('caps the backlog and skips a bot that died before its turn', async () => {
     const t = await table();
     t.room.game.players[3].alive = false; // seat 3 dies while its line waits
-    const said = [1, 2, 3, 4, 1, 2].map((seat, i) => t.room.say(seat, `línea ${i}`));
+    const said = [1, 2, 3, 4, 1, 2].map((seat, i) => t.room.talk.say(seat, `línea ${i}`));
     await Promise.all(said);
     await new Promise((r) => setTimeout(r, 100)); // let the last posted line arrive
     const texts = t.heard.filter((h) => h.seat !== 0).map((h) => h.text);
@@ -107,9 +106,9 @@ describe('bot chat pacing', () => {
     const t = await table();
     const seat = 1;
     const plan = t.room.botPlans.get(seat)!;
-    if (blockChat) t.room.chatFreeAt = Date.now() + 10_000;
-    else void t.room.say(2, 'x'.repeat(120)); // posts at once, then holds the chat while it is read
-    void t.room.say(seat, 'Hola, ya voy.');
+    if (blockChat) t.room.talk.chatFreeAt = Date.now() + 10_000;
+    else void t.room.talk.say(2, 'x'.repeat(120)); // posts at once, then holds the chat while it is read
+    void t.room.talk.say(seat, 'Hola, ya voy.');
     const start = Date.now();
     let actedAt = 0;
     const watch = setInterval(() => {

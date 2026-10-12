@@ -25,9 +25,9 @@ describe('bot chat throttle', () => {
     room.join(conn, 'Human');
     for (let i = 0; i < 4; i++) room.addBot(conn);
     expect(room.start(conn)).toBeNull();
-    (room as any).botTalk([{ type: 'x' }]);
+    (room as any).talk.botTalk([{ type: 'x' }]);
     await new Promise((r) => setTimeout(r, 10));
-    expect((room as any).lastBotChat.size).toBe(0);
+    expect((room as any).talk.lastBotChat.size).toBe(0);
     room.close();
   });
 });
@@ -77,7 +77,7 @@ describe('who a bot accuses', () => {
     vi.mocked(writeAccusation).mockClear();
     vi.spyOn(Math, 'random').mockReturnValue(0);
     try {
-      r.maybeAccuse(seat, r.moodOf(seat), Date.now());
+      r.talk.maybeAccuse(seat, r.talk.moodOf(seat), Date.now());
       await new Promise((res) => setTimeout(res, 10));
     } finally {
       vi.spyOn(Math, 'random').mockRestore();
