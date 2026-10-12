@@ -44,6 +44,12 @@ export class TableTalk {
   private personas = new Map<number, Persona>();
   /** Drives impatience and unprompted accusations while nothing else is happening. */
   private moodTimer: NodeJS.Timeout | null = null;
+  /** When any bot last started an unprompted line (complaint, reconsideration, accusation). Bots take turns, not a chorus. */
+  private unpromptedAt = 0;
+  /** Seat -> when a bot last called it out for being quiet or ignoring a question. Not repeated until that seat speaks again. */
+  private silenceCalledOut = new Map<number, number>();
+  /** When the last "you've gone quiet" dig (about anyone) was made. */
+  private quietDigAt = 0;
   /** Written lines this game, against config.llm.maxCallsPerGame. */
   private written = 0;
   /** Written lines over the room's whole life (all deals, not reset by resetTalk), against config.llm.maxCallsPerRoom. */
@@ -88,6 +94,9 @@ export class TableTalk {
     this.moods.clear();
     this.personas.clear();
     this.lastBotChat.clear();
+    this.unpromptedAt = 0;
+    this.silenceCalledOut.clear();
+    this.quietDigAt = 0;
     this.written = 0;
   }
 
@@ -408,13 +417,27 @@ export class TableTalk {
     const g = this.host.game();
     if (this.host.closed() || !g || g.phase === 'gameOver' || this.host.connectedHumans() === 0 || !this.canWrite()) return;
     const now = Date.now();
-    for (const seat of this.talkingBots()) {
+    if (now - this.unpromptedAt < 20000) return;
+    // Random order so it is not always the same bot who gets the first word.
+    const bots = this.talkingBots();
+    for (let i = bots.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bots[i], bots[j]] = [bots[j], bots[i]];
+    }
+    for (const seat of bots) {
       const mood = this.moodOf(seat);
       if (now - (this.lastBotChat.get(seat) ?? 0) < 45000) continue;
-      if (this.complainIgnored(seat, mood, now)) continue;
-      if (this.maybeReconsider(seat, mood, now)) continue;
-      this.maybeAccuse(seat, mood, now);
+      if (this.complainIgnored(seat, mood, now) || this.maybeReconsider(seat, mood, now) || this.maybeAccuse(seat, mood, now)) {
+        this.unpromptedAt = now;
+        break;
+      }
     }
+  }
+
+  /** Whether a bot already called this seat out and the seat has not said anything since. */
+  private calledOutSinceSpoke(seat: number): boolean {
+    const lastSpoke = this.transcript.reduce((t, l) => (l.seat === seat ? Math.max(t, l.at) : t), 0);
+    return (this.silenceCalledOut.get(seat) ?? -Infinity) >= lastSpoke;
   }
 
   /** Nobody answered a bot that asked a direct question. Real players take that badly. */
@@ -428,10 +451,12 @@ export class TableTalk {
       return false;
     }
     mood.awaiting = null;
+    if (this.calledOutSinceSpoke(waiting.seat)) return false; // someone already complained about them
     if (now - mood.complainedAt < 60000) return false;
     const persona = this.personaOf(seat);
     if (Math.random() > 0.2 + persona.temper * 0.35) return false;
     mood.complainedAt = now;
+    this.silenceCalledOut.set(waiting.seat, now);
     offend(mood, waiting.seat, 0.12 + persona.temper * 0.12);
     this.lastBotChat.set(seat, now);
     const gen = this.talkGen;
@@ -494,9 +519,9 @@ export class TableTalk {
    * table is this: a passing read ("ese está raro"), a dig at whoever has gone silent, and now and then a
    * full accusation when the evidence is actually there.
    */
-  private maybeAccuse(seat: number, mood: Mood, now: number) {
+  private maybeAccuse(seat: number, mood: Mood, now: number): boolean {
     const g = this.host.game();
-    if (!g) return;
+    if (!g) return false;
     const view = viewFor(g, seat);
     const fascist = view.yourRole !== 'liberal';
     const prof = profiles(this.host.memories()[seat], view);
@@ -505,7 +530,7 @@ export class TableTalk {
       .filter((p) => p.seat !== seat && g.players[p.seat].alive)
       // Never hand your own team in: a Fascist knows who its teammates are.
       .filter((p) => !(fascist && view.players[p.seat].role && view.players[p.seat].role !== 'liberal'));
-    if (!speakable.length) return;
+    if (!speakable.length) return false;
     // An ally gets the benefit of the doubt; someone you are at odds with gets less of it.
     const heatOf = (s: number) => sus[s] - relation(mood, s).rapport * 1.5 + relation(mood, s).heat;
     const target = speakable.sort((a, b) => heatOf(b.seat) - heatOf(a.seat))[0];
@@ -515,6 +540,8 @@ export class TableTalk {
     // Who has said nothing for a while? Being the quiet one is suspicious in itself.
     const silent = speakable
       .filter((p) => !this.transcript.some((l) => l.seat === p.seat && now - l.at < 120000))
+      // One dig per silence: not again until they have spoken, and never two in a row from the table.
+      .filter((p) => !this.calledOutSinceSpoke(p.seat) && now - this.quietDigAt >= 180000)
       .sort((a, b) => heatOf(b.seat) - heatOf(a.seat))[0];
 
     let kind: Suspicion;
@@ -524,10 +551,14 @@ export class TableTalk {
       kind = 'quiet';
       target_ = silent.seat;
     } else if (heat >= 0.7) kind = 'read';
-    else return;
+    else return false;
 
     const chance = kind === 'accusation' ? 0.06 + persona.paranoia * 0.15 : 0.04 + persona.chattiness * 0.11;
-    if (Math.random() > chance) return;
+    if (Math.random() > chance) return false;
+    if (kind === 'quiet') {
+      this.silenceCalledOut.set(target_, now);
+      this.quietDigAt = now;
+    }
     this.lastBotChat.set(seat, now);
     const gen = this.talkGen;
     writeAccusation(this.talkContext(seat), target_, prof[target_].proof, kind)
@@ -540,6 +571,7 @@ export class TableTalk {
         if (gen === this.talkGen) this.lastBotChat.delete(seat);
         console.error('[bot] writeAccusation failed', e);
       });
+    return true;
   }
 
   /**

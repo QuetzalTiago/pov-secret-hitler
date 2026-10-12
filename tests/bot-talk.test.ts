@@ -3,7 +3,7 @@ import { beliefs } from '../shared/belief';
 import { newMemory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
 import { talkReads } from '../server/botchat';
-import { writeAccusation } from '../server/bottalk';
+import { writeAccusation, writeIgnored, writeReconsider } from '../server/bottalk';
 import { Room, type Conn } from '../server/room';
 import { roles, setup } from './helpers';
 
@@ -16,6 +16,8 @@ vi.mock('../server/botchat', async (orig) => ({
 vi.mock('../server/bottalk', async (orig) => ({
   ...(await orig<typeof import('../server/bottalk')>()),
   writeAccusation: vi.fn(async () => null),
+  writeIgnored: vi.fn(async () => null),
+  writeReconsider: vi.fn(async () => null),
 }));
 
 describe('bot chat throttle', () => {
@@ -109,5 +111,82 @@ describe('who a bot accuses', () => {
       .sort((a, b) => pF[b] - pF[a])[0];
     expect(await accuseFrom(r, seat)).toBe(expected);
     room.close();
+  });
+});
+
+describe('silence complaints', () => {
+  const started = () => {
+    const conn: Conn = { id: 1, room: null, seat: -1, send: () => {} };
+    const room = new Room('ABCD', () => {});
+    room.join(conn, 'Human');
+    for (let i = 0; i < 4; i++) room.addBot(conn);
+    expect(room.start(conn)).toBeNull();
+    const r = room as any;
+    vi.spyOn(r.talk, 'canWrite').mockReturnValue(true);
+    vi.mocked(writeAccusation).mockClear();
+    vi.mocked(writeIgnored).mockClear();
+    vi.mocked(writeReconsider).mockClear();
+    return { room, talk: r.talk };
+  };
+  const unprompted = () =>
+    vi.mocked(writeAccusation).mock.calls.length + vi.mocked(writeIgnored).mock.calls.length + vi.mocked(writeReconsider).mock.calls.length;
+  const quietTargets = () =>
+    vi.mocked(writeAccusation).mock.calls.filter((c) => c[3] === 'quiet').map((c) => c[1]);
+  // Seat 1 is the only one who has talked, so everybody else is the silent one.
+  const seed = (talk: any, at: number) => {
+    for (let i = 0; i < 4; i++) talk.transcript.push({ seat: 1, name: 'B', text: 'hola', at });
+  };
+  const tick = async (talk: any) => {
+    talk.moodTick();
+    await new Promise((res) => setTimeout(res, 10));
+  };
+
+  it('only one bot speaks up per tick', async () => {
+    const { room, talk } = started();
+    seed(talk, Date.now());
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      await tick(talk);
+      expect(unprompted()).toBe(1);
+      await tick(talk); // 20 s table-wide cooldown
+      expect(unprompted()).toBe(1);
+    } finally {
+      vi.spyOn(Math, 'random').mockRestore();
+      room.close();
+    }
+  });
+
+  it('calls a silent player out once until they speak', async () => {
+    const { room, talk } = started();
+    const t0 = Date.now();
+    let clock = t0;
+    vi.spyOn(Date, 'now').mockImplementation(() => clock);
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      seed(talk, t0);
+      await tick(talk);
+      expect(quietTargets()).toHaveLength(1);
+      const x = quietTargets()[0];
+
+      clock = t0 + 200000; // past the 20 s, 45 s and 180 s gaps and the 120 s of silence
+      await tick(talk);
+      expect(quietTargets().filter((s) => s === x)).toHaveLength(1);
+
+      // Everyone else has already been called out too, so X is the only quiet dig left once X has spoken.
+      for (let s = 0; s < 5; s++) if (s !== x) talk.silenceCalledOut.set(s, t0);
+      clock = t0 + 400000;
+      await tick(talk);
+      expect(quietTargets().filter((s) => s === x)).toHaveLength(1);
+
+      talk.transcript.push({ seat: x, name: 'X', text: 'estoy aqui', at: clock });
+      clock += 200000;
+      vi.mocked(writeAccusation).mockClear();
+      await tick(talk);
+      expect(vi.mocked(writeAccusation).mock.calls.map((c) => [c[1], c[3]])).toEqual([[x, 'quiet']]);
+    } finally {
+      vi.spyOn(Date, 'now').mockRestore();
+      vi.spyOn(Math, 'random').mockRestore();
+      room.close();
+    }
   });
 });
