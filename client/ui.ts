@@ -358,6 +358,8 @@ export class UI {
     $('confirm-leave').classList.add('hidden');
     this.hideCardConfirm();
     this.hideGameOver();
+    this.hideEnact();
+    $('toasts').replaceChildren();
     this.setTimer(null, false);
     const input = $<HTMLInputElement>('chat-input');
     input.blur();
@@ -718,11 +720,16 @@ export class UI {
   /** Dismisses the enact banner early; false when none is showing. */
   skipEnact(): boolean {
     if (!this.enactOn) return false;
-    clearTimeout(this.enactTimer);
-    $('enact').classList.add('hidden');
-    this.enactOn = false;
+    this.hideEnact();
     this.onEnactSkip?.();
     return true;
+  }
+
+  private hideEnact() {
+    clearTimeout(this.enactTimer);
+    this.enactTimer = undefined;
+    $('enact').classList.add('hidden');
+    this.enactOn = false;
   }
 
   /** Full-screen win ceremony; onDone fires once after VICTORY_MS or when skipped, never after cancelVictory(). */

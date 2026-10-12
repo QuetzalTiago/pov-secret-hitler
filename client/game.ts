@@ -122,6 +122,8 @@ export class Game {
   /** Last seat the policies were passed to; the view may already have cleared its chancellor on 'enacted'. */
   private lastChancellor: number | null = null;
   private ceremony = false;
+  /** Pending presentation timeouts (vote sfx, enact banner), cancelled by reset(). */
+  private timers = new Set<ReturnType<typeof setTimeout>>();
   private ceremonyTimer: ReturnType<typeof setTimeout> | undefined;
   private shot: { by: number; target: number; until: number } | null = null;
   private executeSince = -1;
@@ -456,6 +458,8 @@ export class Game {
 
   /** Back to an empty table (left, kicked or fatal error). */
   reset() {
+    for (const t of this.timers) clearTimeout(t);
+    this.timers.clear();
     this.room = null;
     this.view = null;
     this.turnCue.reset();
@@ -466,6 +470,14 @@ export class Game {
     this.speaker = null;
     this.deadlineAt = null;
     this.lastSecond = -1;
+    this.disposePatrons();
+    for (const vc of this.voteCards.values()) {
+      this.world.scene.remove(vc.card.mesh);
+      disposeObject(vc.card.mesh);
+      this.world.movers.delete(vc.mover);
+    }
+    this.voteCards.clear();
+    this.layoutKey = '';
     this.refreshInteractables();
     this.refreshHud();
     this.ui.setTimer(null, false);
@@ -483,13 +495,7 @@ export class Game {
     this.layoutKey = key;
     this.world.setLayout(n, me);
     this.heads = Array.from({ length: Math.max(5, n) }, (_, s) => this.world.layout.head(s));
-    for (const c of this.chars.values()) {
-      this.world.scene.remove(c.group);
-      c.dispose();
-    }
-    this.chars.clear();
-    for (const m of this.envelopes.values()) this.removeEnvelope(m);
-    this.envelopes.clear();
+    this.disposePatrons();
     const L = this.world.layout;
     this.drawPile.group.position.set(-this.board.w / 2 - 0.13, TABLE_Y, -0.02);
     this.discardPile.group.position.set(this.board.w / 2 + 0.13, TABLE_Y, -0.02);
@@ -498,6 +504,26 @@ export class Game {
     this.computeTargets();
     for (const m of this.world.movers) m.snap();
     void L;
+  }
+
+  /** Removes every patron and envelope from the scene; they are recreated lazily. */
+  private disposePatrons() {
+    for (const c of this.chars.values()) {
+      this.world.scene.remove(c.group);
+      c.dispose();
+    }
+    this.chars.clear();
+    for (const m of this.envelopes.values()) this.removeEnvelope(m);
+    this.envelopes.clear();
+  }
+
+  /** setTimeout whose handle is tracked so reset() can cancel it. */
+  private later(fn: () => void, ms: number) {
+    const t = setTimeout(() => {
+      this.timers.delete(t);
+      fn();
+    }, ms);
+    this.timers.add(t);
   }
 
   private smokeTip = new THREE.Vector3();
@@ -620,9 +646,9 @@ export class Game {
         const nein = e.votes.filter((x) => x === false).length;
         this.reveal = { votes: e.votes, until: this.now + VOTE_REVEAL_MS / 1000 };
         this.voteCards.forEach((vc) => (vc.shown = false));
-        setTimeout(() => sfx.flip(), 150);
+        this.later(() => sfx.flip(), 150);
         // One shout for the table, decided by the group: JA! if the government passed, NEIN! if it failed.
-        setTimeout(() => voice.vote(e.passed), 300);
+        this.later(() => voice.vote(e.passed), 300);
         this.ui.toast(e.passed ? `JA! ${ja} to ${nein}. The government is elected.` : `NEIN. ${ja} to ${nein}. The election fails.`, e.passed ? 'good' : 'bad');
         e.votes.forEach((vote, i) => {
           if (vote !== null) this.chars.get(i)?.react(vote ? 'thumbsUp' : 'thumbsDown', 0.35 + 0.08 * i);
@@ -718,7 +744,7 @@ export class Game {
           this.sendTo(card, 'board');
         }
         this.ceremonyUntil = ceremonyEndsAt(this.now);
-        setTimeout(() => {
+        this.later(() => {
           sfx.enact(e.policy);
           duckMusic(2.5);
           this.world.addShake(0.5);
