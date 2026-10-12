@@ -1,34 +1,47 @@
-/* Design system: dark smoky "noir bar" glass, warm gold accent. Tokens first, then base, components, lobby, HUD. */
+/* Design system: 1930s propaganda-poster paper (after secrethitler.com): ochre and cream paper, ink, hard shadows. Tokens first, then base, components, lobby, HUD. */
 :root {
   --bg: #0b0807;
-  --glass: rgba(20, 14, 11, 0.72);
-  --glass-strong: rgba(16, 11, 9, 0.9);
-  --glass-edge: rgba(255, 220, 170, 0.12);
-  --ink: #f4ece0;
-  --ink-dim: #b8aa95;
-  --ink-faint: #7d7264;
-  --accent: #e8b456;
-  --accent-ink: #1d1206;
-  --lib: #6fb6ea;
-  --fas: #f06b55;
-  --danger: #e5484d;
-  --ok: #46a758;
+  --paper: #F7E1C3;
+  --paper-alt: #FBB969;
+  --ink: #434343;
+  --ink-deep: #231F20;
+  --ink-dim: #766c5c;
+  --ink-faint: #9a8d78;
+  --kraft: #C59257;
+  --hover: #FDDF50;
+  --lib: #608CB3;
+  --lib-deep: #324869;
+  --fas: #F2654A;
+  --hitler: #BE0804;
+  --danger: #BE0804;
+  --ok: #3f7d4a;
+  --shadow-hard: 0 6px 0 #303030;
+  --shadow-hard-s: 0 3px 0 #303030;
+  --ease-pop: cubic-bezier(0.5, 0.25, 0.75, 1.5);
 
-  --radius-s: 8px;
-  --radius-m: 12px;
-  --radius-l: 18px;
+  /* Aliases kept so existing rules keep working until components are restyled */
+  --glass: rgba(247, 225, 195, 0.94);
+  --glass-strong: #F7E1C3;
+  --glass-edge: rgba(35, 31, 32, 0.35);
+  --accent: #F2654A;
+  --accent-ink: #231F20;
+  --gold: #FDDF50;
+
+  --radius-s: 3px;
+  --radius-m: 4px;
+  --radius-l: 6px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
-  --blur: blur(12px) saturate(1.2);
-  --ease: 120ms ease;
+  --shadow: var(--shadow-hard);
+  --blur: none;
+  --ease: 80ms var(--ease-pop);
 
-  --font-ui: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --font-display: Georgia, 'Times New Roman', serif;
+  --font-ui: 'Courier Prime', 'Courier New', Courier, monospace;
+  --font-display: 'Jost', 'Futura', 'Century Gothic', 'Trebuchet MS', sans-serif;
   font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.45;
