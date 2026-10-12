@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { decide } from '../server/brain';
+import { decide, JEV_MARGIN } from '../server/brain';
 import { askChoice, jevStats } from '../server/jev';
 import { config } from '../server/config';
 import { legalActions, reduce } from '../shared/engine';
@@ -68,6 +68,7 @@ describe('Jev decision payload', () => {
     expect(json).not.toMatch(/known (FASCIST|HITLER|fascist|hitler)/);
     expect((d.state.players as { knownRole: string }[]).every((p) => p.knownRole === 'unknown')).toBe(true);
     expect(d.state.myCards).toBeUndefined();
+    expect((d.state.players as { read: string }[]).every((p) => /likely Fascist \d+%/.test(p.read))).toBe(true);
     expect(Object.keys(d.options).sort()).toEqual(legalActions(s, 1).map((a) => `p${(a as { target: number }).target}`).sort());
   });
 
@@ -95,6 +96,17 @@ describe('Jev decision payload', () => {
 describe('brain', () => {
   const state = () => setup(5, { president: 0, roles: roles(5, 4, [3]) });
 
+  /** Opening nomination where P0 has investigated P3 as Fascist: P3 scores far below the rest, which are tied. */
+  const closeCase = () => {
+    const s = state();
+    const m = newMemory(0, 5);
+    m.known.set(3, 'fascist');
+    const d = buildDecision(viewFor(s, 0), legalActions(s, 0), m, name);
+    const top = Math.max(...Object.values(d.options).map((o) => o.score));
+    const close = Object.keys(d.options).filter((k) => d.options[k].score >= top - JEV_MARGIN).sort();
+    return { s, m, d, close };
+  };
+
   it('plays the option Jev picks', async () => {
     const s = state();
     const r = await decide(viewFor(s, 0), legalActions(s, 0), newMemory(0, 5), name, () => 0, async (_st, _ins, criteria) => {
@@ -102,6 +114,51 @@ describe('brain', () => {
       return { choice: 'p2', probabilities: { p2: 0.9, p1: 0.1 }, confidence: 0.9 };
     });
     expect(r).toEqual({ action: { type: 'nominate', target: 2 }, source: 'jev' });
+  });
+
+  it('does not ask Jev on clear decisions', async () => {
+    let s = setup(5, { president: 0, roles: roles(5, 4, [3]), deck: ['L', 'F', 'L', ...Array(14).fill('F')] });
+    s = act(s, 0, { type: 'nominate', target: 1 });
+    s = voteAll(s, true);
+    let asked = false;
+    const r = await decide(viewFor(s, 0), legalActions(s, 0), newMemory(0, 5), name, Math.random, async () => {
+      asked = true;
+      return null;
+    });
+    expect(asked).toBe(false);
+    expect(r.source).toBe('heuristic');
+    expect(r.action).toEqual({ type: 'presDiscard', index: 1 });
+  });
+
+  it('on close decisions Jev only sees and can only pick the close options', async () => {
+    const { s, m, d, close } = closeCase();
+    expect(close).toEqual(['p1', 'p2', 'p4']);
+    expect(Object.keys(d.options)).toContain('p3');
+    let seen: string[] = [];
+    const answer = (key: string) => async (_st: unknown, _ins: string, criteria: Record<string, string>) => {
+      seen = Object.keys(criteria).sort();
+      return { choice: key, probabilities: { [key]: 1 }, confidence: 1 };
+    };
+    const outside = await decide(viewFor(s, 0), legalActions(s, 0), m, name, () => 0, answer('p3'));
+    expect(seen).toEqual(close);
+    expect(outside.source).toBe('heuristic');
+    expect(outside.action).not.toEqual({ type: 'nominate', target: 3 });
+    const inside = await decide(viewFor(s, 0), legalActions(s, 0), m, name, () => 0, answer('p4'));
+    expect(inside).toEqual({ action: { type: 'nominate', target: 4 }, source: 'jev' });
+  });
+
+  it('falls back to the built-in strategy when Jev returns null on a close decision', async () => {
+    const { s, m, close } = closeCase();
+    const legal = legalActions(s, 0);
+    let asked = false;
+    const r = await decide(viewFor(s, 0), legal, m, name, Math.random, async () => {
+      asked = true;
+      return null;
+    });
+    expect(asked).toBe(true);
+    expect(r.source).toBe('heuristic');
+    expect(legal).toContainEqual(r.action);
+    expect(close).toContain(`p${(r.action as { target: number }).target}`);
   });
 
   it('falls back to the built-in strategy when Jev fails or answers nonsense', async () => {

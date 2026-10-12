@@ -1,5 +1,6 @@
-// Bot brain: builds the decision from the bot's own view + memory, asks Jev, falls back to the
-// built-in strategy, and always returns a legal action.
+// Bot brain: builds the decision from the bot's own view + memory. The built-in strategy is primary;
+// Jev is only asked to break near-ties among the options the strategy scores about equally. Always
+// returns a legal action.
 import { buildDecision, heuristicChoice, sampleChoice, type Rand } from '../shared/smartbot';
 import { noteMyHand, type Memory } from '../shared/tracker';
 import type { ActionBody } from '../shared/types';
@@ -13,6 +14,9 @@ export interface BrainResult {
 
 const TRIVIAL = new Set(['ack', 'peekDone']);
 
+/** Score gap under which the built-in strategy treats options as a near-tie and asks Jev. */
+export const JEV_MARGIN = 0.5;
+
 export async function decide(
   view: GameView,
   legal: ActionBody[],
@@ -25,13 +29,17 @@ export async function decide(
   const d = buildDecision(view, legal, memory, name);
   let key = '';
   let source: BrainResult['source'] = 'heuristic';
-  if (Object.keys(d.options).length > 1) {
-    const criteria = Object.fromEntries(Object.entries(d.options).map(([k, o]) => [k, o.description]));
-    const answer = await ask(d.state, d.instructions, criteria);
+  const entries = Object.entries(d.options);
+  const top = Math.max(...entries.map(([, o]) => o.score));
+  const close = entries.filter(([, o]) => o.score >= top - JEV_MARGIN);
+  if (close.length > 1) {
+    const answer = await ask(d.state, d.instructions, Object.fromEntries(close.map(([k, o]) => [k, o.description])));
     if (answer) {
+      const isClose = (k: string) => close.some(([c]) => c === k);
       key = sampleChoice(answer.probabilities, rand);
-      if (!(key in d.options)) key = answer.choice;
-      source = 'jev';
+      if (!isClose(key)) key = answer.choice;
+      if (isClose(key)) source = 'jev';
+      else key = '';
     }
   }
   if (!(key in d.options)) {

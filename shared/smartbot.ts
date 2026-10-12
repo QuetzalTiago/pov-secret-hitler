@@ -184,6 +184,7 @@ function goal(v: GameView): string {
 
 export function buildState(v: GameView, m: Memory, prof: PlayerProfile[], name: (s: number) => string) {
   const me = v.you!;
+  const b = beliefs(m, v);
   return {
     you: { name: name(me), role: v.yourRole, goal: goal(v) },
     board: {
@@ -203,6 +204,7 @@ export function buildState(v: GameView, m: Memory, prof: PlayerProfile[], name: 
           name: name(p.seat),
           alive: p.alive,
           knownRole: p.role ?? 'unknown',
+          read: [`likely Fascist ${Math.round(b.pFascist[p.seat] * 100)}%`, b.pHitler[p.seat] < 1e-6 ? 'confirmed not Hitler' : `likely Hitler ${Math.round(b.pHitler[p.seat] * 100)}%`].join(', '),
           suspicion: Number(pr.suspicion.toFixed(1)),
           record: `${pr.liberalAsPresident + pr.liberalAsChancellor} Liberal and ${pr.fascistAsPresident + pr.fascistAsChancellor} Fascist policies in governments they were part of; voted Ja on ${pr.jaOnFascistGovs} governments that enacted Fascist`,
           policiesPlaced: policyRecord(m, p.seat, name),
