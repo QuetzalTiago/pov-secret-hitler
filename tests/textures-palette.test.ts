@@ -20,12 +20,21 @@ describe('relLuminance', () => {
 describe('aged noir palette', () => {
   it('keeps large-fill colours dark enough to sit under the lamp', () => {
     const { COLORS } = tx;
-    for (const c of [COLORS.paper, COLORS.stock, COLORS.liberal, COLORS.fascist, COLORS.hitler, COLORS.ink, COLORS.ochre]) {
+    for (const c of [COLORS.paper, COLORS.stock, COLORS.liberal, COLORS.fascist, COLORS.hitler, COLORS.ink, COLORS.ochre, COLORS.plaster, COLORS.oak, COLORS.lacquer]) {
       expect(tx.relLuminance(c)).toBeLessThanOrEqual(0.45);
     }
   });
 
   it('has darker paper than the old poster cream', () => {
     expect(tx.relLuminance(tx.COLORS.paper)).toBeLessThan(tx.relLuminance('#F7E1C3'));
+  });
+});
+
+describe("beer-hall palette", () => {
+  it("keeps the wall and sign base colours very dark", () => {
+    const { COLORS } = tx;
+    for (const c of [COLORS.plaster, COLORS.oak, COLORS.lacquer]) {
+      expect(tx.relLuminance(c)).toBeLessThanOrEqual(0.12);
+    }
   });
 });

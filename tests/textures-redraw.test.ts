@@ -48,3 +48,16 @@ describe('redrawTextures', () => {
     expect(calls.fillText).toBeGreaterThan(drawn);
   });
 });
+
+describe("beer-hall textures", () => {
+  it("creates the poster atlas and sign, and redraws them", () => {
+    const atlas = tx.posterAtlas();
+    const sign = tx.signTexture();
+    expect(tx.posterAtlas()).toBe(atlas);
+    expect(tx.signTexture()).toBe(sign);
+    const [va, vs] = [atlas.version, sign.version];
+    expect(tx.redrawTextures()).toBeGreaterThanOrEqual(2);
+    expect(atlas.version).toBeGreaterThan(va);
+    expect(sign.version).toBeGreaterThan(vs);
+  });
+});

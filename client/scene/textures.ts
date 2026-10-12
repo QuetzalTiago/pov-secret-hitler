@@ -36,6 +36,9 @@ export const COLORS = {
   gold: '#b8913f',
   brass: '#b8913f',
   stock: '#b9a37c',
+  plaster: '#5a4630',
+  oak: '#2b1a0e',
+  lacquer: '#1e120a',
 };
 
 /** WCAG relative luminance of a #rrggbb colour (0 black .. 1 white). */
@@ -107,20 +110,23 @@ function rand(seed: number) {
   };
 }
 
-function grain(g: CanvasRenderingContext2D, w: number, h: number, amount: number, seed = 7) {
+function grain(g: CanvasRenderingContext2D, w: number, h: number, amount: number, seed = 7, ox = 0, oy = 0) {
   const r = rand(seed);
-  const img = g.getImageData(0, 0, w, h);
+  const img = g.getImageData(ox, oy, w, h);
   for (let i = 0; i < img.data.length; i += 4) {
     const n = (r() - 0.5) * amount;
     img.data[i] += n;
     img.data[i + 1] += n;
     img.data[i + 2] += n;
   }
-  g.putImageData(img, 0, 0);
+  g.putImageData(img, ox, oy);
 }
 
-/** Worn-card finish: edge vignette, a few tea stains, then grain. Deterministic per seed. */
-function age(g: CanvasRenderingContext2D, w: number, h: number, seed: number) {
+/**
+ * Worn-card finish: edge vignette, a few tea stains, then grain. Deterministic per seed.
+ * (ox, oy) is the canvas position of the w x h region when drawing into one cell of an atlas.
+ */
+function age(g: CanvasRenderingContext2D, w: number, h: number, seed: number, ox = 0, oy = 0) {
   const v = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.25, w / 2, h / 2, Math.hypot(w, h) / 2);
   v.addColorStop(0, 'rgba(20,12,5,0)');
   v.addColorStop(1, 'rgba(20,12,5,0.45)');
@@ -133,7 +139,7 @@ function age(g: CanvasRenderingContext2D, w: number, h: number, seed: number) {
     g.ellipse(r() * w, r() * h, w * (0.08 + r() * 0.14), h * (0.05 + r() * 0.1), r() * Math.PI, 0, Math.PI * 2);
     g.fill();
   }
-  grain(g, w, h, 14, seed);
+  grain(g, w, h, 14, seed, ox, oy);
 }
 
 export function woodTexture(base = '#4a2c18', dark = '#2a170b', key = 'wood', repeat = 1) {
@@ -191,28 +197,85 @@ export function plankTexture() {
 
 export function wallTexture() {
   const t = tex('wall', 512, 512, (g, w, h) => {
-    g.fillStyle = '#3a1f1a';
-    g.fillRect(0, 0, w, h);
-    // Damask-ish wallpaper stripes over a wood wainscot.
+    const rail = Math.round(h * 0.6);
+    // Upper wall: smoke-stained plaster, mottled and darker toward the ceiling.
+    g.fillStyle = COLORS.plaster;
+    g.fillRect(0, 0, w, rail);
+    const r = rand(41);
+    for (let i = 0; i < 26; i++) {
+      const y = r() * rail;
+      g.fillStyle = `rgba(20,12,5,${(0.04 + r() * 0.06) * (1.3 - y / rail)})`;
+      g.beginPath();
+      g.ellipse(r() * w, y, 30 + r() * 80, 20 + r() * 50, r() * Math.PI, 0, Math.PI * 2);
+      g.fill();
+    }
+    const smoke = g.createLinearGradient(0, 0, 0, rail);
+    smoke.addColorStop(0, 'rgba(15,9,4,0.5)');
+    smoke.addColorStop(0.6, 'rgba(15,9,4,0.12)');
+    smoke.addColorStop(1, 'rgba(15,9,4,0)');
+    g.fillStyle = smoke;
+    g.fillRect(0, 0, w, rail);
+    // Stencilled frieze near the top: diamonds and oak leaves between two rules.
+    g.fillStyle = 'rgba(58,42,24,0.55)';
+    g.fillRect(0, 34, w, 3);
+    g.fillRect(0, 84, w, 3);
+    g.fillStyle = 'rgba(58,42,24,0.5)';
     for (let x = 0; x < w; x += 64) {
-      g.fillStyle = 'rgba(90,40,30,0.35)';
-      g.fillRect(x, 0, 30, h * 0.62);
-      g.fillStyle = 'rgba(214,168,74,0.08)';
-      for (let y = 20; y < h * 0.6; y += 60) {
+      g.beginPath();
+      g.moveTo(x + 16, 60);
+      g.lineTo(x + 28, 48);
+      g.lineTo(x + 40, 60);
+      g.lineTo(x + 28, 72);
+      g.closePath();
+      g.fill();
+      for (const a of [0.5, -0.5]) {
         g.beginPath();
-        g.ellipse(x + 47, y, 9, 16, 0, 0, Math.PI * 2);
+        g.ellipse(x + 56, 60, 5, 11, a, 0, Math.PI * 2);
         g.fill();
       }
     }
-    g.fillStyle = '#24130b';
-    g.fillRect(0, h * 0.62, w, h * 0.38);
-    g.fillStyle = '#4d2e16';
-    g.fillRect(0, h * 0.62, w, 10);
-    for (let x = 0; x < w; x += 128) {
-      g.strokeStyle = '#3b2210';
-      g.lineWidth = 4;
-      g.strokeRect(x + 12, h * 0.67, 104, h * 0.27);
+    // Lower wall: dark oak panelling with raised panels and lighter bevel lines.
+    g.fillStyle = COLORS.oak;
+    g.fillRect(0, rail, w, h - rail);
+    g.strokeStyle = 'rgba(0,0,0,0.3)';
+    g.lineWidth = 1;
+    for (let i = 0; i < 24; i++) {
+      const x = r() * w;
+      g.beginPath();
+      g.moveTo(x, rail);
+      g.lineTo(x + (r() - 0.5) * 6, h);
+      g.stroke();
     }
+    const py = rail + 26;
+    const pw = 104;
+    const ph = h - rail - 42;
+    for (let x = 0; x < w; x += 128) {
+      const px = x + 12;
+      g.fillStyle = '#231409';
+      g.fillRect(px, py, pw, ph);
+      g.lineWidth = 2;
+      g.strokeStyle = '#4a3018';
+      g.beginPath();
+      g.moveTo(px, py + ph);
+      g.lineTo(px, py);
+      g.lineTo(px + pw, py);
+      g.stroke();
+      g.strokeStyle = '#120a05';
+      g.beginPath();
+      g.moveTo(px + pw, py);
+      g.lineTo(px + pw, py + ph);
+      g.lineTo(px, py + ph);
+      g.stroke();
+      g.strokeStyle = '#3a2412';
+      g.strokeRect(px + 12, py + 12, pw - 24, ph - 24);
+    }
+    // Brass-toned chair rail with a highlight and a shadow beneath.
+    g.fillStyle = '#6b5322';
+    g.fillRect(0, rail, w, 10);
+    g.fillStyle = '#7a6128';
+    g.fillRect(0, rail, w, 3);
+    g.fillStyle = 'rgba(0,0,0,0.4)';
+    g.fillRect(0, rail + 10, w, 5);
     grain(g, w, h, 14, 9);
   });
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -261,7 +324,7 @@ function frame(g: CanvasRenderingContext2D, w: number, h: number, color: string,
   g.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
 }
 
-function centerText(g: CanvasRenderingContext2D, text: string, x: number, y: number, font: string, color: string) {
+function centerText(g: CanvasRenderingContext2D, text: string, x: number, y: number, font: string, color: string | CanvasGradient) {
   g.font = font;
   g.fillStyle = color;
   g.textAlign = 'center';
@@ -420,7 +483,8 @@ export function cardBack(label = 'POLICY') {
     g.strokeRect(30, h / 2 - 38, w - 60, 76);
     g.lineWidth = 1;
     g.strokeRect(36, h / 2 - 32, w - 72, 64);
-    centerText(g, label, w / 2, h / 2 + 1, `800 30px ${DISPLAY}`, COLORS.brass);
+    // Blackletter is unreadable in capitals: title-case the label.
+    centerText(g, label.charAt(0) + label.slice(1).toLowerCase(), w / 2, h / 2 + 1, `34px ${BLACK}`, COLORS.brass);
     age(g, w, h, 8);
   });
 }
@@ -466,8 +530,8 @@ export function roleCard(role: 'liberal' | 'fascist' | 'hitler') {
     panel(g, w, h, 18);
     centerText(g, 'SECRET ROLE', w / 2, 50, `bold 16px ${MONO}`, COLORS.ink);
     emblem(g, lib ? 'L' : 'F', w / 2, h * 0.43, 58, hit ? COLORS.hitler : deep);
-    const title = hit ? 'HITLER' : role.toUpperCase();
-    centerText(g, title, w / 2, h * 0.71, `800 ${hit ? 48 : 40}px ${DISPLAY}`, hit ? COLORS.hitler : deep);
+    const title = hit ? 'Hitler' : lib ? 'Liberal' : 'Fascist';
+    centerText(g, title, w / 2, h * 0.71, `${hit ? 54 : 46}px ${BLACK}`, hit ? COLORS.hitler : deep);
     centerText(g, lib ? 'Liberal party' : 'Fascist party', w / 2, h * 0.81, `bold 16px ${MONO}`, COLORS.ink);
     centerText(g, 'click to close your eyes', w / 2, h * 0.91, `13px ${MONO}`, COLORS.kraft);
     age(g, w, h, 10 + role.length);
@@ -486,9 +550,131 @@ export function membershipCard(name: string, party: 'liberal' | 'fascist') {
     centerText(g, 'PARTY MEMBERSHIP', w / 2, 44, `bold 17px ${MONO}`, COLORS.ink);
     centerText(g, name, w / 2, 86, `700 26px ${DISPLAY}`, COLORS.ink);
     emblem(g, lib ? 'L' : 'F', w / 2, h * 0.5, 50, deep);
-    centerText(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.75, `800 40px ${DISPLAY}`, deep);
+    centerText(g, lib ? 'Liberal' : 'Fascist', w / 2, h * 0.75, `46px ${BLACK}`, deep);
     centerText(g, 'click to put it away', w / 2, h * 0.9, `13px ${MONO}`, COLORS.kraft);
     age(g, w, h, 20 + name.length);
+  });
+}
+
+const POSTER_W = 512;
+const POSTER_H = 768;
+
+/** Election poster: a coloured field with a thin paper margin, emblem, big headline and sub line. */
+function electionPoster(g: CanvasRenderingContext2D, kind: 'L' | 'F', head: string, big: string, sub: string, field: string, deep: string) {
+  const w = POSTER_W;
+  const h = POSTER_H;
+  g.fillStyle = COLORS.stock;
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = field;
+  g.fillRect(14, 14, w - 28, h - 28);
+  frame(g, w, h, COLORS.ink, 14, 3);
+  frame(g, w, h, COLORS.stock, 26, 2);
+  centerText(g, head, w / 2, 100, `800 84px ${DISPLAY}`, COLORS.stock);
+  emblem(g, kind, w / 2, 340, 150, COLORS.stock, COLORS.ink);
+  centerText(g, big, w / 2, 590, `800 100px ${DISPLAY}`, COLORS.stock);
+  g.fillStyle = deep;
+  g.fillRect(40, 660, w - 80, 56);
+  centerText(g, sub, w / 2, 689, `bold 28px ${MONO}`, COLORS.stock);
+}
+
+function noticePoster(g: CanvasRenderingContext2D) {
+  const w = POSTER_W;
+  g.fillStyle = COLORS.paper;
+  g.fillRect(0, 0, w, POSTER_H);
+  frame(g, w, POSTER_H, COLORS.ink, 18, 4);
+  frame(g, w, POSTER_H, COLORS.ink, 30, 1.5);
+  centerText(g, 'Reichstagswahl', w / 2, 150, `88px ${BLACK}`, COLORS.ink);
+  g.fillStyle = COLORS.ink;
+  g.fillRect(70, 215, w - 140, 4);
+  g.fillRect(70, 225, w - 140, 1.5);
+  centerText(g, '31. Juli 1932', w / 2, 290, `bold 46px ${MONO}`, COLORS.ink);
+  g.fillRect(70, 335, w - 140, 1.5);
+  const lines = ['Wahllokal:', 'Bierhalle zum Adler', 'Wahlzeit 8 bis 18 Uhr', 'Stimmzettel sind mitzubringen', 'und persönlich abzugeben.'];
+  lines.forEach((l, i) => centerText(g, l, w / 2, 400 + i * 48, `bold ${i === 1 ? 28 : 24}px ${MONO}`, COLORS.ink));
+  g.fillRect(70, 660, w - 140, 1.5);
+  centerText(g, 'Der Wahlvorsteher', w / 2, 705, `bold 24px ${MONO}`, COLORS.ink);
+}
+
+function beerPoster(g: CanvasRenderingContext2D) {
+  const w = POSTER_W;
+  g.fillStyle = COLORS.kraft;
+  g.fillRect(0, 0, w, POSTER_H);
+  g.fillStyle = COLORS.ochre;
+  g.fillRect(24, 24, w - 48, POSTER_H - 48);
+  frame(g, w, POSTER_H, COLORS.ink, 24, 4);
+  centerText(g, 'Adlerbräu', w / 2, 140, `110px ${BLACK}`, COLORS.ink);
+  centerText(g, 'Das Bier der Hauptstadt', w / 2, 225, `bold 26px ${MONO}`, COLORS.ink);
+  // Stein: foam, glass body, handle and a band.
+  g.lineWidth = 8;
+  g.strokeStyle = COLORS.ink;
+  g.lineJoin = 'round';
+  g.beginPath();
+  g.ellipse(352, 470, 52, 70, 0, -Math.PI / 2, Math.PI / 2);
+  g.stroke();
+  g.fillStyle = COLORS.gold;
+  g.fillRect(150, 330, 200, 280);
+  g.strokeRect(150, 330, 200, 280);
+  g.fillStyle = COLORS.stock;
+  g.beginPath();
+  g.arc(170, 330, 34, 0, Math.PI * 2);
+  g.arc(215, 318, 42, 0, Math.PI * 2);
+  g.arc(265, 322, 40, 0, Math.PI * 2);
+  g.arc(318, 332, 32, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+  g.fillStyle = COLORS.kraft;
+  g.fillRect(150, 440, 200, 20);
+  g.fillRect(150, 560, 200, 16);
+  g.strokeRect(150, 440, 200, 20);
+  centerText(g, 'Berlin', w / 2, 690, `78px ${BLACK}`, COLORS.ink);
+}
+
+/** 2x2 atlas of period posters, each 512x768 (cell i at col i%2, row floor(i/2)); wear applied per poster. */
+export function posterAtlas() {
+  return tex('posters', POSTER_W * 2, POSTER_H * 2, (g) => {
+    const draws: ((g: CanvasRenderingContext2D) => void)[] = [
+      (c) => electionPoster(c, 'L', 'WÄHLT', 'LISTE 1', 'LIBERALE PARTEI', COLORS.liberal, COLORS.liberalDeep),
+      (c) => electionPoster(c, 'F', 'ORDNUNG!', 'LISTE 2', 'WÄHLT LISTE 2', COLORS.fascist, COLORS.fascistDeep),
+      noticePoster,
+      beerPoster,
+    ];
+    draws.forEach((draw, i) => {
+      const ox = (i % 2) * POSTER_W;
+      const oy = Math.floor(i / 2) * POSTER_H;
+      g.save();
+      g.translate(ox, oy);
+      g.beginPath();
+      g.rect(0, 0, POSTER_W, POSTER_H);
+      g.clip();
+      draw(g);
+      age(g, POSTER_W, POSTER_H, 40 + i, ox, oy);
+      g.restore();
+    });
+  });
+}
+
+/** The painted bar sign: dark lacquered board, brass double border, gilt blackletter name. */
+export function signTexture() {
+  return tex('sign', 1024, 256, (g, w, h) => {
+    g.fillStyle = COLORS.lacquer;
+    g.fillRect(0, 0, w, h);
+    const sheen = g.createLinearGradient(0, 0, 0, h);
+    sheen.addColorStop(0, 'rgba(255,230,180,0.08)');
+    sheen.addColorStop(0.5, 'rgba(255,230,180,0)');
+    g.fillStyle = sheen;
+    g.fillRect(0, 0, w, h);
+    frame(g, w, h, COLORS.brass, 12, 5);
+    frame(g, w, h, COLORS.brass, 26, 2);
+    const text = 'Bierhalle zum Adler';
+    const font = `120px ${BLACK}`;
+    centerText(g, text, w / 2 + 4, h * 0.45 + 5, font, 'rgba(0,0,0,0.75)');
+    const gilt = g.createLinearGradient(0, h * 0.2, 0, h * 0.65);
+    gilt.addColorStop(0, '#e0c680');
+    gilt.addColorStop(0.45, COLORS.brass);
+    gilt.addColorStop(1, '#8a6a28');
+    centerText(g, text, w / 2, h * 0.45, font, gilt);
+    centerText(g, '·  BERLIN  ·', w / 2, h * 0.85, `bold 28px ${MONO}`, COLORS.brass);
+    grain(g, w, h, 10, 17);
   });
 }
 
