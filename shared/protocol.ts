@@ -12,11 +12,16 @@ export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 export type Pace = 'relaxed' | 'normal' | 'fast';
 export const PACES: readonly Pace[] = ['relaxed', 'normal', 'fast'];
 
-/** Host-chosen table options. A bot `difficulty` field may be added here later (Smarter bots spike #173). */
+/** Bot difficulty: casual plays the old heuristics loosely, normal the belief strategy, sharp the belief strategy greedily. */
+export type BotLevel = 'casual' | 'normal' | 'sharp';
+export const BOT_LEVELS: readonly BotLevel[] = ['casual', 'normal', 'sharp'];
+
+/** Host-chosen table options: pace and bot level. */
 export interface TableOptions {
   pace: Pace;
+  botLevel: BotLevel;
 }
-export const DEFAULT_OPTIONS: TableOptions = { pace: 'normal' };
+export const DEFAULT_OPTIONS: TableOptions = { pace: 'normal', botLevel: 'normal' };
 
 export type ClientMsg =
   | { t: 'create'; name: string }
@@ -25,7 +30,7 @@ export type ClientMsg =
   | { t: 'resume'; code: string; token: string }
   | { t: 'addBot' }
   | { t: 'removeBot' }
-  | { t: 'setOptions'; pace?: Pace }
+  | { t: 'setOptions'; pace?: Pace; botLevel?: BotLevel }
   | { t: 'start' }
   | { t: 'act'; a: ActionBody }
   | { t: 'chat'; text: string }
@@ -165,7 +170,10 @@ export function parseClientMsg(raw: string): ClientMsg | null {
     }
     case 'setOptions': {
       const pace = PACES.find((p) => p === m.pace);
-      return pace ? { t: 'setOptions', pace } : null;
+      const botLevel = BOT_LEVELS.find((l) => l === m.botLevel);
+      if ((m.pace !== undefined && !pace) || (m.botLevel !== undefined && !botLevel)) return null;
+      if (!pace && !botLevel) return null;
+      return { t: 'setOptions', ...(pace && { pace }), ...(botLevel && { botLevel }) };
     }
     case 'addBot':
     case 'removeBot':

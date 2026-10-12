@@ -73,6 +73,7 @@ const ui = new UI({
   playAgain: () => net.send({ t: 'playAgain' }),
   redeal: () => net.send({ t: 'redeal' }),
   setPace: (pace) => net.send({ t: 'setOptions', pace }),
+  setBotLevel: (botLevel) => net.send({ t: 'setOptions', botLevel }),
 });
 
 const world = new World(document.getElementById('app')!);

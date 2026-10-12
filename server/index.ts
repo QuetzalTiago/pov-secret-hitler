@@ -235,7 +235,7 @@ export function startServer(port = config.port): Promise<RunningServer> {
       case 'addBot':
         return room.addBot(conn);
       case 'setOptions':
-        return room.setOptions(conn, { pace: msg.pace });
+        return room.setOptions(conn, { pace: msg.pace, botLevel: msg.botLevel });
       case 'removeBot':
         return room.removeBot(conn);
       case 'start':

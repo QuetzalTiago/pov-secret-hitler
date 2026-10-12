@@ -3,8 +3,8 @@
 // get angry at being ignored, and start accusations of their own. See bottalk.ts for how a line is written.
 import { randomBytes, randomInt } from 'node:crypto';
 import { RuleError, createGame, legalActions, pendingActors, reduce } from '../shared/engine';
-import { DEFAULT_OPTIONS, PACES, QUICK_START_SEATS } from '../shared/protocol';
-import type { Pace, RoomView, SeatInfo, ServerMsg, Series, TableOptions } from '../shared/protocol';
+import { BOT_LEVELS, DEFAULT_OPTIONS, PACES, QUICK_START_SEATS } from '../shared/protocol';
+import type { BotLevel, Pace, RoomView, SeatInfo, ServerMsg, Series, TableOptions } from '../shared/protocol';
 import { MAX_PLAYERS, MIN_PLAYERS } from '../shared/rules';
 import type { ActionBody, GameEvent, GameState, Phase } from '../shared/types';
 import { newMemory, observe, profiles, type Memory } from '../shared/tracker';
@@ -337,10 +337,11 @@ export class Room {
   }
 
   /** Host-only, lobby-only: merges the given table options and tells everyone. */
-  setOptions(conn: Conn, opts: { pace?: Pace }): string | null {
+  setOptions(conn: Conn, opts: { pace?: Pace; botLevel?: BotLevel }): string | null {
     if (!this.isHost(conn)) return 'Only the host can change table options.';
     if (this.stage !== 'lobby') return 'The game has started.';
     if (opts.pace) this.options = { ...this.options, pace: opts.pace };
+    if (opts.botLevel) this.options = { ...this.options, botLevel: opts.botLevel };
     this.broadcast();
     return null;
   }
@@ -558,7 +559,7 @@ export class Room {
     if (legal.length === 0) return;
     let body = legal[0];
     try {
-      body = decideNow(viewFor(g, seat), legal, this.memories[seat], (s) => this.seatName(s));
+      body = decideNow(viewFor(g, seat), legal, this.memories[seat], (s) => this.seatName(s), Math.random, this.options.botLevel);
     } catch (e) {
       console.error('[bot] decideNow failed', e);
     }
@@ -640,7 +641,7 @@ export class Room {
     const legal = legalActions(g, seat);
     if (!legal.length) return null;
     try {
-      const r = await decide(viewFor(g, seat), legal, this.memories[seat], (s) => this.seatName(s));
+      const r = await decide(viewFor(g, seat), legal, this.memories[seat], (s) => this.seatName(s), undefined, undefined, this.options.botLevel);
       this.botStats[r.source]++;
       return r.action;
     } catch (e) {
@@ -1229,8 +1230,11 @@ export interface RoomSnapshot {
 const isCount = (n: unknown) => typeof n === 'number' && Number.isFinite(n);
 
 function validOptions(o: unknown): TableOptions {
-  const pace = PACES.find((p) => p === (o as TableOptions | undefined)?.pace);
-  return pace ? { pace } : { ...DEFAULT_OPTIONS };
+  const x = o as Partial<TableOptions> | undefined;
+  return {
+    pace: PACES.find((p) => p === x?.pace) ?? DEFAULT_OPTIONS.pace,
+    botLevel: BOT_LEVELS.find((l) => l === x?.botLevel) ?? DEFAULT_OPTIONS.botLevel,
+  };
 }
 
 function validSeries(s: unknown): Series {

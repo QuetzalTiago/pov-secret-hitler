@@ -3,6 +3,7 @@
 import { beliefs } from './belief';
 import { describeHistory, policyRecord, profiles, type Memory, type PlayerProfile } from './tracker';
 import { ROLE_COUNTS } from './rules';
+import type { BotLevel } from './protocol';
 import type { ActionBody } from './types';
 import type { GameView } from './view';
 
@@ -25,8 +26,7 @@ export type Rand = () => number;
 /** 'old' scores from suspicion heuristics; 'new' scores Liberal choices from the belief model. */
 export type Strategy = 'old' | 'new';
 
-export type BotLevel = 'casual' | 'normal' | 'sharp';
-export const BOT_LEVELS: readonly BotLevel[] = ['casual', 'normal', 'sharp'];
+export type { BotLevel };
 
 /** Difficulty: which strategy scores the options and how much noise blurs the pick (0 = always the best). */
 export const LEVELS: Record<BotLevel, { strategy: Strategy; noise: number }> = {

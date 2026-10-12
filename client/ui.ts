@@ -1,5 +1,5 @@
 // DOM overlay: lobby, HUD, prompt, timer, chat, toasts, credits, game over. Always textContent, never innerHTML with user data.
-import { PACES, type Pace, type RoomView, type Series } from '../shared/protocol';
+import { BOT_LEVELS, PACES, type BotLevel, type Pace, type RoomView, type Series } from '../shared/protocol';
 import type { Power } from '../shared/types';
 import type { GameView, PlayerView } from '../shared/view';
 import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
@@ -21,6 +21,7 @@ export interface UIHandlers {
   join(code: string, name: string): void;
   addBot(): void;
   setPace(pace: Pace): void;
+  setBotLevel(level: BotLevel): void;
   removeBot(): void;
   start(): void;
   leave(): void;
@@ -123,6 +124,7 @@ export class UI {
     nameInput.addEventListener('keydown', (e) => e.key === 'Enter' && $(this.invite ? 'join' : 'create').click());
     $('add-bot').onclick = () => h.addBot();
     for (const pace of PACES) $(`pace-${pace}`).onclick = () => h.setPace(pace);
+    for (const level of BOT_LEVELS) $(`bot-level-${level}`).onclick = () => h.setBotLevel(level);
     $('remove-bot').onclick = () => h.removeBot();
     $('start').onclick = () => h.start();
     $('lobby-leave').onclick = () => h.leave();
@@ -411,8 +413,13 @@ export class UI {
         $(`pace-${p}`).classList.toggle('active', on);
         $(`pace-${p}`).setAttribute('aria-pressed', String(on));
       }
-      const pace = room.options.pace;
-      $('pace-note').textContent = `Pace: ${pace[0].toUpperCase()}${pace.slice(1)}`;
+      for (const l of BOT_LEVELS) {
+        const on = l === room.options.botLevel;
+        $(`bot-level-${l}`).classList.toggle('active', on);
+        $(`bot-level-${l}`).setAttribute('aria-pressed', String(on));
+      }
+      const cap = (s: string) => `${s[0].toUpperCase()}${s.slice(1)}`;
+      $('pace-note').textContent = `Pace: ${cap(room.options.pace)} · Bots: ${cap(room.options.botLevel)}`;
       $('pace-note').classList.toggle('hidden', isHost);
       const n = room.seats.length;
       $<HTMLButtonElement>('start').disabled = n < 5;
