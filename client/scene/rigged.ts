@@ -8,6 +8,7 @@ import { paintBlood, type BloodPart } from './blood';
 import { type Patron } from './characters';
 import { disposeObject } from './dispose';
 import { DEATH_DUR, REACTION_DUR, SMOKE_DUR, deathPose, isSmoker, mouthOpen, nextDragDelay, reactionPose, smokePose, type DeathPose, type Reaction, type ReactionPose, type SmokePose } from './life';
+import { GUN_GRIP, GUN_SCALE } from './gun';
 import { type Look } from './looks';
 import { CIGARETTE_TIP, cigaretteGeometry, mergeParts, paintGeometry } from './patron';
 
@@ -43,6 +44,8 @@ const THUMB_UPPER = new THREE.Vector3(-0.3, -0.7, 0.5).normalize();
 const THUMB_FORE = new THREE.Vector3(0.2, 0.5, 0.8).normalize();
 /** Where the thumbs-up palm faces (the body midline, patron space); thumbs down faces the opposite way. */
 const THUMB_FACE = new THREE.Vector3(1, 0, 0);
+/** How far the centre of the closed fist sits toward the palm side of the hand bones, in metres. */
+const FIST_PALM_OFFSET = 0.015;
 /** Thumb1R bend about its parent-space Z (away from the forearm line, so the thumb sticks out of the fist), radians. */
 const THUMB_BEND = 1;
 /** The raised elbow's pull, down and outward (group space, left arm). */
@@ -254,6 +257,8 @@ export class RiggedCharacter implements Patron {
   private gunMat = new THREE.Matrix4();
   private gunOut = { pos: this.gunPos, quat: new THREE.Quaternion() };
   private pw = new THREE.Vector3();
+  /** The centre of the closed right fist, in MiddleHandR space. */
+  private fistLocal = new THREE.Vector3();
   private euler = new THREE.Euler();
 
   /**
@@ -300,6 +305,7 @@ export class RiggedCharacter implements Patron {
     this.ws = this.torso.getWorldScale(this.v0).x;
     this.armL = this.makeArm('L', CIG_FILTER);
     this.armR = this.makeArm('R', this.v1.set(0, 0, 0));
+    this.fistLocal = this.measureFist();
     if (this.smoker) this.addCigarette();
 
     // The badge heights were chosen for hips at BADGE_HIPS_Y; the seat is lower, so the whole figure sits lower.
@@ -480,16 +486,18 @@ export class RiggedCharacter implements Patron {
     this.aimTarget = target ? this.aimV.copy(target) : null;
   }
 
-  /** World pose of the hand holding the revolver: the barrel (-Z) runs along the arm, the top (+Y) is up.
+  /** World pose of the revolver's origin, placed so its grip is in the fist: the barrel (-Z) runs along the arm, the top (+Y) is up.
    * Returns objects owned by this character, overwritten on the next call; copy what you keep. */
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion } {
-    const pos = this.armR.mid.getWorldPosition(this.gunPos);
-    const z = this.armR.upper.getWorldPosition(this.gunZ).sub(pos).normalize();
+    this.armR.mid.updateWorldMatrix(true, false);
+    const grip = this.armR.mid.localToWorld(this.gunPos.copy(this.fistLocal));
+    const z = this.armR.upper.getWorldPosition(this.gunZ).sub(grip).normalize();
     const x = this.gunX.crossVectors(Y_UP, z);
     if (x.lengthSq() < 1e-8) x.set(1, 0, 0);
     x.normalize();
     const y = this.gunY.crossVectors(z, x);
     this.gunOut.quat.setFromRotationMatrix(this.gunMat.makeBasis(x, y, z));
+    grip.sub(this.gunX.copy(GUN_GRIP).multiplyScalar(GUN_SCALE).applyQuaternion(this.gunOut.quat));
     return this.gunOut;
   }
 
@@ -597,6 +605,15 @@ export class RiggedCharacter implements Patron {
     this.head.localToWorld(out);
     this.head.getWorldQuaternion(this.qc);
     return out.add(this.pv.set(0, -0.07, 0.16).multiplyScalar(this.faceScale).applyQuaternion(this.qc));
+  }
+
+  /** Centre of the closed right hand in MiddleHandR space: between the hand and finger bones, nudged to the palm side. */
+  private measureFist(): THREE.Vector3 {
+    const { mid, palm } = this.armR;
+    this.group.updateMatrixWorld(true);
+    const p = mid.getWorldPosition(new THREE.Vector3()).add(this.fingersR.getWorldPosition(this.v0)).multiplyScalar(0.5);
+    p.addScaledVector(this.v0.set(0, 0, -1).applyQuaternion(palm.getWorldQuaternion(this.qa)).normalize(), FIST_PALM_OFFSET);
+    return mid.worldToLocal(p);
   }
 
   private makeArm(side: 'L' | 'R', eff: THREE.Vector3): Arm {
@@ -760,7 +777,8 @@ export class RiggedCharacter implements Patron {
       const axis = this.v2.crossVectors(dir, Y_UP);
       if (axis.lengthSq() > 1e-8) dir.applyAxisAngle(axis.normalize(), 0.45 * this.recoilKick);
     }
-    this.armPose(arm, dir, dir, a, null);
+    const face = this.aimMode === 'gun' ? this.v4.copy(THUMB_FACE).applyQuaternion(this.qg) : null;
+    this.armPose(arm, dir, dir, a, face);
     const curl = CURL[this.aimMode] * a * (1 - this.handsUpAmount);
     this.fingersR.quaternion.premultiply(this.qa.setFromAxisAngle(this.xAxis, curl));
   }

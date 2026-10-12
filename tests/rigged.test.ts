@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { chairModel, chairSeat } from '../client/scene/roomprops';
 import { HAIR, lookFor, seedOf } from '../client/scene/looks';
+import { GUN_GRIP, GUN_MUZZLE, GUN_SCALE } from '../client/scene/gun';
 import { prepareCharacter, type CharacterTemplate, type Outfit } from '../client/scene/assets';
 
 const MODELS = path.resolve(__dirname, '../client/models');
@@ -295,6 +296,22 @@ describe('RiggedCharacter motion', () => {
     run(c, 1.5, t);
     c.update(1 / 60, 0);
     expect(bonePos(c, 'PalmR').distanceTo(rest)).toBeLessThan(0.03);
+  });
+
+  it('holds the revolver by the grip, thumb up, barrel past the fist', () => {
+    const c = build(1);
+    c.setAim(TARGET);
+    run(c, 1.5);
+    const { pos, quat } = c.gunPose();
+    const toWorld = (p: THREE.Vector3) => p.clone().multiplyScalar(GUN_SCALE).applyQuaternion(quat).add(pos);
+    const fist = bonePos(c, 'MiddleHandR').add(bonePos(c, 'FingersR')).multiplyScalar(0.5);
+    expect(toWorld(GUN_GRIP).distanceTo(fist)).toBeLessThan(0.03);
+    const shoulder = bonePos(c, 'ShoulderR');
+    expect(toWorld(GUN_MUZZLE).distanceTo(shoulder) - bonePos(c, 'FingersR').distanceTo(shoulder)).toBeGreaterThanOrEqual(0.08);
+    // The palm faces the body midline, i.e. across the gun's side.
+    const palm = c.group.getObjectByName('PalmR')!.getWorldQuaternion(new THREE.Quaternion());
+    const normal = new THREE.Vector3(0, 0, -1).applyQuaternion(palm);
+    expect(Math.abs(normal.dot(new THREE.Vector3(1, 0, 0).applyQuaternion(quat)))).toBeGreaterThanOrEqual(0.7);
   });
 
   it('snaps the arm onto a new target when asked, instead of swinging from the old one', () => {

@@ -16,6 +16,7 @@ import { bloodSeed, pickAnchor, type AnchorRect } from './scene/blood';
 import { Bloodshed, type BloodShot, type ResolveAnchor } from './scene/bloodfx';
 import { createCharacter, type Patron } from './scene/characters';
 import { seedOf } from './scene/looks';
+import { GUN_MUZZLE, GUN_SCALE } from './scene/gun';
 import { disposeObject } from './scene/dispose';
 import { ActingRings, Board, CARD_H, CARD_W, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
 import { COLORS, ballotFace, bloodAtlas, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
@@ -910,7 +911,8 @@ export class Game {
         let muzzle = new THREE.Vector3(0, 0, -0.2).applyMatrix4(this.gun.matrixWorld);
         let dir = new THREE.Vector3(0, 0, -1).transformDirection(this.gun.matrixWorld);
         if (shooter && e.by !== me) {
-          muzzle = shooter.gunPose().pos.clone();
+          const { pos, quat } = shooter.gunPose();
+          muzzle = GUN_MUZZLE.clone().multiplyScalar(GUN_SCALE).applyQuaternion(quat).add(pos);
           dir = this.world.layout.head(e.target).sub(muzzle).normalize();
         }
         this.world.flash(muzzle, dir);
