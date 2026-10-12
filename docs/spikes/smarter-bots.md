@@ -33,6 +33,19 @@ Liberal win rate (%):
 
 Over the 2,400 smart-vs-smart games, the win reasons were: Liberal policies 970, Hitler executed 647, Hitler elected 609, Fascist policies 174.
 
+#### Arena baseline (FLT-0005 #185)
+
+`npm run arena 400` (seeds `n * 100003 + i`) now reproduces this. 'old' is today's buildDecision + heuristicChoice with tracker memory. The numbers match the scratch harness within noise. Later strategy changes are measured against this table.
+
+| Liberals vs Fascists | 5p | 6p | 7p | 8p | 9p | 10p |
+|---|---|---|---|---|---|---|
+| old vs old | 78 | 83 | 57 | 70 | 49 | 68 |
+| old vs random | 69 | 75 | 66 | 72 | 64 | 72 |
+| random vs old | 13 | 14 | 11 | 11 | 7 | 6 |
+| random vs random | 23 | 22 | 25 | 23 | 25 | 22 |
+
+Old-vs-old win reasons over 2,400 games: Liberal policies 946, Hitler executed 670, Hitler elected 651, Fascist policies 133.
+
 ### Findings
 
 1. **The smart Fascists play no better than random ones.**
