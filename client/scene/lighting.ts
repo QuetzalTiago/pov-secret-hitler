@@ -1,13 +1,17 @@
-/** Every light level for the night bar in one place, so the darkness is tuned here (todo #248). */
+/**
+ * Every light level for the night bar in one place, so the darkness is tuned here (todo #248). The room lights
+ * (env, ambient, fill, neon, waiter spot, vignette) sit back at the pre-#248 levels so the bar's details read;
+ * exposure and the lamp keep the table the bright centre.
+ */
 export const LIGHTING = {
   /** ACES tone mapping exposure. */
   exposure: 0.62,
   /** HDRI image-based light (scene.environmentIntensity): kept faint so the pendant lamp is the key light. */
-  env: 0.04,
+  env: 0.06,
   /** Hemisphere ambient before the night dimming. */
-  ambient: 0.08,
+  ambient: 0.12,
   /** Warm fill point light before the lit factor. */
-  fill: 1.0,
+  fill: 1.5,
   /**
    * Pendant lamp spot over the table, and the light the patrons are seen by. From 2.55 m up, seated heads sit
    * 53-63 degrees off its axis (chests ~57), so the cone is wide with a short penumbra to keep them inside the
@@ -15,11 +19,11 @@ export const LIGHTING = {
    */
   lamp: { intensity: 90, distance: 4.5, angle: Math.PI / 2.5, penumbra: 0.3, decay: 1.6 },
   /** Point light under the bar sign. */
-  neon: 0.4,
+  neon: 0.6,
   /** Spot on the waiter. */
-  waiterSpot: 5,
+  waiterSpot: 8,
   /** Post-process vignette darkness. */
-  vignette: 0.7,
+  vignette: 0.6,
 } as const;
 
 /** Material colour multiplied over printed art (cards, placards, board) so bright official paper reads as aged stock under the lamp, not glowing white. */
