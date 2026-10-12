@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { RoomView } from '../shared/protocol';
 import type { ActionBody, GameEvent, Policy } from '../shared/types';
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
-import { setMusicMood, sfx, voice } from './audio';
+import { duckMusic, setMusicMood, sfx, voice } from './audio';
 import { edgeMarker, hudModel } from './hudmodel';
 import type { Interactable, Interactor } from './interact';
 import { Character } from './scene/characters';
@@ -535,8 +535,10 @@ export class Game {
           this.sendTo(card, 'board');
         }
         setTimeout(() => {
-          sfx.stamp();
-          this.world.addShake(0.25);
+          sfx.enact(e.policy);
+          duckMusic(2.5);
+          this.world.addShake(0.5);
+          this.ui.enact(e.policy, (e.policy === 'L' ? v?.liberal : v?.fascist) ?? 0, !!e.chaos);
         }, 650);
         this.ui.toast(
           `${e.chaos ? 'Chaos! The top policy is enacted: ' : ''}${e.policy === 'L' ? 'Liberal' : 'Fascist'} policy enacted.`,

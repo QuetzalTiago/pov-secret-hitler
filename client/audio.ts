@@ -170,6 +170,19 @@ export const sfx = {
     noise({ dur: 0.05, freq: 3500, q: 6, gain: 0.5 });
     noise({ dur: 0.07, freq: 1800, q: 5, gain: 0.5, delay: 0.12 });
   },
+  /** Policy-enacted ceremony: gavel hit, then a bright rising chord (L) or a dark tritone sting (F). */
+  enact(policy: 'L' | 'F') {
+    tone({ freq: 70, dur: 0.5, gain: 1.2, slideTo: 32, wet: 0.5 }); // gavel body
+    noise({ dur: 0.25, freq: 1200, type: 'lowpass', sweepTo: 200, gain: 1.0, attack: 0.002, wet: 0.5 }); // impact
+    if (policy === 'L') {
+      [392, 494, 587, 784].forEach((f, i) => tone({ freq: f, dur: 0.9 - i * 0.05, gain: 0.12, type: i % 2 ? 'sawtooth' : 'triangle', delay: 0.12 + i * 0.07, wet: 0.7 }));
+    } else {
+      tone({ freq: 98, dur: 1.2, gain: 0.12, type: 'sawtooth', delay: 0.1, wet: 0.7 });
+      tone({ freq: 139, dur: 1.2, gain: 0.1, type: 'sawtooth', delay: 0.1, wet: 0.7 }); // tritone
+      tone({ freq: 73, dur: 0.8, gain: 0.5, slideTo: 40, delay: 0.35, wet: 0.5 });
+      noise({ dur: 1.2, freq: 300, type: 'lowpass', gain: 0.4, delay: 0.1, attack: 0.05, wet: 1.0 }); // timpani rumble
+    }
+  },
   /** Revolver shot: supersonic crack, chest-thumping boom, the room ringing, then the brass casing. */
   gunshot() {
     noise({ dur: 0.05, freq: 5000, type: 'highpass', gain: 2.2, attack: 0.0008, wet: 0.6 }); // crack
@@ -313,6 +326,8 @@ let musicEl: HTMLAudioElement | null = null;
 let musicGain: GainNode | null = null;
 let musicFilter: BiquadFilterNode | null = null;
 let mood = '';
+let musicTarget = MUSIC_VOLUME; // the current mood's volume, what a duck restores to
+let duckTimer: ReturnType<typeof setTimeout> | undefined;
 
 function readMusicPref(): boolean {
   try {
@@ -368,6 +383,18 @@ export function setMusicMood(night: boolean, danger: boolean) {
   if (key === mood) return;
   mood = key;
   const t = ctx.currentTime;
-  musicGain.gain.setTargetAtTime(MUSIC_VOLUME * (danger ? 0.55 : night ? 0.5 : 1), t, 0.6);
+  musicTarget = MUSIC_VOLUME * (danger ? 0.55 : night ? 0.5 : 1);
+  if (!duckTimer) musicGain.gain.setTargetAtTime(musicTarget, t, 0.6);
   musicFilter.frequency.setTargetAtTime(danger ? 900 : night ? 2500 : 7000, t, 0.6);
+}
+
+/** Dips the music to ~30% for a ceremony moment, then restores the mood's volume. */
+export function duckMusic(seconds: number) {
+  if (!ctx || !musicGain || !musicOn) return;
+  clearTimeout(duckTimer);
+  musicGain.gain.setTargetAtTime(musicTarget * 0.3, ctx.currentTime, 0.05);
+  duckTimer = setTimeout(() => {
+    duckTimer = undefined;
+    if (ctx && musicGain && musicOn) musicGain.gain.setTargetAtTime(musicTarget, ctx.currentTime, 0.4);
+  }, seconds * 1000);
 }

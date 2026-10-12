@@ -4,6 +4,9 @@ import type { Power } from '../shared/types';
 import type { GameView } from '../shared/view';
 import type { Badge, HudModel } from './hudmodel';
 import { isMuted, setMuted } from './audio';
+import { enactBanner } from './enact';
+
+export { enactBanner };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -36,6 +39,7 @@ export class UI {
   private copyLabels = new Map<string, string>();
   private copyTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private errorTimer: ReturnType<typeof setTimeout> | undefined;
+  private enactTimer: ReturnType<typeof setTimeout> | undefined;
   private rosterKey = '';
   private markers = new Map<string, { key: string; label: string; w: number; h: number }>();
   /** Set by the game: a roster row was clicked, turn the camera to that seat. */
@@ -485,6 +489,31 @@ export class UI {
     el.classList.remove('on');
     void el.offsetWidth;
     el.classList.add('on');
+  }
+
+  /** Big policy-enacted ceremony banner; a second call restarts it. */
+  enact(policy: 'L' | 'F', count: number, chaos: boolean) {
+    const el = $('enact');
+    const b = enactBanner(policy, count, chaos);
+    $('enact-kicker').textContent = b.kicker;
+    $('enact-title').textContent = b.title;
+    $('enact-sub').textContent = b.subtitle;
+    const pips = $('enact-pips');
+    pips.replaceChildren(
+      ...b.pips.map((on) => {
+        const p = document.createElement('span');
+        p.className = on ? 'pip on' : 'pip';
+        return p;
+      }),
+    );
+    const last = b.pips.lastIndexOf(true);
+    if (last >= 0) pips.children[last].classList.add('new');
+    clearTimeout(this.enactTimer);
+    el.classList.remove('hidden', 'liberal', 'fascist', 'on');
+    el.classList.add(b.cls);
+    void el.offsetWidth;
+    el.classList.add('on');
+    this.enactTimer = setTimeout(() => el.classList.add('hidden'), 2500);
   }
 
   addChat(name: string, text: string, self: boolean) {
