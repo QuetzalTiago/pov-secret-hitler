@@ -4,7 +4,7 @@ import type { Power } from '../shared/types';
 import type { GameView } from '../shared/view';
 import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
 import { isMuted, setMuted } from './audio';
-import { enactBanner } from './enact';
+import { ENACT_BANNER_MS, enactBanner } from './enact';
 
 export { enactBanner };
 
@@ -548,7 +548,7 @@ export class UI {
     el.classList.add(b.cls);
     void el.offsetWidth;
     el.classList.add('on');
-    this.enactTimer = setTimeout(() => el.classList.add('hidden'), 2500);
+    this.enactTimer = setTimeout(() => el.classList.add('hidden'), ENACT_BANNER_MS);
   }
 
   addChat(name: string, text: string, self: boolean) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enactBanner } from '../client/enact';
+import { ENACT_BANNER_DELAY_MS, ENACT_BANNER_MS, ceremonyEndsAt, enactBanner } from '../client/enact';
 
 describe('enactBanner', () => {
   it('liberal: title, class, 5 pips', () => {
@@ -32,5 +32,16 @@ describe('enactBanner', () => {
   it('kicker only on chaos', () => {
     expect(enactBanner('F', 2, true).kicker).toBe('CHAOS');
     expect(enactBanner('F', 2, false).kicker).toBe('');
+  });
+});
+
+describe('ceremonyEndsAt', () => {
+  it('banner timings', () => {
+    expect(ENACT_BANNER_DELAY_MS).toBe(650);
+    expect(ENACT_BANNER_MS).toBe(2500);
+  });
+
+  it('ends after the banner delay plus its duration', () => {
+    expect(ceremonyEndsAt(10)).toBeCloseTo(13.15);
   });
 });

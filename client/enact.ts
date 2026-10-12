@@ -19,3 +19,12 @@ export function enactBanner(policy: 'L' | 'F', count: number, chaos: boolean): E
     pips: Array.from({ length: len }, (_, i) => i < filled),
   };
 }
+
+/** The banner appears this long after the 'enacted' event, so the card can reach the board first. */
+export const ENACT_BANNER_DELAY_MS = 650;
+export const ENACT_BANNER_MS = 2500;
+
+/** Game-clock time (seconds) at which an enact ceremony started at `nowSeconds` is over. */
+export function ceremonyEndsAt(nowSeconds: number): number {
+  return nowSeconds + (ENACT_BANNER_DELAY_MS + ENACT_BANNER_MS) / 1000;
+}

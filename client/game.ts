@@ -1,9 +1,10 @@
 // Turns server RoomViews + events into a physical, animated table. Holds no authority.
 import * as THREE from 'three';
 import type { RoomView } from '../shared/protocol';
-import type { ActionBody, GameEvent, Policy } from '../shared/types';
+import type { ActionBody, GameEvent, Policy, Power } from '../shared/types';
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
+import { ENACT_BANNER_DELAY_MS, ceremonyEndsAt } from './enact';
 import { cardConfirmCopy, edgeMarker, hudModel } from './hudmodel';
 import type { Interactable, Interactor } from './interact';
 import { Character } from './scene/characters';
@@ -141,6 +142,9 @@ export class Game {
   private gunQ = new THREE.Quaternion();
   private fallbackAim = new THREE.Vector3(0, 1.2, 0);
   private now = 0;
+  /** Game-clock time the running policy-enacted ceremony ends; power presentation waits for it. */
+  private ceremonyUntil = -Infinity;
+  private deferredPower: { power: Power; president: number; at: number } | null = null;
   private lastHeartbeat = 0;
   private lastSecond = -1;
   deadlineAt: number | null = null;
@@ -291,6 +295,8 @@ export class Game {
     this.tokenMover.set(this.board.slot('tracker', 0).setY(0.014));
     this.board.liberalTiles.concat(this.board.fascistTiles).forEach((t) => (t.visible = false));
     this.pool.forEach((p) => (p.where = 'pile'));
+    this.ceremonyUntil = -Infinity;
+    this.deferredPower = null;
     this.myVote = null;
     this.reveal = null;
     this.envelopeOpen = false;
@@ -536,12 +542,13 @@ export class Game {
           card.boardSlot = this.board.slot(e.policy === 'L' ? 'liberal' : 'fascist', Math.max(0, slot)).add(this.board.group.position);
           this.sendTo(card, 'board');
         }
+        this.ceremonyUntil = ceremonyEndsAt(this.now);
         setTimeout(() => {
           sfx.enact(e.policy);
           duckMusic(2.5);
           this.world.addShake(0.5);
           this.ui.enact(e.policy, (e.policy === 'L' ? v?.liberal : v?.fascist) ?? 0, !!e.chaos);
-        }, 650);
+        }, ENACT_BANNER_DELAY_MS);
         this.ui.toast(
           `${e.chaos ? 'Chaos! The top policy is enacted: ' : ''}${e.policy === 'L' ? 'Liberal' : 'Fascist'} policy enacted.`,
           e.policy === 'L' ? 'liberal' : 'fascist',
@@ -554,22 +561,11 @@ export class Game {
         this.ui.toast('The discard pile is shuffled back into the deck.');
         break;
       case 'power':
-        this.ui.toast(POWER_TEXT[e.power], 'power');
-        if (e.power === 'execute') sfx.cock();
-        if (e.power === 'peek') {
-          sfx.draw();
-          this.pool.forEach((p) => {
-            p.where = 'held';
-            p.holder = e.president;
-            p.face = null;
-            p.mover.hideOnArrive = false;
-            p.card.mesh.position.copy(this.drawPile.topPosition());
-            p.card.mesh.visible = true;
-          });
-          if (e.president === me) this.dropIntoHand();
-        }
+        if (this.now < this.ceremonyUntil) this.deferredPower = { power: e.power, president: e.president, at: this.ceremonyUntil };
+        else this.presentPower(e.power, e.president);
         break;
       case 'peeked':
+        this.deferredPower = null;
         this.pool.forEach((p) => {
           if (p.where === 'held') this.sendTo(p, 'pile');
         });
@@ -625,6 +621,24 @@ export class Game {
     }
   }
 
+  /** Power toast and sound, and for a peek the deal of the top three cards to the President. */
+  private presentPower(power: Power, president: number) {
+    this.ui.toast(POWER_TEXT[power], 'power');
+    if (power === 'execute') sfx.cock();
+    if (power === 'peek') {
+      sfx.draw();
+      this.pool.forEach((p) => {
+        p.where = 'held';
+        p.holder = president;
+        p.face = null;
+        p.mover.hideOnArrive = false;
+        p.card.mesh.position.copy(this.drawPile.topPosition());
+        p.card.mesh.visible = true;
+      });
+      if (president === this.room?.you) this.dropIntoHand();
+    }
+  }
+
   /** Your own cards arrive from above the view and settle into your hand, rather than rising from the table. */
   private dropIntoHand() {
     const cam = this.world.camera;
@@ -649,13 +663,15 @@ export class Game {
   /** Makes card ownership match the authoritative view (also handles reconnects). */
   private reconcilePool() {
     const v = this.view!;
+    // While the peek deal waits for the enact ceremony, nobody holds the cards yet.
+    const peek = v.phase === 'peek' && this.deferredPower?.power !== 'peek';
     const holder =
-      v.phase === 'legPresident' || v.phase === 'peek'
+      v.phase === 'legPresident' || peek
         ? v.president
         : v.phase === 'legChancellor' || v.phase === 'veto'
           ? v.chancellor
           : null;
-    const count = v.phase === 'legPresident' || v.phase === 'peek' ? 3 : holder !== null ? 2 : 0;
+    const count = v.phase === 'legPresident' || peek ? 3 : holder !== null ? 2 : 0;
     let held = this.pool.filter((p) => p.where === 'held');
     if (held.length !== count || held.some((p) => p.holder !== holder)) {
       // Out of sync (e.g. after a reconnect): rebuild ownership without animation.
@@ -710,6 +726,7 @@ export class Game {
     if (!v || me === undefined || v.phase === 'gameOver') return false;
     if (this.envelopeOpen || this.invShown !== null) return true;
     if (this.cardsDone || !v.pending.includes(me)) return false;
+    if (this.deferredPower?.power === 'peek') return false;
     return v.hand !== null || v.peek !== null;
   }
 
@@ -884,6 +901,7 @@ export class Game {
           list.push({ id: 'veto', objects: [this.vetoToken], label: 'Propose a veto', action: true, onClick: () => this.act(a) });
           break;
         case 'peekDone':
+          if (this.deferredPower?.power === 'peek') break;
           this.pool
             .filter((p) => p.where === 'held')
             .forEach((p, i) =>
@@ -1284,6 +1302,16 @@ export class Game {
     tweens.update(dt);
     if (this.inFlight && this.now - this.inFlight.at > 5) this.actionRejected();
     const v = this.view;
+    const dp = this.deferredPower;
+    if (dp && this.now >= dp.at) {
+      this.deferredPower = null;
+      if (v?.phase === dp.power) {
+        this.presentPower(dp.power, dp.president);
+        this.reconcilePool();
+        this.refreshInteractables();
+        this.refreshHud();
+      }
+    }
     this.world.setNight(v?.phase === 'night');
     this.world.setOwnOutfit(v?.yourRole === 'hitler');
     setMusicMood(v?.phase === 'night', !!v && (v.phase === 'execute' || (!!this.shot && this.now < this.shot.until)));
