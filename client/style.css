@@ -286,16 +286,27 @@ body.low-fx #status-bar, body.low-fx #prompt, body.low-fx #stepper, body.low-fx 
 #chat-input:disabled { opacity: 0.5; }
 #gameover, #confirm-leave { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
 /* Policy pick confirmation: sits above the hand so the cards stay visible. */
-#confirm-card { position: absolute; left: 50%; bottom: 28%; transform: translateX(-50%); align-items: center; text-align: center; gap: var(--space-2); }
+#confirm-card { position: absolute; left: 50%; top: max(84px, 10vh); transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); z-index: 12; align-items: center; text-align: center; gap: var(--space-2); }
+#confirm-card.discard { border: 1px solid var(--danger); box-shadow: var(--shadow), 0 0 24px color-mix(in srgb, var(--danger) 35%, transparent); }
+#confirm-card.enact { border: 1px solid var(--ok); box-shadow: var(--shadow), 0 0 24px color-mix(in srgb, var(--ok) 35%, transparent); }
+#confirm-card.enter { animation: cc-in 160ms ease-out; }
+@keyframes cc-in { from { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.97); } to { opacity: 1; transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { #confirm-card.enter { animation: none; } }
+#confirm-card .kicker { font-size: 11px; letter-spacing: 0.2em; color: var(--ink-faint); }
 #confirm-card .verb { font-family: var(--font-display); font-size: 40px; font-weight: 700; letter-spacing: 0.14em; line-height: 1.1; }
 #confirm-card .verb.discard { color: var(--danger); }
 #confirm-card .verb.enact { color: var(--ok); }
-#confirm-card .policy { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; letter-spacing: 0.16em; }
+#confirm-card .policy { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; letter-spacing: 0.16em; }
 #confirm-card .policy.L { color: var(--lib); }
 #confirm-card .policy.F { color: var(--fas); }
-#confirm-card .pip { width: 14px; height: 14px; border-radius: 3px; background: currentColor; }
+#confirm-card .pip { display: flex; align-items: center; justify-content: center; width: 28px; height: 40px; border-radius: 4px; color: #fff; box-shadow: var(--shadow); }
+#confirm-card .policy.L .pip { background: var(--lib); }
+#confirm-card .policy.F .pip { background: var(--fas); }
 #confirm-card p { margin: 0; color: var(--ink-faint); }
 #confirm-card .row { display: flex; gap: var(--space-3); }
+#confirm-card kbd { font: inherit; font-size: 11px; border: 1px solid color-mix(in srgb, currentColor 50%, transparent); border-radius: 4px; padding: 0 4px; margin-left: 6px; opacity: 0.8; }
+#confirm-card.discard button.primary { background: var(--danger); color: #fff; }
+#confirm-card.enact button.primary { background: var(--ok); color: #111; }
 #gameover-title.liberal { color: var(--lib); }
 #gameover-title.fascist { color: var(--fas); }
 #gameover-roles { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }

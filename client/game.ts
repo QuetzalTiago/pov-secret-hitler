@@ -801,8 +801,10 @@ export class Game {
           // Re-check the live legal actions: the pick may be stale.
           const index = this.selectedCard;
           const cur = this.view && !this.inFlight ? legalFromView(this.view).find((l) => l.type === a.type && l.index === index) : undefined;
-          if (cur && index !== null) this.act(cur, index);
-          else this.clearCardSelection();
+          if (cur && index !== null) {
+            this.act(cur, index);
+            this.interactor.relockAfterCards();
+          } else this.clearCardSelection();
         },
         () => {
           this.clearCardSelection();

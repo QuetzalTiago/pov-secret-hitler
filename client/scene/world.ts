@@ -301,7 +301,7 @@ export class World {
     });
     window.addEventListener('keydown', (e) => {
       const k = this.lookKey(e);
-      if (!k) return;
+      if (!k || this.freezeLook) return;
       if (k.startsWith('Arrow')) e.preventDefault();
       this.keys.add(k);
       this.cancelGlance();
@@ -333,6 +333,7 @@ export class World {
 
   /** Briefly turns the view toward `p`, then back; any mouse movement or look key cancels it. */
   glanceAt(p: THREE.Vector3, secs = 2.2) {
+    if (this.freezeLook) return;
     if (this.glanceUntil <= 0) this.glancePrev = { yaw: this.targetYaw, pitch: this.targetPitch };
     const a = lookAngles(this.camera.position, p);
     this.targetYaw = a.yaw;
@@ -350,7 +351,7 @@ export class World {
   /** Disable capture with ?nolock (tests) or in browsers without pointer lock. */
   lockAllowed = !new URLSearchParams(location.search).has('nolock') && 'requestPointerLock' in HTMLElement.prototype;
   onLockChange: (locked: boolean) => void = () => {};
-  /** Holds the view still while the free cursor picks a card. */
+  /** Holds the view completely still (no cursor follow, look keys, glances or head bob) while a card is picked. */
   freezeLook = false;
 
   requestLock() {
@@ -817,13 +818,19 @@ export class World {
   update(dt: number) {
     this.time += dt;
     const t = this.time;
+    if (this.freezeLook) {
+      this.glanceUntil = 0;
+      this.targetYaw = this.yaw;
+      this.targetPitch = this.pitch;
+    }
     if (this.glanceUntil > 0 && t >= this.glanceUntil) {
       this.glanceUntil = 0;
       this.targetYaw = this.glancePrev.yaw;
       this.targetPitch = this.glancePrev.pitch;
     }
-    const h = (+this.keys.has('a') || +this.keys.has('ArrowLeft')) - (+this.keys.has('d') || +this.keys.has('ArrowRight'));
-    const v = (+this.keys.has('w') || +this.keys.has('ArrowUp')) - (+this.keys.has('s') || +this.keys.has('ArrowDown'));
+    const frozen = this.freezeLook;
+    const h = frozen ? 0 : (+this.keys.has('a') || +this.keys.has('ArrowLeft')) - (+this.keys.has('d') || +this.keys.has('ArrowRight'));
+    const v = frozen ? 0 : (+this.keys.has('w') || +this.keys.has('ArrowUp')) - (+this.keys.has('s') || +this.keys.has('ArrowDown'));
     if (h) this.targetYaw = clampLook(this.targetYaw + h * KEY_LOOK * dt, -YAW_LIMIT, YAW_LIMIT);
     if (v) this.targetPitch = clampLook(this.targetPitch + v * KEY_LOOK * dt, PITCH_MIN, PITCH_MAX);
     // Camera look with clamped yaw/pitch, plus shake.
@@ -836,7 +843,7 @@ export class World {
     this.shake = Math.max(0, this.shake - dt * 1.6);
     const sh = this.shake * this.shake * 0.06;
     let camX = eye.x;
-    let camY = eye.y + Math.sin(t * 0.9) * 0.004;
+    let camY = eye.y + (frozen ? 0 : Math.sin(t * 0.9) * 0.004);
     let camZ = eye.z;
     let camPitch = basePitch + this.pitch;
     let camYaw = baseYaw + this.yaw;

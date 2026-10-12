@@ -64,12 +64,16 @@ export class Interactor {
       }
       const id = this.pick(this.world.aimNdc());
       if (id) this.activate(id);
-      // Card picked: take the mouse back (still inside the click gesture, so the browser allows it).
-      if (this.releasedForCards && this.lockable && !this.cardMode()) {
-        this.releasedForCards = false;
-        this.world.requestLock();
-      }
+      this.relockAfterCards();
     });
+  }
+
+  /** After a card pick, takes the mouse back; call inside a user gesture so the browser allows it. */
+  relockAfterCards() {
+    if (this.releasedForCards && this.lockable && !this.cardMode()) {
+      this.releasedForCards = false;
+      this.world.requestLock();
+    }
   }
 
   set(list: Interactable[]) {

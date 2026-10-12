@@ -232,8 +232,15 @@ export class UI {
     $('cc-policy-row').className = `policy ${copy.face}`;
     $('cc-policy').textContent = copy.policy;
     $('cc-detail').textContent = copy.detail;
-    $('cc-confirm').textContent = copy.confirm;
-    $('confirm-card').classList.remove('hidden');
+    $('cc-confirm-label').textContent = copy.confirm;
+    $('cc-policy-row').querySelector('.pip')!.textContent = copy.face;
+    const card = $('confirm-card');
+    const discard = copy.verb === 'DISCARD';
+    card.classList.toggle('discard', discard);
+    card.classList.toggle('enact', !discard);
+    card.classList.remove('hidden', 'enter');
+    void card.offsetWidth;
+    card.classList.add('enter');
   }
 
   hideCardConfirm() {
