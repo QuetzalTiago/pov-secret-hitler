@@ -3,8 +3,8 @@
 // get angry at being ignored, and start accusations of their own. See bottalk.ts for how a line is written.
 import { randomBytes, randomInt } from 'node:crypto';
 import { RuleError, createGame, legalActions, pendingActors, reduce } from '../shared/engine';
-import { QUICK_START_SEATS } from '../shared/protocol';
-import type { RoomView, SeatInfo, ServerMsg, Series } from '../shared/protocol';
+import { DEFAULT_OPTIONS, PACES, QUICK_START_SEATS } from '../shared/protocol';
+import type { Pace, RoomView, SeatInfo, ServerMsg, Series, TableOptions } from '../shared/protocol';
 import { MAX_PLAYERS, MIN_PLAYERS } from '../shared/rules';
 import type { ActionBody, GameEvent, GameState, Phase } from '../shared/types';
 import { newMemory, observe, profiles, type Memory } from '../shared/tracker';
@@ -21,7 +21,7 @@ import { llmEnabled } from './llm';
 import { BOT_NAMES, personaFor, pickBotName, tooSimilar, type Persona } from './persona';
 import { decide, decideNow } from './brain';
 import { config } from './config';
-import { botTempo, botThinkMs, choiceFactor, settleMs } from './pacing';
+import { PACE_FACTOR, botTempo, botThinkMs, choiceFactor, settleMs } from './pacing';
 
 export interface Conn {
   id: number;
@@ -72,6 +72,7 @@ export class Room {
   private closed = false;
   /** Running score of games at this table; wins are keyed by player name (seats get re-indexed). */
   series: Series = { liberal: 0, fascist: 0, wins: {} };
+  options: TableOptions = { ...DEFAULT_OPTIONS };
   /** Seat tokens of humans who pressed Play again after the game ended. */
   private ready = new Set<string>();
   /** Per-seat memory built from that seat's own view (bots read it; it never leaves the server). */
@@ -299,6 +300,7 @@ export class Room {
       game: this.game,
       memories: this.memories.map((m) => ({ ...m, known: [...m.known.entries()] })),
       series: this.series,
+      options: this.options,
     };
   }
 
@@ -313,6 +315,7 @@ export class Room {
     room.host = snap.host;
     room.game = snap.game;
     room.series = validSeries(snap.series);
+    room.options = validOptions(snap.options);
     room.memories = (snap.memories ?? []).map((m) => ({ ...m, known: new Map(m.known) }) as Memory);
     if (room.game && room.memories.length !== room.game.players.length) {
       room.memories = room.game.players.map((p) => newMemory(p.seat, room.game!.players.length));
@@ -328,6 +331,19 @@ export class Room {
   }
 
   // ---------- host controls ----------
+
+  private paceFactor() {
+    return PACE_FACTOR[this.options.pace];
+  }
+
+  /** Host-only, lobby-only: merges the given table options and tells everyone. */
+  setOptions(conn: Conn, opts: { pace?: Pace }): string | null {
+    if (!this.isHost(conn)) return 'Only the host can change table options.';
+    if (this.stage !== 'lobby') return 'The game has started.';
+    if (opts.pace) this.options = { ...this.options, pace: opts.pace };
+    this.broadcast();
+    return null;
+  }
 
   private isHost(conn: Conn) {
     return this.seatOf(conn) === this.host;
@@ -503,7 +519,7 @@ export class Room {
     this.timerKey = key;
     this.clearTimer();
     if (g.phase === 'gameOver') return;
-    const ms = PHASE_SECONDS[g.phase] * 1000 * config.timerScale;
+    const ms = PHASE_SECONDS[g.phase] * 1000 * config.timerScale * this.paceFactor();
     this.deadline = Date.now() + ms;
     this.timer = setTimeout(() => {
       try {
@@ -586,9 +602,9 @@ export class Room {
       if (this.botPlans.has(seat)) continue;
       const now = Date.now();
       const factor = g.phase === 'legPresident' || g.phase === 'legChancellor' ? choiceFactor(viewFor(g, seat).hand) : 1;
-      let readyAt = now + settle + botThinkMs(g.phase) * botTempo(this.seatName(seat)) * factor;
+      let readyAt = now + (settle + botThinkMs(g.phase) * botTempo(this.seatName(seat)) * factor) * this.paceFactor();
       // Never let a bot sit on its move until the phase timer takes over.
-      if (this.deadline !== null) readyAt = Math.min(readyAt, Math.max(now, this.deadline - 5000 * config.timerScale));
+      if (this.deadline !== null) readyAt = Math.min(readyAt, Math.max(now, this.deadline - 5000 * config.timerScale * this.paceFactor()));
       this.botPlans.set(seat, { key, readyAt, timer: null, held: false, decision: this.decideFor(seat) });
     }
     for (const [seat, plan] of this.botPlans) {
@@ -1184,6 +1200,7 @@ export class Room {
       game: this.game ? viewFor(this.game, seat) : null,
       events,
       series: this.series,
+      options: this.options,
       deadlineMs: this.deadline === null ? null : Math.max(0, this.deadline - Date.now()),
     };
   }
@@ -1206,9 +1223,15 @@ export interface RoomSnapshot {
   game: GameState | null;
   memories: StoredMemory[];
   series?: Series;
+  options?: TableOptions;
 }
 
 const isCount = (n: unknown) => typeof n === 'number' && Number.isFinite(n);
+
+function validOptions(o: unknown): TableOptions {
+  const pace = PACES.find((p) => p === (o as TableOptions | undefined)?.pace);
+  return pace ? { pace } : { ...DEFAULT_OPTIONS };
+}
 
 function validSeries(s: unknown): Series {
   const x = s as Series | undefined;

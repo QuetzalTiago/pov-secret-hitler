@@ -1,5 +1,5 @@
 // DOM overlay: lobby, HUD, prompt, timer, chat, toasts, credits, game over. Always textContent, never innerHTML with user data.
-import type { RoomView, Series } from '../shared/protocol';
+import { PACES, type Pace, type RoomView, type Series } from '../shared/protocol';
 import type { Power } from '../shared/types';
 import type { GameView, PlayerView } from '../shared/view';
 import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
@@ -18,6 +18,7 @@ export interface UIHandlers {
   quickStart(name: string): void;
   join(code: string, name: string): void;
   addBot(): void;
+  setPace(pace: Pace): void;
   removeBot(): void;
   start(): void;
   leave(): void;
@@ -119,6 +120,7 @@ export class UI {
     $<HTMLInputElement>('code').addEventListener('keydown', (e) => e.key === 'Enter' && $('join').click());
     nameInput.addEventListener('keydown', (e) => e.key === 'Enter' && $(this.invite ? 'join' : 'create').click());
     $('add-bot').onclick = () => h.addBot();
+    for (const pace of PACES) $(`pace-${pace}`).onclick = () => h.setPace(pace);
     $('remove-bot').onclick = () => h.removeBot();
     $('start').onclick = () => h.start();
     $('lobby-leave').onclick = () => h.leave();
@@ -383,6 +385,14 @@ export class UI {
       const isHost = room.you === room.host;
       $('host-controls').classList.toggle('hidden', !isHost);
       $('guest-note').classList.toggle('hidden', isHost);
+      for (const p of PACES) {
+        const on = p === room.options.pace;
+        $(`pace-${p}`).classList.toggle('active', on);
+        $(`pace-${p}`).setAttribute('aria-pressed', String(on));
+      }
+      const pace = room.options.pace;
+      $('pace-note').textContent = `Pace: ${pace[0].toUpperCase()}${pace.slice(1)}`;
+      $('pace-note').classList.toggle('hidden', isHost);
       const n = room.seats.length;
       $<HTMLButtonElement>('start').disabled = n < 5;
       $<HTMLButtonElement>('add-bot').disabled = n >= 10;

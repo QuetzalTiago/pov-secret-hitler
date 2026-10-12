@@ -1,3 +1,4 @@
+import type { Pace } from '../shared/protocol';
 import type { GameEvent, Phase, Policy } from '../shared/types';
 import { config } from './config';
 
@@ -40,3 +41,6 @@ export function botTempo(name: string): number {
 export function choiceFactor(hand: readonly Policy[] | null | undefined): number {
   return hand && hand.length >= 2 && hand.every((p) => p === hand[0]) ? 0.6 : 1;
 }
+
+/** Table Pace multiplier on bot think, bot settle and phase timers; everything stays proportional to config.botDelayMs. */
+export const PACE_FACTOR: Record<Pace, number> = { relaxed: 1.5, normal: 1, fast: 0.5 };

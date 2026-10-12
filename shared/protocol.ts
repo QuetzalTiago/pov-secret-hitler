@@ -8,6 +8,16 @@ export const MAX_CHAT = 200;
 export const QUICK_START_SEATS = 7;
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 
+/** Table pace: scales bot think/settle time and human phase timers. */
+export type Pace = 'relaxed' | 'normal' | 'fast';
+export const PACES: readonly Pace[] = ['relaxed', 'normal', 'fast'];
+
+/** Host-chosen table options. A bot `difficulty` field may be added here later (Smarter bots spike #173). */
+export interface TableOptions {
+  pace: Pace;
+}
+export const DEFAULT_OPTIONS: TableOptions = { pace: 'normal' };
+
 export type ClientMsg =
   | { t: 'create'; name: string }
   | { t: 'quickStart'; name: string }
@@ -15,6 +25,7 @@ export type ClientMsg =
   | { t: 'resume'; code: string; token: string }
   | { t: 'addBot' }
   | { t: 'removeBot' }
+  | { t: 'setOptions'; pace?: Pace }
   | { t: 'start' }
   | { t: 'act'; a: ActionBody }
   | { t: 'chat'; text: string }
@@ -49,6 +60,7 @@ export interface RoomView {
   game: GameView | null;
   events: GameEvent[];
   series: Series;
+  options: TableOptions;
   deadlineMs: number | null; // ms remaining on the phase timer
 }
 
@@ -150,6 +162,10 @@ export function parseClientMsg(raw: string): ClientMsg | null {
       if (typeof m.text !== 'string' || m.text.length > MAX_CHAT * 2) return null;
       const text = cleanText(m.text, MAX_CHAT);
       return text ? { t: 'chat', text } : null;
+    }
+    case 'setOptions': {
+      const pace = PACES.find((p) => p === m.pace);
+      return pace ? { t: 'setOptions', pace } : null;
     }
     case 'addBot':
     case 'removeBot':

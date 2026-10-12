@@ -138,6 +138,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 button:disabled { opacity: 0.4; cursor: not-allowed; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 button.primary:hover:not(:disabled) { background: var(--hover); border-color: var(--hover); color: var(--accent-ink); }
+button.pace-btn.active { background: rgba(255, 240, 220, 0.14); border-color: var(--accent); }
 button.danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
 button.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 18%, transparent); border-color: var(--danger); color: var(--danger); }
 button.icon { width: 36px; height: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; }

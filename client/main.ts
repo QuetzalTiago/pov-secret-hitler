@@ -72,6 +72,7 @@ const ui = new UI({
   rematch: () => net.send({ t: 'rematch' }),
   playAgain: () => net.send({ t: 'playAgain' }),
   redeal: () => net.send({ t: 'redeal' }),
+  setPace: (pace) => net.send({ t: 'setOptions', pace }),
 });
 
 const world = new World(document.getElementById('app')!);

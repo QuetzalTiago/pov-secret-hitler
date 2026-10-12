@@ -57,12 +57,18 @@
         <p id="lobby-record" class="sub hidden"></p>
         <ul id="seats"></ul>
         <div id="host-controls">
+          <div id="pace" class="row" role="group" aria-label="Pace">
+            <button id="pace-relaxed" class="pace-btn">Relaxed</button>
+            <button id="pace-normal" class="pace-btn">Normal</button>
+            <button id="pace-fast" class="pace-btn">Fast</button>
+          </div>
           <div class="row">
             <button id="add-bot">+ Bot</button>
             <button id="remove-bot">− Bot</button>
           </div>
           <button id="start" class="primary">Deal the roles</button>
         </div>
+        <p id="pace-note" class="sub hidden"></p>
         <p id="guest-note" class="sub hidden">Waiting for the host to deal…</p>
         <div id="lobby-chat"></div>
         <button id="lobby-leave" class="link">Leave table</button>
