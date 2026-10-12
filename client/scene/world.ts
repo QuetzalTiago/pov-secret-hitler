@@ -10,7 +10,7 @@ import { disposeObject } from './dispose';
 import { handGeometry } from './hands';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
 import { CigaretteSmoke } from './smoke';
-import { ease, sequence, tween, type Tween } from './tween';
+import { ease } from './tween';
 import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles } from './look';
 import {
   feltTexture, glowTexture, markSharedTexture, plankTexture, smokeTexture, textSprite, wallTexture, woodTexture,
@@ -167,9 +167,6 @@ export class World {
   danger = 0;
   private dangerLevel = 0;
   private dangerPhase = 0;
-  punch = 0;
-  private punchAt = new THREE.Vector3();
-  private punchSeq: Tween | null = null;
   private flashSprite: THREE.Sprite;
   private flashLife = 0;
   private flashAge = 0;
@@ -799,17 +796,6 @@ export class World {
     }
   }
 
-  /** Brief camera push toward a point (the victim) and back. */
-  punchIn(at: THREE.Vector3) {
-    this.punchAt.copy(at);
-    this.punchSeq?.cancel();
-    this.punchSeq = sequence([
-      () => tween<World>(this, { punch: 1 }, { dur: 0.12, ease: ease.outQuad }),
-      () => tween<World>(this, { punch: 1 }, { dur: 0.35 }),
-      () => tween<World>(this, { punch: 0 }, { dur: 0.7, ease: ease.inOutCubic }),
-    ]);
-  }
-
   track(m: Mover) {
     this.movers.add(m);
     return m;
@@ -842,29 +828,12 @@ export class World {
     const basePitch = BASE_PITCH;
     this.shake = Math.max(0, this.shake - dt * 1.6);
     const sh = this.shake * this.shake * 0.06;
-    let camX = eye.x;
-    let camY = eye.y + (frozen ? 0 : Math.sin(t * 0.9) * 0.004);
-    let camZ = eye.z;
-    let camPitch = basePitch + this.pitch;
-    let camYaw = baseYaw + this.yaw;
-    let fov = 68;
-    if (this.punch > 0) {
-      const dx = this.punchAt.x - camX;
-      const dy = this.punchAt.y - camY;
-      const dz = this.punchAt.z - camZ;
-      const flat = Math.hypot(dx, dz);
-      const dist = Math.hypot(flat, dy) || 1;
-      const step = (0.22 * this.punch) / dist;
-      camX += dx * step;
-      camY += dy * step;
-      camZ += dz * step;
-      // Camera looks down -Z at yaw 0 and yaw turns it toward -X.
-      let dyaw = Math.atan2(-dx, -dz) - camYaw;
-      dyaw -= Math.PI * 2 * Math.round(dyaw / (Math.PI * 2));
-      camYaw += dyaw * 0.6 * this.punch;
-      camPitch += (Math.atan2(dy, flat) - camPitch) * 0.6 * this.punch;
-      fov = 68 - 14 * this.punch;
-    }
+    const camX = eye.x;
+    const camY = eye.y + (frozen ? 0 : Math.sin(t * 0.9) * 0.004);
+    const camZ = eye.z;
+    const camPitch = basePitch + this.pitch;
+    const camYaw = baseYaw + this.yaw;
+    const fov = 68;
     if (fov !== this.camera.fov) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();

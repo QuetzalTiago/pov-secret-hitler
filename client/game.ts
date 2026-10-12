@@ -238,9 +238,6 @@ export class Game {
         if (v.phase !== 'vote') this.myVote = null;
         this.pendingIndex = null;
       }
-      if (v.phase === 'nominate' && prevPhase !== 'nominate' && v.president !== room.you && !this.cardMode()) {
-        this.world.glanceAt(this.world.layout.head(v.president), 1.8);
-      }
       if (v.phase === 'night' && prevPhase !== 'night') this.envelopeOpen = false;
       if (v.phase !== 'night' && prevPhase === 'night') this.envelopeOpen = false;
       this.reconcilePool();
@@ -491,10 +488,8 @@ export class Game {
       case 'nominated':
         sfx.slide();
         this.pointAt = { by: e.president, target: e.target, until: this.now + 2.5 };
-        if (e.target === me) {
-          this.world.glanceAt(this.world.layout.head(e.president), 2.5);
-          this.ui.toast(`${this.name(e.president)} nominates YOU for Chancellor!`, 'power');
-        } else this.ui.toast(`${this.subj(e.president, 'nominate')} ${this.name(e.target)} for Chancellor.`);
+        if (e.target === me) this.ui.toast(`${this.name(e.president)} nominates YOU for Chancellor!`, 'power');
+        else this.ui.toast(`${this.subj(e.president, 'nominate')} ${this.name(e.target)} for Chancellor.`);
         this.chars.get(e.target)?.react('recoil', 0.15);
         break;
       case 'voted':
@@ -630,7 +625,6 @@ export class Game {
         const muzzle = new THREE.Vector3(0, 0, -0.2).applyMatrix4(this.gun.matrixWorld);
         const dir = new THREE.Vector3(0, 0, -1).transformDirection(this.gun.matrixWorld);
         this.world.flash(muzzle, dir);
-        if (e.target !== me) this.world.punchIn(this.world.layout.head(e.target));
         this.slowmoClock = 0;
         this.ui.flash();
         this.ui.toast(e.target === me ? 'You have been executed.' : `${this.name(e.target)} has been executed.`, 'bad');
