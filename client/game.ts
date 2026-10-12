@@ -56,8 +56,8 @@ export class Game {
   private board = new Board();
   private drawPile: Pile;
   private discardPile: Pile;
-  private presPlacard = new Placard('PRESIDENT', '#d6a84a');
-  private chanPlacard = new Placard('CHANCELLOR', '#c9c2b0');
+  private presPlacard = new Placard('PRESIDENT', '#FBB969');
+  private chanPlacard = new Placard('CHANCELLOR', '#F7E1C3');
   private presMover: Mover;
   private chanMover: Mover;
   private envelope = new Envelope();
@@ -193,7 +193,7 @@ export class Game {
     this.jaMover = world.track(new Mover(this.ja.mesh));
     this.neinMover = world.track(new Mover(this.nein.mesh));
 
-    const vt = labelTexture('VETO', '#ff8a7a', '#3a0f0a');
+    const vt = labelTexture('VETO', '#F2654A', '#231F20');
     const edge = new THREE.MeshStandardMaterial({ color: 0x3a0f0a });
     this.vetoToken = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.08), [
       edge, edge, new THREE.MeshStandardMaterial({ map: vt, emissive: 0xffffff, emissiveMap: vt, emissiveIntensity: 0.3 }), edge, edge, edge,

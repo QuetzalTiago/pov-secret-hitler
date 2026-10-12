@@ -315,12 +315,12 @@ export class Character {
     this.head.add(new THREE.Mesh(hatGeometry(kind), hatMat));
   }
 
-  setLabel(text: string, color = '#f0e6d2') {
+  setLabel(text: string, color = '#F7E1C3') {
     const key = text + color;
     if (key === this.tagText) return;
     this.tagText = key;
     const old = this.tag.material.map;
-    const { texture, aspect } = textSprite(text, { color, bg: 'rgba(10,6,4,0.72)', size: 34, border: 'rgba(214,168,74,0.5)' });
+    const { texture, aspect } = textSprite(text, { color, bg: 'rgba(35,31,32,0.82)', size: 34, border: 'rgba(251,185,105,0.6)' });
     this.tag.material.map = texture;
     this.tag.material.needsUpdate = true;
     this.tag.scale.set(0.16 * aspect, 0.16, 1);
@@ -333,7 +333,7 @@ export class Character {
       this.bubble.material.map?.dispose();
       this.bubble.material.dispose();
     }
-    const { texture, aspect } = textSprite(text, { color: '#1a120c', bg: 'rgba(245,236,214,0.95)', size: 30, maxWidth: 440 });
+    const { texture, aspect } = textSprite(text, { color: '#231F20', bg: 'rgba(247,225,195,0.96)', size: 30, maxWidth: 440, border: 'rgba(35,31,32,0.85)' });
     this.bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
     const h = 0.12 * (texture.image.height / 50);
     this.bubble.scale.set(h * aspect, h, 1);

@@ -238,33 +238,115 @@ function centerText(g: CanvasRenderingContext2D, text: string, x: number, y: num
   g.fillText(text, x, y);
 }
 
-/** An original emblem: a dove-like chevron (liberal) or an angular raven head (fascist). */
-function emblem(g: CanvasRenderingContext2D, kind: 'L' | 'F', cx: number, cy: number, s: number, color: string) {
-  g.fillStyle = color;
+/** Fills and inks a closed polygon given as [x, y] pairs, mirrored across the vertical axis when `m` is -1. */
+function inkPoly(g: CanvasRenderingContext2D, pts: number[][], cx: number, cy: number, s: number, m: number) {
   g.beginPath();
-  if (kind === 'L') {
-    g.moveTo(cx - s, cy - s * 0.1);
-    g.quadraticCurveTo(cx - s * 0.4, cy - s * 0.9, cx, cy - s * 0.2);
-    g.quadraticCurveTo(cx + s * 0.4, cy - s * 0.9, cx + s, cy - s * 0.1);
-    g.quadraticCurveTo(cx + s * 0.3, cy + s * 0.05, cx, cy + s * 0.7);
-    g.quadraticCurveTo(cx - s * 0.3, cy + s * 0.05, cx - s, cy - s * 0.1);
-  } else {
-    g.moveTo(cx - s * 0.7, cy + s * 0.7);
-    g.lineTo(cx - s * 0.5, cy - s * 0.4);
-    g.lineTo(cx, cy - s * 0.85);
-    g.lineTo(cx + s * 0.55, cy - s * 0.45);
-    g.lineTo(cx + s * 1.05, cy - s * 0.25);
-    g.lineTo(cx + s * 0.5, cy - s * 0.05);
-    g.lineTo(cx + s * 0.7, cy + s * 0.7);
-  }
+  pts.forEach(([x, y], i) => (i ? g.lineTo(cx + x * s * m, cy + y * s) : g.moveTo(cx + x * s * m, cy + y * s)));
   g.closePath();
   g.fill();
-  if (kind === 'F') {
-    g.fillStyle = 'rgba(0,0,0,0.6)';
+  g.stroke();
+}
+
+/**
+ * Original flat emblems with a thick ink outline: a stylised bird in flight, seen from the front,
+ * with art-deco stepped wing tiers (liberal), or a geometric skull (fascist). Both fit within +-s.
+ */
+function emblem(g: CanvasRenderingContext2D, kind: 'L' | 'F', cx: number, cy: number, s: number, color: string, ink = COLORS.ink) {
+  g.save();
+  g.fillStyle = color;
+  g.strokeStyle = ink;
+  g.lineWidth = s * 0.08;
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  if (kind === 'L') {
+    // Tail: a small fan of three feathers below the body (y 0.35..1.0).
+    inkPoly(g, [[0, 0.35], [-0.32, 0.92], [-0.12, 0.84], [0, 1], [0.12, 0.84], [0.32, 0.92]], cx, cy, s, 1);
+    // Wings, mirrored: three stepped tiers, lowest first so the upper tiers overlap it.
+    for (const m of [1, -1]) {
+      inkPoly(g, [[0.1, 0.08], [0.4, -0.15], [0.75, -0.1], [0.55, 0.15], [0.2, 0.3]], cx, cy, s, m);
+      inkPoly(g, [[0.1, -0.1], [0.45, -0.45], [0.9, -0.4], [0.7, -0.15], [0.25, 0.08]], cx, cy, s, m);
+      inkPoly(g, [[0.1, -0.3], [0.5, -0.8], [1, -0.7], [0.8, -0.45], [0.3, -0.1]], cx, cy, s, m);
+    }
+    // Body: a teardrop with the head at the top and a point toward the tail.
     g.beginPath();
-    g.arc(cx + s * 0.1, cy - s * 0.4, s * 0.1, 0, Math.PI * 2);
+    g.moveTo(cx, cy - s * 0.8);
+    g.bezierCurveTo(cx + s * 0.32, cy - s * 0.8, cx + s * 0.3, cy - s * 0.35, cx + s * 0.22, cy);
+    g.quadraticCurveTo(cx + s * 0.14, cy + s * 0.4, cx, cy + s * 0.62);
+    g.quadraticCurveTo(cx - s * 0.14, cy + s * 0.4, cx - s * 0.22, cy);
+    g.bezierCurveTo(cx - s * 0.3, cy - s * 0.35, cx - s * 0.32, cy - s * 0.8, cx, cy - s * 0.8);
+    g.closePath();
     g.fill();
+    g.stroke();
+    // Beak and eyes.
+    g.fillStyle = ink;
+    g.beginPath();
+    g.moveTo(cx - s * 0.07, cy - s * 0.55);
+    g.lineTo(cx + s * 0.07, cy - s * 0.55);
+    g.lineTo(cx, cy - s * 0.4);
+    g.closePath();
+    g.fill();
+    for (const m of [1, -1]) {
+      g.beginPath();
+      g.arc(cx + m * s * 0.1, cy - s * 0.66, s * 0.04, 0, Math.PI * 2);
+      g.fill();
+    }
+  } else {
+    // Skull outline: rounded cranium (top at about -0.92), cheek steps, a square jaw block (bottom 0.95).
+    g.beginPath();
+    g.moveTo(cx - s * 0.8, cy - s * 0.1);
+    g.bezierCurveTo(cx - s * 0.8, cy - s * 1.2, cx + s * 0.8, cy - s * 1.2, cx + s * 0.8, cy - s * 0.1);
+    g.lineTo(cx + s * 0.8, cy + s * 0.1);
+    g.lineTo(cx + s * 0.55, cy + s * 0.25);
+    g.lineTo(cx + s * 0.55, cy + s * 0.95);
+    g.lineTo(cx - s * 0.55, cy + s * 0.95);
+    g.lineTo(cx - s * 0.55, cy + s * 0.25);
+    g.lineTo(cx - s * 0.8, cy + s * 0.1);
+    g.closePath();
+    g.fill();
+    g.stroke();
+    // Cut-outs in ink: slanted angular eye sockets and a triangular nose.
+    g.fillStyle = ink;
+    for (const m of [1, -1]) {
+      g.beginPath();
+      g.moveTo(cx + m * s * 0.62, cy - s * 0.3);
+      g.lineTo(cx + m * s * 0.12, cy - s * 0.2);
+      g.lineTo(cx + m * s * 0.2, cy + s * 0.15);
+      g.lineTo(cx + m * s * 0.55, cy + s * 0.1);
+      g.closePath();
+      g.fill();
+    }
+    g.beginPath();
+    g.moveTo(cx, cy + s * 0.1);
+    g.lineTo(cx - s * 0.12, cy + s * 0.45);
+    g.lineTo(cx + s * 0.12, cy + s * 0.45);
+    g.closePath();
+    g.fill();
+    // Teeth: a row line plus four gaps across the jaw.
+    g.strokeStyle = ink;
+    g.lineWidth = s * 0.06;
+    g.lineCap = 'butt';
+    g.beginPath();
+    g.moveTo(cx - s * 0.55, cy + s * 0.62);
+    g.lineTo(cx + s * 0.55, cy + s * 0.62);
+    for (const x of [-0.33, -0.11, 0.11, 0.33]) {
+      g.moveTo(cx + x * s, cy + s * 0.62);
+      g.lineTo(cx + x * s, cy + s * 0.95);
+    }
+    g.stroke();
   }
+  g.restore();
+}
+
+/** Outer ink edge of a card, drawn inside the canvas. */
+function inkEdge(g: CanvasRenderingContext2D, w: number, h: number, width = 6) {
+  frame(g, w, h, COLORS.ink, width / 2, width);
+}
+
+/** A cream panel inset from the card edge with an ink outline. */
+function panel(g: CanvasRenderingContext2D, w: number, h: number, inset: number, outline = 3) {
+  g.fillStyle = COLORS.paper;
+  g.fillRect(inset, inset, w - inset * 2, h - inset * 2);
+  frame(g, w, h, COLORS.ink, inset, outline);
 }
 
 export function policyFace(p: 'L' | 'F') {
@@ -272,43 +354,60 @@ export function policyFace(p: 'L' | 'F') {
     const lib = p === 'L';
     g.fillStyle = lib ? COLORS.liberal : COLORS.fascist;
     g.fillRect(0, 0, w, h);
-    g.fillStyle = lib ? COLORS.liberalLight : COLORS.fascistLight;
-    g.fillRect(16, 16, w - 32, h - 32);
-    frame(g, w, h, lib ? COLORS.liberal : COLORS.fascist, 24, 3);
-    emblem(g, p, w / 2, h * 0.42, 62, lib ? COLORS.liberal : COLORS.fascist);
-    centerText(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.75, `bold 34px ${DISPLAY}`, lib ? COLORS.liberal : COLORS.fascist);
-    centerText(g, 'ARTICLE', w / 2, h * 0.84, `16px ${MONO}`, COLORS.ink);
+    inkEdge(g, w, h);
+    panel(g, w, h, 20);
+    emblem(g, p, w / 2, h * 0.4, 66, lib ? COLORS.liberal : COLORS.fascist);
+    centerText(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.74, `800 40px ${DISPLAY}`, lib ? COLORS.liberalDeep : COLORS.fascistDeep);
+    centerText(g, 'P O L I C Y', w / 2, h * 0.84, `bold 16px ${MONO}`, COLORS.ink);
     grain(g, w, h, 12, p === 'L' ? 2 : 4);
   });
 }
 
 export function cardBack(label = 'POLICY') {
   return tex(`back-${label}`, 256, 360, (g, w, h) => {
-    g.fillStyle = '#3a2a1c';
+    g.fillStyle = COLORS.ochre;
     g.fillRect(0, 0, w, h);
-    g.strokeStyle = '#6e5233';
-    g.lineWidth = 2;
+    g.strokeStyle = COLORS.kraft;
+    g.lineWidth = 4;
     for (let i = -h; i < w + h; i += 18) {
       g.beginPath();
       g.moveTo(i, 0);
       g.lineTo(i + h, h);
       g.stroke();
     }
-    g.fillStyle = '#2a1d12';
-    g.fillRect(40, h / 2 - 34, w - 80, 68);
-    frame(g, w, h, COLORS.gold, 14, 3);
-    centerText(g, label, w / 2, h / 2, `bold 30px ${DISPLAY}`, COLORS.gold);
+    inkEdge(g, w, h);
+    g.fillStyle = COLORS.ink;
+    g.fillRect(30, h / 2 - 38, w - 60, 76);
+    g.strokeStyle = COLORS.ochre;
+    g.lineWidth = 2;
+    g.strokeRect(36, h / 2 - 32, w - 72, 64);
+    centerText(g, label, w / 2, h / 2 + 1, `800 30px ${DISPLAY}`, COLORS.ochre);
     grain(g, w, h, 12, 8);
   });
 }
 
 export function ballotFace(ja: boolean) {
   return tex(`ballot-${ja}`, 256, 360, (g, w, h) => {
-    g.fillStyle = ja ? '#e9dfc4' : '#2a2320';
+    g.fillStyle = COLORS.paper;
     g.fillRect(0, 0, w, h);
-    frame(g, w, h, ja ? '#2a2320' : '#e9dfc4', 14, 4);
-    centerText(g, ja ? 'JA!' : 'NEIN', w / 2, h / 2, `bold ${ja ? 96 : 76}px ${DISPLAY}`, ja ? '#2a2320' : '#e9dfc4');
-    centerText(g, 'BALLOT', w / 2, h * 0.85, `18px ${MONO}`, ja ? '#6b5d48' : '#9c8f7a');
+    inkEdge(g, w, h);
+    frame(g, w, h, COLORS.ink, 14, 2);
+    // Corner mark: a round stamp for JA, a square one for NEIN.
+    g.fillStyle = COLORS.ink;
+    if (ja) {
+      g.beginPath();
+      g.arc(40, 44, 12, 0, Math.PI * 2);
+      g.fill();
+    } else {
+      g.fillRect(28, 32, 24, 24);
+    }
+    // The vote word, tilted like a rubber stamp.
+    g.save();
+    g.translate(w / 2, h / 2);
+    g.rotate(((ja ? -6 : 6) * Math.PI) / 180);
+    centerText(g, ja ? 'JA!' : 'NEIN!', 0, 0, `800 ${ja ? 104 : 80}px ${DISPLAY}`, COLORS.ink);
+    g.restore();
+    centerText(g, 'BALLOT', w / 2, h * 0.88, `bold 18px ${MONO}`, COLORS.ink);
     grain(g, w, h, 12, ja ? 1 : 6);
   });
 }
@@ -316,17 +415,17 @@ export function ballotFace(ja: boolean) {
 export function roleCard(role: 'liberal' | 'fascist' | 'hitler') {
   return tex(`role-${role}`, 256, 360, (g, w, h) => {
     const lib = role === 'liberal';
-    g.fillStyle = lib ? COLORS.liberal : role === 'hitler' ? '#5a120d' : COLORS.fascist;
+    const hit = role === 'hitler';
+    g.fillStyle = lib ? COLORS.liberal : hit ? COLORS.hitler : COLORS.fascist;
     g.fillRect(0, 0, w, h);
-    g.fillStyle = COLORS.paper;
-    g.fillRect(18, 18, w - 36, h - 36);
-    frame(g, w, h, lib ? COLORS.liberal : COLORS.fascist, 26, 3);
-    centerText(g, 'SECRET ROLE', w / 2, 52, `16px ${MONO}`, COLORS.ink);
-    emblem(g, lib ? 'L' : 'F', w / 2, h * 0.43, 58, lib ? COLORS.liberal : COLORS.fascist);
-    const title = role === 'hitler' ? 'HITLER' : role.toUpperCase();
-    centerText(g, title, w / 2, h * 0.72, `bold ${role === 'hitler' ? 44 : 36}px ${DISPLAY}`, lib ? COLORS.liberal : COLORS.fascist);
-    centerText(g, lib ? 'Liberal party' : 'Fascist party', w / 2, h * 0.82, `bold 18px ${DISPLAY}`, COLORS.ink);
-    centerText(g, 'click to close your eyes', w / 2, h * 0.91, `13px ${MONO}`, '#6b5d48');
+    inkEdge(g, w, h);
+    panel(g, w, h, 18);
+    centerText(g, 'SECRET ROLE', w / 2, 50, `bold 16px ${MONO}`, COLORS.ink);
+    emblem(g, lib ? 'L' : 'F', w / 2, h * 0.43, 58, lib ? COLORS.liberal : hit ? COLORS.hitler : COLORS.fascist);
+    const title = hit ? 'HITLER' : role.toUpperCase();
+    centerText(g, title, w / 2, h * 0.71, `800 ${hit ? 48 : 40}px ${DISPLAY}`, lib ? COLORS.liberalDeep : hit ? COLORS.hitler : COLORS.fascistDeep);
+    centerText(g, lib ? 'Liberal party' : 'Fascist party', w / 2, h * 0.81, `bold 16px ${MONO}`, COLORS.ink);
+    centerText(g, 'click to close your eyes', w / 2, h * 0.91, `13px ${MONO}`, '#7a5a32');
   });
 }
 
@@ -335,41 +434,56 @@ export function membershipCard(name: string, party: 'liberal' | 'fascist') {
     const lib = party === 'liberal';
     g.fillStyle = COLORS.paper;
     g.fillRect(0, 0, w, h);
-    frame(g, w, h, lib ? COLORS.liberal : COLORS.fascist, 12, 5);
+    inkEdge(g, w, h);
+    frame(g, w, h, lib ? COLORS.liberal : COLORS.fascist, 10, 4);
     centerText(g, 'PARTY MEMBERSHIP', w / 2, 44, `bold 17px ${MONO}`, COLORS.ink);
-    centerText(g, name, w / 2, 86, `bold 26px ${DISPLAY}`, COLORS.ink);
+    centerText(g, name, w / 2, 86, `700 26px ${DISPLAY}`, COLORS.ink);
     emblem(g, lib ? 'L' : 'F', w / 2, h * 0.5, 50, lib ? COLORS.liberal : COLORS.fascist);
-    centerText(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.75, `bold 38px ${DISPLAY}`, lib ? COLORS.liberal : COLORS.fascist);
-    centerText(g, 'click to put it away', w / 2, h * 0.9, `13px ${MONO}`, '#6b5d48');
+    centerText(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.75, `800 40px ${DISPLAY}`, lib ? COLORS.liberalDeep : COLORS.fascistDeep);
+    centerText(g, 'click to put it away', w / 2, h * 0.9, `13px ${MONO}`, '#7a5a32');
   });
 }
 
 export function envelopeTexture() {
   return tex('envelope', 360, 256, (g, w, h) => {
-    g.fillStyle = '#c9b48a';
+    g.fillStyle = COLORS.kraft;
     g.fillRect(0, 0, w, h);
-    g.strokeStyle = '#8c7650';
+    g.strokeStyle = '#8c6a3c';
     g.lineWidth = 3;
+    g.lineJoin = 'round';
     g.beginPath();
     g.moveTo(0, 0);
     g.lineTo(w / 2, h * 0.55);
     g.lineTo(w, 0);
     g.stroke();
-    g.fillStyle = '#7a1d16';
+    // Wax seal.
+    g.fillStyle = COLORS.hitler;
+    g.strokeStyle = COLORS.ink;
     g.beginPath();
     g.arc(w / 2, h * 0.55, 22, 0, Math.PI * 2);
     g.fill();
-    centerText(g, 'CONFIDENTIAL', w / 2, h * 0.85, `bold 22px ${DISPLAY}`, '#5b4a2e');
+    g.stroke();
+    // Red rubber stamp, slightly crooked.
+    g.save();
+    g.translate(w / 2, h * 0.85);
+    g.rotate((-4 * Math.PI) / 180);
+    centerText(g, 'CONFIDENTIAL', 0, 1, `800 24px ${DISPLAY}`, COLORS.hitler);
+    const tw = g.measureText('CONFIDENTIAL').width;
+    g.strokeStyle = COLORS.hitler;
+    g.lineWidth = 3;
+    g.strokeRect(-tw / 2 - 12, -20, tw + 24, 40);
+    g.restore();
     grain(g, w, h, 16, 12);
   });
 }
 
 export function placardTexture(title: string, color: string) {
   return tex(`placard-${title}`, 512, 128, (g, w, h) => {
-    g.fillStyle = '#1c130c';
+    g.fillStyle = COLORS.ink;
     g.fillRect(0, 0, w, h);
-    frame(g, w, h, color, 8, 4);
-    centerText(g, title, w / 2, h / 2 + 2, `bold 54px ${DISPLAY}`, color);
+    frame(g, w, h, color, 8, 3);
+    frame(g, w, h, color, 14, 1);
+    centerText(g, title, w / 2, h / 2 + 2, `800 56px ${DISPLAY}`, color);
   });
 }
 
@@ -378,8 +492,9 @@ export function labelTexture(text: string, color: string, bg = '#1c130c') {
     g.fillStyle = bg;
     g.fillRect(0, 0, w, h);
     frame(g, w, h, color, 6, 3);
+    frame(g, w, h, color, 12, 1);
     const size = text.length > 8 ? 30 : 44;
-    centerText(g, text, w / 2, h / 2 + 2, `bold ${size}px ${DISPLAY}`, color);
+    centerText(g, text, w / 2, h / 2 + 2, `800 ${size}px ${DISPLAY}`, color);
   });
 }
 
