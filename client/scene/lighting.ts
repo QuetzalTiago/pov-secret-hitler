@@ -1,11 +1,11 @@
 /**
  * Every light level for the night bar in one place, so the darkness is tuned here (todo #248). The room lights
  * (env, ambient, fill, neon, waiter spot, vignette) sit back at the pre-#248 levels so the bar's details read;
- * exposure and the lamp keep the table the bright centre.
+ * exposure (0.7) and the lamp keep the table the bright centre.
  */
 export const LIGHTING = {
   /** ACES tone mapping exposure. */
-  exposure: 0.62,
+  exposure: 0.7,
   /** HDRI image-based light (scene.environmentIntensity): kept faint so the pendant lamp is the key light. */
   env: 0.06,
   /** Hemisphere ambient before the night dimming. */
