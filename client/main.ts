@@ -93,6 +93,7 @@ let frames = 0;
 
 function resetClient() {
   room = null;
+  net.flushAct(null);
   saveSession(null);
   game.reset();
   ui.resetTable();
@@ -105,6 +106,8 @@ net.onOpen = () => {
   if (s) net.send({ t: 'resume', code: s.code, token: s.token });
 };
 net.onStatus = (s) => ui.setStatus(s);
+net.actContext = () => (room?.game ? { phase: room.game.phase, seat: room.you } : null);
+net.onReconnect = () => ui.toast(tr({ en: 'Reconnected', es: 'Reconectado' }));
 net.onMessage = (m: ServerMsg) => {
   switch (m.t) {
     case 'welcome':
@@ -116,6 +119,7 @@ net.onMessage = (m: ServerMsg) => {
     case 'room':
       if (leaving) break;
       room = m.room;
+      net.flushAct(m.room);
       world.stillView = m.room.stage !== 'game';
       ui.showRoom(m.room);
       game.onRoom(m.room);
