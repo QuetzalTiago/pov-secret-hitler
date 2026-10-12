@@ -183,6 +183,36 @@ export const sfx = {
       noise({ dur: 1.2, freq: 300, type: 'lowpass', gain: 0.4, delay: 0.1, attack: 0.05, wet: 1.0 }); // timpani rumble
     }
   },
+  /** Win ceremony: liberal brass fanfare with cymbal swell, or a dark fascist march with a gong; a falling tail if you lost. */
+  victory(winner: 'liberal' | 'fascist', youWon: boolean | null) {
+    if (winner === 'liberal') {
+      // Timpani roll building into the fanfare.
+      for (let i = 0; i < 10; i++) tone({ freq: 85 - (i % 2) * 5, dur: 0.14, gain: 0.35 + i * 0.07, slideTo: 50, delay: i * 0.08, wet: 0.5 });
+      noise({ dur: 0.8, freq: 500, type: 'lowpass', gain: 0.5, attack: 0.7, wet: 0.6 }); // roll rumble
+      // Bright arpeggio, each note a triangle+sawtooth pair.
+      [392, 523, 659, 784].forEach((f, i) => {
+        tone({ freq: f, dur: 0.5, gain: 0.13, type: 'triangle', delay: 0.8 + i * 0.18, wet: 0.7 });
+        tone({ freq: f, dur: 0.5, gain: 0.06, type: 'sawtooth', delay: 0.8 + i * 0.18, wet: 0.7 });
+      });
+      // Held C-major chord, cymbal swell and a final low hit.
+      [523, 659, 784, 1047].forEach((f, i) => tone({ freq: f, dur: 1.8, gain: 0.1, type: i % 2 ? 'sawtooth' : 'triangle', delay: 1.6, wet: 0.8 }));
+      noise({ dur: 2.2, freq: 6000, type: 'highpass', gain: 0.35, attack: 0.6, delay: 1.0, wet: 0.8 }); // cymbal swell
+      tone({ freq: 65, dur: 0.9, gain: 1.2, slideTo: 35, delay: 1.6, wet: 0.5 });
+    } else {
+      // Heavy drum hits, a low minor brass chord, a gong and a third hit.
+      [0, 0.45].forEach((d) => {
+        tone({ freq: 60, dur: 0.6, gain: 1.2, slideTo: 30, delay: d, wet: 0.5 });
+        noise({ dur: 0.25, freq: 1200, type: 'lowpass', sweepTo: 200, gain: 1.0, attack: 0.002, delay: d, wet: 0.5 }); // impact
+      });
+      [98, 117, 147, 139].forEach((f, i) => tone({ freq: f, dur: 2.5, gain: i === 3 ? 0.08 : 0.12, type: 'sawtooth', delay: 0.9, wet: 0.7 })); // 139 = tritone
+      noise({ dur: 2.5, freq: 900, type: 'lowpass', gain: 0.5, attack: 0.3, delay: 0.9, wet: 1.0 }); // gong wash
+      tone({ freq: 55, dur: 3, gain: 0.5, delay: 0.9, wet: 1.0 }); // gong body
+      tone({ freq: 60, dur: 0.8, gain: 1.2, slideTo: 30, delay: 2.2, wet: 0.5 });
+      noise({ dur: 0.25, freq: 1200, type: 'lowpass', sweepTo: 200, gain: 1.0, attack: 0.002, delay: 2.2, wet: 0.5 });
+    }
+    // Losers get a falling tail.
+    if (youWon === false) [392, 370, 311, 247].forEach((f, i) => tone({ freq: f, dur: 0.5, gain: 0.1, type: 'triangle', delay: 3.2 + i * 0.18, wet: 0.5 }));
+  },
   /** Revolver shot: supersonic crack, chest-thumping boom, the room ringing, then the brass casing. */
   gunshot() {
     noise({ dur: 0.05, freq: 5000, type: 'highpass', gain: 2.2, attack: 0.0008, wet: 0.6 }); // crack
