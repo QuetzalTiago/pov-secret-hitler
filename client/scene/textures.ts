@@ -450,8 +450,18 @@ function panel(g: CanvasRenderingContext2D, w: number, h: number, inset: number,
   frame(g, w, h, COLORS.brass, inset + 6, 1.5);
 }
 
+// Card canvases stay 256x360: the fallback layouts are hand-placed in those pixels and the 64-entry texture cache would need 4x the memory at 512x720.
+/** Fills the canvas with the loaded official image for `key`; false (nothing drawn) while it is missing. */
+function fillImage(g: CanvasRenderingContext2D, key: ArtKey, w: number, h: number): boolean {
+  const img = officialImage(key);
+  if (!img) return false;
+  g.drawImage(img, 0, 0, w, h);
+  return true;
+}
+
 export function policyFace(p: 'L' | 'F') {
   return tex(`policy-${p}`, 256, 360, (g, w, h) => {
+    if (fillImage(g, `policy-${p}`, w, h)) return;
     const lib = p === 'L';
     const deep = lib ? COLORS.liberalDeep : COLORS.fascistDeep;
     g.fillStyle = deep;
@@ -465,8 +475,12 @@ export function policyFace(p: 'L' | 'F') {
   });
 }
 
+const BACK_ART: Record<string, ArtKey> = { POLICY: 'policy-back', ROLE: 'role-back', MEMBERSHIP: 'member-back', BALLOT: 'ballot-back' };
+
 export function cardBack(label = 'POLICY') {
   return tex(`back-${label}`, 256, 360, (g, w, h) => {
+    const key = BACK_ART[label.toUpperCase()];
+    if (key && fillImage(g, key, w, h)) return;
     g.fillStyle = COLORS.ink;
     g.fillRect(0, 0, w, h);
     // Fine brass diagonal lattice, low alpha.
@@ -499,6 +513,7 @@ export function cardBack(label = 'POLICY') {
 
 export function ballotFace(ja: boolean) {
   return tex(`ballot-${ja}`, 256, 360, (g, w, h) => {
+    if (fillImage(g, ja ? 'ballot-ja' : 'ballot-nein', w, h)) return;
     g.fillStyle = COLORS.stock;
     g.fillRect(0, 0, w, h);
     inkEdge(g, w, h);
@@ -533,6 +548,7 @@ export function ballotFace(ja: boolean) {
 
 export function roleCard(role: 'liberal' | 'fascist' | 'hitler', seed = 0) {
   return tex(`role-${role}-${seed}`, 256, 360, (g, w, h) => {
+    if (fillImage(g, `role-${role}`, w, h)) return;
     const lib = role === 'liberal';
     const hit = role === 'hitler';
     const deep = lib ? COLORS.liberalDeep : COLORS.fascistDeep;
@@ -556,6 +572,14 @@ export function roleCard(role: 'liberal' | 'fascist' | 'hitler', seed = 0) {
 
 export function membershipCard(name: string, party: 'liberal' | 'fascist') {
   return tex(`member-${name}-${party}`, 256, 360, (g, w, h) => {
+    if (fillImage(g, `member-${party}`, w, h)) {
+      // Name strip across the very top, clear of the header and the seal.
+      const strip = Math.round(h * 0.075);
+      g.fillStyle = COLORS.ink;
+      g.fillRect(0, 0, w, strip);
+      blockTitle(g, name, w / 2, strip / 2 + 1, 22, COLORS.stock, w - 24);
+      return;
+    }
     const lib = party === 'liberal';
     const deep = lib ? COLORS.liberalDeep : COLORS.fascistDeep;
     g.fillStyle = COLORS.stock;
@@ -747,6 +771,7 @@ export function signTexture() {
   });
 }
 
+// No official envelope art: always procedural.
 export function envelopeTexture() {
   return tex('envelope', 360, 256, (g, w, h) => {
     g.fillStyle = COLORS.kraft;
