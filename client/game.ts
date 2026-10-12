@@ -1207,7 +1207,7 @@ export class Game {
           list.push({
             id: a.ja ? 'vote-ja' : 'vote-nein',
             objects: [a.ja ? this.ja.mesh : this.nein.mesh],
-            label: a.ja ? tr({ en: 'Slam JA!', es: '¡Estampa JA!' }) : tr({ en: 'Slam NEIN', es: 'Estampa NEIN' }),
+            label: a.ja ? tr({ en: 'Slam JA!', es: 'Votar JA!' }) : tr({ en: 'Slam NEIN', es: 'Votar NEIN' }),
             action: true,
             onClick: () => this.act(a),
           });
