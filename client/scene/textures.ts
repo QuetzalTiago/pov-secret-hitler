@@ -505,56 +505,156 @@ const POWER_LABEL: Record<string, string> = {
   execute: 'Execution',
 };
 
+/** Original flat ink icon for a presidential power, centred at (cx, cy) and kept within +-s. */
+function powerIcon(g: CanvasRenderingContext2D, kind: string, cx: number, cy: number, s: number) {
+  g.save();
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.strokeStyle = COLORS.ink;
+  g.fillStyle = COLORS.ink;
+  g.lineWidth = 4;
+  if (kind === 'peek') {
+    g.beginPath();
+    g.moveTo(cx - s, cy);
+    g.quadraticCurveTo(cx, cy - s * 1.1, cx + s, cy);
+    g.quadraticCurveTo(cx, cy + s * 1.1, cx - s, cy);
+    g.closePath();
+    g.stroke();
+    g.beginPath();
+    g.arc(cx, cy, s * 0.36, 0, Math.PI * 2);
+    g.fill();
+  } else if (kind === 'investigate') {
+    const r = s * 0.55;
+    const lx = cx - s * 0.3;
+    const ly = cy - s * 0.3;
+    g.lineWidth = 5;
+    g.beginPath();
+    g.arc(lx, ly, r, 0, Math.PI * 2);
+    g.stroke();
+    g.lineWidth = 8;
+    g.beginPath();
+    g.moveTo(lx + r * Math.SQRT1_2 + 2, ly + r * Math.SQRT1_2 + 2);
+    g.lineTo(cx + s * 0.85, cy + s * 0.85);
+    g.stroke();
+  } else if (kind === 'special') {
+    g.beginPath();
+    g.rect(cx - s * 0.8, cy - s * 0.9, s * 1.6, s * 0.3);
+    g.fill();
+    g.stroke();
+    g.beginPath();
+    g.moveTo(cx - s * 0.6, cy - s * 0.6);
+    g.lineTo(cx + s * 0.6, cy - s * 0.6);
+    g.lineTo(cx + s * 0.85, cy + s * 0.9);
+    g.lineTo(cx - s * 0.85, cy + s * 0.9);
+    g.closePath();
+    g.fill();
+    g.stroke();
+  } else if (kind === 'execute') {
+    const hw = s * 0.32;
+    g.beginPath();
+    g.moveTo(cx - hw, cy + s);
+    g.lineTo(cx - hw, cy - s * 0.2);
+    g.quadraticCurveTo(cx - hw, cy - s, cx, cy - s);
+    g.quadraticCurveTo(cx + hw, cy - s, cx + hw, cy - s * 0.2);
+    g.lineTo(cx + hw, cy + s);
+    g.closePath();
+    g.fill();
+    g.stroke();
+    g.strokeStyle = COLORS.fascistLight;
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(cx - hw, cy + s * 0.45);
+    g.lineTo(cx + hw, cy + s * 0.45);
+    g.stroke();
+  }
+  g.restore();
+}
+
 /** The central board: liberal track, fascist track with powers, election tracker. */
 export function boardTexture(powers: (string | null)[]) {
   return tex(`board-${powers.join(',')}`, 1024, 640, (g, w, h) => {
-    g.fillStyle = '#2b1d12';
+    g.fillStyle = COLORS.paper;
     g.fillRect(0, 0, w, h);
-    frame(g, w, h, COLORS.gold, 10, 4);
+    inkEdge(g, w, h, 8);
+    frame(g, w, h, COLORS.ink, 16, 2);
     // Liberal track.
-    g.fillStyle = '#1f4660';
+    g.fillStyle = COLORS.liberal;
     g.fillRect(40, 40, w - 80, 230);
-    centerText(g, 'LIBERAL', w / 2, 66, `bold 30px ${DISPLAY}`, COLORS.liberalLight);
+    g.strokeStyle = COLORS.ink;
+    g.lineWidth = 4;
+    g.strokeRect(40, 40, w - 80, 230);
+    centerText(g, 'LIBERAL', w / 2, 66, `800 30px ${DISPLAY}`, COLORS.paper);
     const lx = (i: number) => 140 + i * 186;
     for (let i = 0; i < 5; i++) {
-      g.strokeStyle = COLORS.liberalLight;
-      g.lineWidth = 3;
+      g.fillStyle = COLORS.liberalLight;
+      g.fillRect(lx(i) - 60, 92, 120, 160);
+      g.strokeStyle = COLORS.liberalDeep;
+      g.lineWidth = 4;
       g.strokeRect(lx(i) - 60, 92, 120, 160);
       if (i === 4) {
-        emblem(g, 'L', lx(i), 172, 36, 'rgba(216,236,244,0.35)');
-        centerText(g, 'WIN', lx(i), 235, `bold 18px ${MONO}`, 'rgba(216,236,244,0.6)');
+        emblem(g, 'L', lx(i), 165, 34, 'rgba(96,140,179,0.45)', 'rgba(50,72,105,0.6)');
+        centerText(g, 'WIN', lx(i), 232, `bold 18px ${MONO}`, COLORS.liberalDeep);
       }
     }
     // Fascist track.
-    g.fillStyle = '#5a1d16';
+    g.fillStyle = COLORS.fascist;
     g.fillRect(40, 290, w - 80, 230);
-    centerText(g, 'FASCIST', w / 2, 316, `bold 30px ${DISPLAY}`, COLORS.fascistLight);
+    g.strokeStyle = COLORS.ink;
+    g.lineWidth = 4;
+    g.strokeRect(40, 290, w - 80, 230);
+    centerText(g, 'FASCIST', w / 2, 316, `800 30px ${DISPLAY}`, COLORS.ink);
     const fx = (i: number) => 125 + i * 155;
     for (let i = 0; i < 6; i++) {
-      g.strokeStyle = COLORS.fascistLight;
-      g.lineWidth = 3;
-      g.strokeRect(fx(i) - 60, 342, 120, 160);
-      const p = powers[i];
-      const label = i === 5 ? 'WIN' : p ? POWER_LABEL[p] : '';
-      if (label) {
-        g.font = `bold 16px ${MONO}`;
-        const words = label.split(' ');
-        words.forEach((wd, j) => centerText(g, wd, fx(i), 410 + j * 22 - (words.length - 1) * 11, `bold 17px ${MONO}`, 'rgba(243,217,201,0.75)'));
+      const x = fx(i);
+      g.fillStyle = COLORS.fascistLight;
+      g.fillRect(x - 60, 342, 120, 160);
+      if (i >= 3) {
+        // Danger hatch, clipped to the slot.
+        g.save();
+        g.beginPath();
+        g.rect(x - 60, 342, 120, 160);
+        g.clip();
+        g.strokeStyle = 'rgba(156,47,31,0.18)';
+        g.lineWidth = 3;
+        g.beginPath();
+        for (let k = -160; k < 120; k += 16) {
+          g.moveTo(x - 60 + k, 502);
+          g.lineTo(x - 60 + k + 160, 342);
+        }
+        g.stroke();
+        g.restore();
       }
-      if (i >= 3) centerText(g, '!', fx(i), 480, `bold 22px ${DISPLAY}`, 'rgba(243,217,201,0.35)');
+      g.strokeStyle = COLORS.fascistDeep;
+      g.lineWidth = 4;
+      g.strokeRect(x - 60, 342, 120, 160);
+      const p = powers[i];
+      if (i === 5) {
+        emblem(g, 'F', x, 410, 32, 'rgba(242,101,74,0.45)', 'rgba(156,47,31,0.7)');
+        centerText(g, 'WIN', x, 480, `bold 18px ${MONO}`, COLORS.fascistDeep);
+      } else if (p && POWER_LABEL[p]) {
+        powerIcon(g, p, x, 395, 20);
+        POWER_LABEL[p].split(' ').forEach((wd, j) => centerText(g, wd, x, 440 + j * 18, `bold 15px ${MONO}`, COLORS.fascistDeep));
+      }
     }
-    centerText(g, 'Hitler as chancellor wins from the 4th slot on  •  Veto unlocks at 5', w / 2, 508 + 4, `14px ${MONO}`, 'rgba(243,217,201,0.55)');
+    centerText(g, 'Hitler as chancellor wins from the 4th slot on  •  Veto unlocks at 5', w / 2, 512, `bold 13px ${MONO}`, COLORS.ink);
     // Election tracker.
-    centerText(g, 'ELECTION TRACKER', 250, 580, `bold 20px ${MONO}`, COLORS.gold);
+    g.fillStyle = COLORS.ochre;
+    g.fillRect(40, 540, w - 80, 80);
+    g.strokeStyle = COLORS.ink;
+    g.lineWidth = 4;
+    g.strokeRect(40, 540, w - 80, 80);
+    centerText(g, 'ELECTION TRACKER', 250, 580, `800 20px ${DISPLAY}`, COLORS.ink);
     for (let i = 0; i < 4; i++) {
-      g.strokeStyle = COLORS.gold;
-      g.lineWidth = 3;
+      g.fillStyle = COLORS.paper;
+      g.strokeStyle = COLORS.ink;
+      g.lineWidth = 4;
       g.beginPath();
       g.arc(430 + i * 90, 580, 22, 0, Math.PI * 2);
+      g.fill();
       g.stroke();
-      if (i === 3) centerText(g, '!', 430 + i * 90, 581, `bold 22px ${DISPLAY}`, COLORS.gold);
+      if (i === 3) centerText(g, '!', 430 + i * 90, 581, `800 22px ${DISPLAY}`, COLORS.hitler);
     }
-    centerText(g, '3 failed = top policy enacted', 860, 580, `14px ${MONO}`, 'rgba(214,168,74,0.7)');
+    centerText(g, '3 failed = top policy enacted', 860, 580, `bold 13px ${MONO}`, COLORS.ink);
     grain(g, w, h, 10, 21);
   });
 }
