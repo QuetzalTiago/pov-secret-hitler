@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import {
   BOARD_SLOTS, ballotFace, boardTexture, cardBack, envelopeTexture, placardTexture, policyFace, ringTexture,
 } from './textures';
+import { revolverGeometry } from './gun';
 import { ease, tween, type Tween } from './tween';
 import { TABLE_Y } from './world';
 
@@ -223,29 +224,14 @@ export class Pile {
   }
 }
 
-/** A chunky, original-design six-shooter built from primitives. Points along -Z. */
+/** A detailed six-shooter (fluted cylinder, sights, ejector shroud, trigger guard, plow grip) in two meshes: metal + grip. Points along -Z. */
 export function revolver(): THREE.Group {
   const g = new THREE.Group();
-  const metal = new THREE.MeshStandardMaterial({ color: 0x3a3c40, metalness: 0.85, roughness: 0.32 });
-  const grip = new THREE.MeshStandardMaterial({ color: 0x4a2a14, roughness: 0.6 });
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.17, 10), metal);
-  barrel.rotation.x = Math.PI / 2;
-  barrel.position.set(0, 0.03, -0.1);
-  const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.05, 6), metal);
-  cyl.rotation.x = Math.PI / 2;
-  cyl.position.set(0, 0.022, 0.0);
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.04, 0.08), metal);
-  frame.position.set(0, 0.03, 0.03);
-  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.1, 0.045), grip);
-  handle.position.set(0, -0.025, 0.07);
-  handle.rotation.x = -0.35;
-  const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.025, 0.015), metal);
-  hammer.position.set(0, 0.058, 0.055);
-  const guard = new THREE.Mesh(new THREE.TorusGeometry(0.018, 0.004, 4, 10, Math.PI), metal);
-  guard.position.set(0, 0.0, 0.03);
-  guard.rotation.y = Math.PI / 2;
-  guard.rotation.z = Math.PI;
-  g.add(barrel, cyl, frame, handle, hammer, guard);
+  const { metal, grip } = revolverGeometry();
+  g.add(
+    new THREE.Mesh(metal, new THREE.MeshStandardMaterial({ color: 0x3a3c40, metalness: 0.85, roughness: 0.32 })),
+    new THREE.Mesh(grip, new THREE.MeshStandardMaterial({ color: 0x45260f, roughness: 0.6 })),
+  );
   g.traverse((o) => (o.castShadow = true));
   g.scale.setScalar(1.4);
   return g;
