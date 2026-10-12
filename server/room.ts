@@ -366,7 +366,7 @@ export class Room {
     return null;
   }
 
-  // Fills the table to QUICK_START_SEATS with bots and deals.
+  /** Play vs bots: fills the table to QUICK_START_SEATS with bots and deals. */
   quickStart(conn: Conn): string | null {
     if (this.stage !== 'lobby') return 'The game has started.';
     while (this.seats.length < QUICK_START_SEATS) {
