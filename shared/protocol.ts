@@ -24,8 +24,8 @@ export interface TableOptions {
 export const DEFAULT_OPTIONS: TableOptions = { pace: 'normal', botLevel: 'normal' };
 
 export type ClientMsg =
-  | { t: 'create'; name: string }
-  | { t: 'quickStart'; name: string }
+  | { t: 'create'; name: string; lang?: 'en' | 'es' }
+  | { t: 'quickStart'; name: string; lang?: 'en' | 'es' }
   | { t: 'join'; code: string; name: string }
   | { t: 'resume'; code: string; token: string }
   | { t: 'addBot' }
@@ -130,6 +130,11 @@ function parseAction(a: unknown): ActionBody | null {
   }
 }
 
+/** The client's UI language as an optional field: dropped unless exactly 'en' or 'es' (old clients send none). */
+function tableLang(v: unknown): { lang?: 'en' | 'es' } {
+  return v === 'en' || v === 'es' ? { lang: v } : {};
+}
+
 /** Parses and validates a raw client frame. Returns a freshly built message (never the input object). */
 export function parseClientMsg(raw: string): ClientMsg | null {
   if (raw.length > MAX_MESSAGE_BYTES) return null;
@@ -143,11 +148,11 @@ export function parseClientMsg(raw: string): ClientMsg | null {
   switch (m.t) {
     case 'create': {
       const name = cleanName(m.name);
-      return name ? { t: 'create', name } : null;
+      return name ? { t: 'create', name, ...tableLang(m.lang) } : null;
     }
     case 'quickStart': {
       const name = cleanName(m.name);
-      return name ? { t: 'quickStart', name } : null;
+      return name ? { t: 'quickStart', name, ...tableLang(m.lang) } : null;
     }
     case 'join': {
       const name = cleanName(m.name);

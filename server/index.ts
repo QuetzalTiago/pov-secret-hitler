@@ -6,9 +6,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { CODE_ALPHABET, MAX_MESSAGE_BYTES, parseClientMsg, type ClientMsg, type ServerMsg } from '../shared/protocol';
-import { config } from './config';
+import { config, type BotLang } from './config';
 import { TokenBucket } from './ratelimit';
-import { Room, type Conn, type RoomSnapshot } from './room';
+import { Room, botLangFor, type Conn, type RoomSnapshot } from './room';
 import { RoomStore } from './store';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -196,7 +196,7 @@ export function startServer(port = config.port): Promise<RunningServer> {
     ws.on('error', () => ws.terminate());
   }
 
-  function openRoom(current: Room | null, ip: string): Room | string {
+  function openRoom(current: Room | null, ip: string, lang: BotLang): Room | string {
     if (current) return 'Leave your current room first.';
     let lobbies = 0;
     for (const [code, creator] of roomIp) if (creator === ip && rooms.get(code)?.stage === 'lobby') lobbies++;
@@ -209,7 +209,7 @@ export function startServer(port = config.port): Promise<RunningServer> {
     const code = newCode();
     if (!code) return 'Could not allocate a room.';
     roomIp.set(code, ip);
-    return track(new Room(code, ended));
+    return track(new Room(code, ended, lang));
   }
 
   function handle(conn: Conn, msg: ClientMsg, chatBucket: TokenBucket, ip: string): string | null {
@@ -219,11 +219,11 @@ export function startServer(port = config.port): Promise<RunningServer> {
         conn.send({ t: 'pong' });
         return null;
       case 'create': {
-        const r = openRoom(room, ip);
+        const r = openRoom(room, ip, botLangFor(msg.lang));
         return typeof r === 'string' ? r : r.join(conn, msg.name);
       }
       case 'quickStart': {
-        const r = openRoom(room, ip);
+        const r = openRoom(room, ip, botLangFor(msg.lang));
         if (typeof r === 'string') return r;
         const err = r.join(conn, msg.name);
         return err ?? r.quickStart(conn);

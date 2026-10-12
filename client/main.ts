@@ -53,11 +53,11 @@ const net = new Net();
 const ui = new UI({
   create: (name) => {
     leaving = false;
-    net.send({ t: 'create', name });
+    net.send({ t: 'create', name, lang: lang() });
   },
   quickStart: (name) => {
     leaving = false;
-    net.send({ t: 'quickStart', name });
+    net.send({ t: 'quickStart', name, lang: lang() });
   },
   join: (code, name) => {
     leaving = false;

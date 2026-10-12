@@ -14,7 +14,7 @@ import { QUESTION } from './lexicon';
 import { askChoice } from './jev';
 import { llmEnabled } from './llm';
 import { personaFor, type Persona } from './persona';
-import { config } from './config';
+import { config, type BotLang } from './config';
 
 /** What table talk needs from its room. Functions, so it always reads the room's current state. */
 export interface TalkHost {
@@ -25,6 +25,8 @@ export interface TalkHost {
   memories(): Memory[];
   closed(): boolean;
   connectedHumans(): number;
+  /** The bots' language at this table. */
+  lang(): BotLang;
   /** Sends a message to everyone seated. */
   post(msg: ServerMsg): void;
   /** Room counters the talk code bumps (Room.botStats). */
@@ -103,7 +105,7 @@ export class TableTalk {
   private personaOf(seat: number): Persona {
     let p = this.personas.get(seat);
     if (!p) {
-      p = personaFor(this.host.seatName(seat), config.llm.lang);
+      p = personaFor(this.host.seatName(seat), this.host.lang());
       this.personas.set(seat, p);
     }
     return p;
@@ -138,7 +140,7 @@ export class TableTalk {
       mood: this.moodOf(seat),
       name: (x: number) => this.host.seatName(x),
       transcript: this.transcript,
-      lang: config.llm.lang,
+      lang: this.host.lang(),
       onSent: this.noteSent,
     };
   }
@@ -176,7 +178,7 @@ export class TableTalk {
       if (!s.bot || (!g.players[seat]?.alive && g.phase !== 'gameOver')) return;
       const now = Date.now();
       const view = viewFor(g, seat);
-      const planFor = (e: GameEvent) => planTalk(e, view, this.host.memories()[seat], (x) => this.host.seatName(x), Math.random);
+      const planFor = (e: GameEvent) => planTalk(e, view, this.host.memories()[seat], (x) => this.host.seatName(x), Math.random, this.host.lang());
       // A must plan (an investigation result) ignores the throttle and the cap, and does not count toward the cap.
       const mustEvent = events.find((e) => mustTalk(e, seat));
       let plan = mustEvent ? planFor(mustEvent) : null;

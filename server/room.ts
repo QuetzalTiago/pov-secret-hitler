@@ -10,7 +10,7 @@ import { viewFor } from '../shared/view';
 import { BOT_NAMES, pickBotName, tooSimilar } from './persona';
 import { TableTalk } from './tabletalk';
 import { decide, decideNow } from './brain';
-import { config } from './config';
+import { config, type BotLang } from './config';
 import { PACE_FACTOR, botTempo, botThinkMs, settleMs } from './pacing';
 
 export interface Conn {
@@ -81,10 +81,16 @@ export class Room {
       for (const s of this.seats) s.conn?.send(msg);
     },
     stats: this.botStats,
+    lang: () => this.lang,
     onLinePosted: () => this.releaseHeldBots(),
   });
 
-  constructor(public code: string, private onEmpty: (room: Room) => void) {}
+  /** The bots' language at this table: the host's client language when it opened, else config.llm.lang. */
+  readonly lang: BotLang;
+
+  constructor(public code: string, private onEmpty: (room: Room) => void, lang: BotLang = config.llm.lang) {
+    this.lang = lang;
+  }
 
   // ---------- membership ----------
 
@@ -202,7 +208,7 @@ export class Room {
 
   /** Renames bots whose names are too close to `name`, so nobody at the table can be mixed up. */
   private renameClashingBots(name: string) {
-    const pool = BOT_NAMES[config.llm.lang] ?? BOT_NAMES.en;
+    const pool = BOT_NAMES[this.lang] ?? BOT_NAMES.en;
     for (const s of this.seats) {
       if (!s.bot || !tooSimilar(s.name, name)) continue;
       const taken = this.seats.filter((x) => x !== s).map((x) => x.name).concat(name);
@@ -301,6 +307,7 @@ export class Room {
       options: this.options,
       ready: [...this.ready],
       llmCalls: this.talk.writtenTotal,
+      lang: this.lang,
     };
   }
 
@@ -311,7 +318,7 @@ export class Room {
     if (snap.stage === 'game' && !snap.game) throw new Error('bad room snapshot');
     if (snap.game && snap.seats.length !== snap.game.players.length) throw new Error('bad room snapshot');
     if (!Number.isInteger(snap.host) || snap.host < 0 || snap.host >= snap.seats.length) throw new Error('bad room snapshot');
-    const room = new Room(snap.code, onEmpty);
+    const room = new Room(snap.code, onEmpty, snap.lang === 'en' || snap.lang === 'es-AR' ? snap.lang : config.llm.lang);
     room.stage = snap.stage;
     room.host = snap.host;
     room.game = snap.game;
@@ -360,7 +367,7 @@ export class Room {
     if (!this.isHost(conn)) return 'Only the host can add bots.';
     if (this.stage !== 'lobby') return 'The game has started.';
     if (this.seats.length >= MAX_PLAYERS) return 'The table is full.';
-    const pool = BOT_NAMES[config.llm.lang] ?? BOT_NAMES.en;
+    const pool = BOT_NAMES[this.lang] ?? BOT_NAMES.en;
     const name = pickBotName(this.seats.map((s) => s.name), pool, this.seats.length);
     this.seats.push({ name, token: randomBytes(16).toString('hex'), conn: null, bot: true, botControl: true, disconnectedAt: null, left: false });
     this.broadcast();
@@ -745,6 +752,11 @@ export class Room {
 
 type StoredMemory = Omit<Memory, 'known'> & { known: [number, 'liberal' | 'fascist'][] };
 
+/** Maps a client's UI language to the bots' language for the table it opens. */
+export function botLangFor(client: 'en' | 'es' | undefined): BotLang {
+  return client === 'en' ? 'en' : client === 'es' ? 'es-AR' : config.llm.lang;
+}
+
 export interface RoomSnapshot {
   v: 1;
   code: string;
@@ -758,6 +770,8 @@ export interface RoomSnapshot {
   ready?: string[];
   /** Generated lines over the room's life, so a restart does not reset the budget. */
   llmCalls?: number;
+  /** The bots' language at this table; absent in old snapshots. */
+  lang?: BotLang;
 }
 
 const isCount = (n: unknown) => typeof n === 'number' && Number.isFinite(n);

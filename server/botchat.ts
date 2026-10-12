@@ -3,7 +3,8 @@
 // Small talk stays template-only. Everything is built from the bot's own view and memory.
 //
 // Two audiences for the strings here. `description` and `instructions` are read by Jev and stay in English.
-// `line` is read by players, so it follows SH_BOT_LANG: it is what a bot actually types whenever the writing
+// `line` is read by players, so it follows the table's language (Room.lang, from the host's client language;
+// SH_BOT_LANG is the default): it is what a bot actually types whenever the writing
 // model in bottalk.ts is unavailable, and an English fallback at a Rioplatense table reads broken.
 import { buildState, type Rand } from '../shared/smartbot';
 import { beliefs } from '../shared/belief';
@@ -11,23 +12,26 @@ import { ROLE_COUNTS } from '../shared/rules';
 import { profiles, type Memory } from '../shared/tracker';
 import type { GameEvent, Policy } from '../shared/types';
 import type { GameView } from '../shared/view';
-import { config } from './config';
+import { config, type BotLang } from './config';
 
 const pick = <T>(xs: T[], rand: Rand) => xs[Math.floor(rand() * xs.length)];
 
-/** Picks the player-facing wording for the configured language. */
-const say = (es: string, en: string) => (config.llm.lang === 'es-AR' ? es : en);
+/** Picks the player-facing wording for a table language. */
+const sayIn = (lang: BotLang) => (es: string, en: string) => (lang === 'es-AR' ? es : en);
 
-function cards(cs: Policy[]): string {
-  const l = cs.filter((c) => c === 'L').length;
-  const f = cs.length - l;
-  if (config.llm.lang === 'es-AR') {
-    // "facha" is what the table calls a Fascist card; nobody says "política fascista" out loud.
-    if (cs.length === 2) return l === 2 ? 'dos liberales' : f === 2 ? 'dos fachas' : 'una liberal y una facha';
-    return l === 0 ? 'tres fachas' : l === 3 ? 'tres liberales' : `${l} liberal${l > 1 ? 'es' : ''} y ${f} facha${f > 1 ? 's' : ''}`;
-  }
-  if (cs.length === 2) return l === 2 ? 'two Liberals' : f === 2 ? 'two Fascists' : 'a Liberal and a Fascist';
-  return l === 0 ? 'three Fascists' : l === 3 ? 'three Liberals' : `${l} Liberal${l > 1 ? 's' : ''} and ${f} Fascist${f > 1 ? 's' : ''}`;
+/** Card wording for a table language. */
+function cardsIn(lang: BotLang) {
+  return (cs: Policy[]): string => {
+    const l = cs.filter((c) => c === 'L').length;
+    const f = cs.length - l;
+    if (lang === 'es-AR') {
+      // "facha" is what the table calls a Fascist card; nobody says "política fascista" out loud.
+      if (cs.length === 2) return l === 2 ? 'dos liberales' : f === 2 ? 'dos fachas' : 'una liberal y una facha';
+      return l === 0 ? 'tres fachas' : l === 3 ? 'tres liberales' : `${l} liberal${l > 1 ? 'es' : ''} y ${f} facha${f > 1 ? 's' : ''}`;
+    }
+    if (cs.length === 2) return l === 2 ? 'two Liberals' : f === 2 ? 'two Fascists' : 'a Liberal and a Fascist';
+    return l === 0 ? 'three Fascists' : l === 3 ? 'three Liberals' : `${l} Liberal${l > 1 ? 's' : ''} and ${f} Fascist${f > 1 ? 's' : ''}`;
+  };
 }
 
 /** English card wording, for the `description`/`situation` text that Jev and the writing model read. */
@@ -84,7 +88,9 @@ function honesty(fasc: boolean): string {
     : 'You are a Liberal. Liberals win by sharing accurate information, so tell the truth; accuse only when you have real evidence.';
 }
 
-export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number) => string, rand: Rand): TalkPlan | null {
+export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number) => string, rand: Rand, lang: BotLang = config.llm.lang): TalkPlan | null {
+  const say = sayIn(lang);
+  const cards = cardsIn(lang);
   const me = v.you!;
   const fasc = v.yourRole !== 'liberal';
   const choice = (situation: string, options: Record<string, TalkOption>): TalkPlan => ({
