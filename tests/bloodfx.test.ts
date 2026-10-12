@@ -174,6 +174,61 @@ describe('Bloodshed', () => {
     expect(matrices(b.splats.mesh, n)[idx][13]).toBeCloseTo(before[idx][13] + 0.5, 5);
   });
 
+  const counted = (b: Bloodshed) => {
+    const c = { splats: 0, drips: 0 };
+    b.sound = { splat: () => c.splats++, drip: () => c.drips++ };
+    return c;
+  };
+
+  it('execute splats sound once, on the first landing', () => {
+    const { shot, root } = make();
+    const b = new Bloodshed(root);
+    const c = counted(b);
+    b.execute(shot);
+    expect(c.splats).toBe(0);
+    let firstAt = -1;
+    for (let i = 0; i < 300; i++) {
+      b.update(0.01);
+      if (firstAt < 0 && c.splats > 0) {
+        firstAt = i;
+        expect(b.splats.count).toBeLessThanOrEqual(1);
+      }
+    }
+    expect(firstAt).toBeGreaterThanOrEqual(0);
+    expect(c.splats).toBe(1);
+    expect(c.drips).toBe(0);
+  });
+
+  it('drip sound per landed drip', () => {
+    const { shot, root } = make();
+    const b = new Bloodshed(root);
+    const c = counted(b);
+    b.execute({ ...shot, n: 0 }, () => new THREE.Vector3(0, 1, 0));
+    for (let i = 0; i < (POOL_GROW + 2) / 0.01; i++) b.update(0.01);
+    expect(c.splats).toBe(0);
+    expect(c.drips).toBeGreaterThanOrEqual(10);
+    expect(c.drips).toBeLessThanOrEqual(23);
+  });
+
+  it('settle is silent', () => {
+    const { shot, root } = make();
+    const b = new Bloodshed(root);
+    const c = counted(b);
+    b.settle(shot);
+    for (let i = 0; i < 300; i++) b.update(0.01);
+    expect(c).toEqual({ splats: 0, drips: 0 });
+  });
+
+  it('each execute splats once', () => {
+    const { shot, root } = make();
+    const b = new Bloodshed(root);
+    const c = counted(b);
+    b.execute(shot);
+    b.execute({ ...shot, seed: 7 });
+    for (let i = 0; i < 300; i++) b.update(0.01);
+    expect(c.splats).toBe(2);
+  });
+
   it('clear empties everything', () => {
     const { shot, root } = make();
     const b = new Bloodshed(root);

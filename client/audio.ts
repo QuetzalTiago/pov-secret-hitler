@@ -170,6 +170,21 @@ export const sfx = {
     noise({ dur: 0.05, freq: 3500, q: 6, gain: 0.5 });
     noise({ dur: 0.07, freq: 1800, q: 5, gain: 0.5, delay: 0.12 });
   },
+  /** Wet, meaty splat of an execution's blood spray landing: a sweeping noise burst, a low thump and a few small spatters. */
+  bloodSplat() {
+    noise({ dur: 0.18, freq: 1400, sweepTo: 250, q: 0.8, gain: 0.5, attack: 0.003, type: 'lowpass', wet: 0.2 });
+    tone({ freq: 110, dur: 0.12, gain: 0.3, slideTo: 55, wet: 0.2 });
+    const n = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < n; i++) {
+      noise({ dur: 0.04 + Math.random() * 0.02, freq: 700 + Math.random() * 500, q: 1.2, gain: 0.12, delay: 0.05 + Math.random() * 0.15, wet: 0.2 });
+    }
+  },
+  /** Soft, quiet blood drip: a tiny rising plip with a faint tick. */
+  bloodDrip() {
+    const f = 600 * (0.9 + Math.random() * 0.2);
+    tone({ freq: f, dur: 0.06, gain: 0.05, slideTo: f * 1.8 });
+    noise({ dur: 0.03, freq: 2200 * (0.9 + Math.random() * 0.2), q: 2, gain: 0.03 });
+  },
   /** Policy-enacted ceremony: gavel hit, then a bright rising chord (L) or a dark tritone sting (F). */
   enact(policy: 'L' | 'F') {
     tone({ freq: 70, dur: 0.5, gain: 1.2, slideTo: 32, wet: 0.5 }); // gavel body

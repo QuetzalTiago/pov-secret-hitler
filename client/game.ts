@@ -217,6 +217,7 @@ export class Game {
     private send: (a: ActionBody) => void,
   ) {
     this.blood = new Bloodshed(this.world.scene, bloodAtlas());
+    this.blood.sound = { splat: () => sfx.bloodSplat(), drip: () => sfx.bloodDrip() };
     ui.onEnactSkip = () => {
       this.ceremonyUntil = Math.min(this.ceremonyUntil, this.now);
       if (this.deferredPower) this.deferredPower.at = this.now;

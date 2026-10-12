@@ -144,6 +144,11 @@ export interface BloodShot {
   n?: number;
 }
 
+export interface BloodSound {
+  splat(): void;
+  drip(): void;
+}
+
 interface Dripper {
   left: number;
   wait: number;
@@ -164,6 +169,8 @@ export class Bloodshed {
   readonly drops: BloodDroplets;
   readonly pool: BloodPool;
   private drippers: Dripper[] = [];
+  /** Optional sound hooks, driven by sim time: splat on a spray's first landing, drip on each head-drip landing. */
+  sound: BloodSound | null = null;
 
   constructor(private readonly parent: THREE.Object3D, map: THREE.Texture | null = null) {
     this.splats = new BloodSplats(map);
@@ -174,7 +181,16 @@ export class Bloodshed {
 
   /** Sprays droplets that splat on landing, grows a pool under the chair and, given a head, drips for POOL_GROW seconds. */
   execute(shot: BloodShot, head?: () => THREE.Vector3 | null): void {
-    this.each(shot, (d, tile) => this.drops.launch(d, () => this.place(shot, d, tile, undefined)));
+    let first = true;
+    this.each(shot, (d, tile) =>
+      this.drops.launch(d, () => {
+        if (first) {
+          first = false;
+          this.sound?.splat();
+        }
+        this.place(shot, d, tile, undefined);
+      }),
+    );
     this.addPool(shot, undefined);
     if (head) this.drippers.push({ left: POOL_GROW, wait: 0, rnd: rand(shot.seed + 3), head });
   }
@@ -192,7 +208,7 @@ export class Bloodshed {
       if (p.wait > 0) continue;
       p.wait = 0.45 + 0.45 * p.rnd();
       const h = p.head();
-      if (h) this.drops.launch(drip(h));
+      if (h) this.drops.launch(drip(h), () => this.sound?.drip());
     }
     this.drippers = this.drippers.filter((p) => p.left > 0);
     this.drops.update(dt);
