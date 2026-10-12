@@ -56,13 +56,20 @@
 
     <!-- In-game HUD -->
     <div id="hud" class="hidden">
-      <div id="top-left">
-        <div>Table <b id="hud-code"></b></div>
-        <div id="hud-role"></div>
-        <div id="hud-round"></div>
+      <div id="status-bar" class="hidden">
+        <div class="sb-head">
+          <span id="sb-role" class="chip"></span>
+          <span class="sb-code">Table <b id="hud-code"></b></span>
+        </div>
+        <div class="sb-tracks">
+          <div class="track"><span class="tlabel">Liberal</span><span id="sb-lib" class="pips lib"></span></div>
+          <div class="track"><span class="tlabel">Fascist</span><span id="sb-fas" class="pips fas"></span></div>
+          <div class="track"><span class="tlabel">Election</span><span id="sb-tracker" class="pips dots"></span></div>
+        </div>
+        <div class="sb-counts"><span id="sb-deck"></span><span id="sb-discard"></span></div>
       </div>
+      <div id="stepper" class="hidden"></div>
       <div id="top-right">
-        <div id="timer"></div>
         <button id="settings-btn" class="icon" aria-label="Settings" aria-expanded="false" aria-haspopup="menu">⚙</button>
         <div id="settings" class="panel hidden" role="menu">
           <button id="rules-btn" role="menuitem">Rules</button>
@@ -74,7 +81,17 @@
         <button id="leave" class="mini">Leave</button>
       </div>
       <div id="toasts"></div>
-      <div id="prompt"></div>
+      <div id="prompt" class="hidden">
+        <div class="pr-row">
+          <span id="pr-chip" class="chip hidden">Your move</span>
+          <span id="timer"></span>
+        </div>
+        <div id="pr-title"></div>
+        <div id="pr-detail"></div>
+        <div id="pr-wait" class="hidden"></div>
+        <span id="pr-verb" class="verb hidden"></span>
+        <div id="timer-bar"><i id="timer-fill"></i></div>
+      </div>
       <div id="chat">
         <div id="chat-log"></div>
         <input id="chat-input" maxlength="200" autocomplete="off" placeholder="Press Enter to talk…" />

@@ -1,6 +1,8 @@
 // DOM overlay: lobby, HUD, prompt, timer, chat, toasts, credits, game over. Always textContent, never innerHTML with user data.
 import type { RoomView } from '../shared/protocol';
+import type { Power } from '../shared/types';
 import type { GameView } from '../shared/view';
+import type { HudModel } from './hudmodel';
 import { isMuted, setMuted } from './audio';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -23,10 +25,13 @@ const REASONS: Record<string, string> = {
   hitlerElected: 'Hitler was elected Chancellor.',
 };
 
+const POWER_GLYPHS: Record<Power, string> = { peek: '👁', investigate: '🔍', special: '★', execute: '✕' };
+
 export class UI {
   private chatOpen = false;
   private timerText: string | null = null;
   private timerClass: string | null = null;
+  private timerMax = 0;
   private room: RoomView | null = null;
   private copyLabels = new Map<string, string>();
   private copyTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -263,19 +268,78 @@ export class UI {
     } else {
       $('lobby').classList.add('hidden');
       $('hud').classList.remove('hidden');
-      const g = room.game!;
-      const me = g.players[room.you];
-      const role = g.yourRole ? (g.yourRole === 'hitler' ? 'Hitler' : g.yourRole === 'fascist' ? 'Fascist' : 'Liberal') : '';
-      $('hud-role').textContent = role ? `${me.name} · ${role}${me.alive ? '' : ' (dead)'}` : me.name;
-      $('hud-role').className = g.yourRole === 'liberal' ? 'liberal' : 'fascist';
-      $('hud-round').textContent = `Round ${g.round} · L ${g.liberal}/5 · F ${g.fascist}/6 · tracker ${g.tracker}/3 · deck ${g.deckCount}`;
     }
   }
 
-  setPrompt(text: string, mine: boolean) {
-    const el = $('prompt');
-    el.textContent = text;
-    el.classList.toggle('mine', mine);
+  /** Renders the status bar, phase stepper and action card from the pure HUD model (null: no game yet). */
+  renderHud(model: HudModel | null, mine: boolean, fallback = '') {
+    this.renderStatus(model);
+    this.renderStepper(model);
+    const card = $('prompt');
+    const title = model ? model.action.title : fallback;
+    card.classList.toggle('hidden', !title);
+    card.classList.toggle('mine', mine);
+    const action = model?.action;
+    $('pr-chip').classList.toggle('hidden', !mine);
+    $('pr-title').textContent = title;
+    $('pr-detail').textContent = action?.detail ?? '';
+    const wait = $('pr-wait');
+    const waiting = !mine && !!action && action.waitingOn.length > 0;
+    wait.classList.toggle('hidden', !waiting);
+    wait.replaceChildren();
+    if (waiting) {
+      wait.append(document.createTextNode(`Waiting on ${action.waitingOn.join(', ')}`));
+      const ell = document.createElement('span');
+      ell.className = 'ell';
+      wait.appendChild(ell);
+    }
+    const verb = $('pr-verb');
+    const v = mine && action?.verb ? action.verb : null;
+    verb.classList.toggle('hidden', !v);
+    verb.textContent = v ? v.toUpperCase() : '';
+    verb.className = v ? `verb ${v}` : 'verb hidden';
+  }
+
+  private renderStatus(model: HudModel | null) {
+    const bar = $('status-bar');
+    bar.classList.toggle('hidden', !model);
+    if (!model) return;
+    const st = model.status;
+    const me = model.roster.find((r) => r.you);
+    const chip = $('sb-role');
+    chip.textContent = [me?.name, st.alive ? st.roleLabel : '✝'].filter(Boolean).join(' · ');
+    chip.className = `chip ${!st.alive ? 'dead' : st.role === 'liberal' ? 'lib' : st.role ? 'fas' : ''}`;
+    const pips = (id: string, total: number, filled: number, powers?: (Power | null)[]) => {
+      $(id).replaceChildren(
+        ...Array.from({ length: total }, (_, i) => {
+          const pip = document.createElement('i');
+          pip.className = i < filled ? 'pip on' : 'pip';
+          const power = powers?.[i];
+          if (power && i >= filled) pip.textContent = POWER_GLYPHS[power];
+          return pip;
+        }),
+      );
+    };
+    pips('sb-lib', 5, st.liberal);
+    pips('sb-fas', 6, st.fascist, st.powers);
+    pips('sb-tracker', 3, st.tracker);
+    $('sb-deck').textContent = `Deck ${st.deck}`;
+    $('sb-discard').textContent = `Discard ${st.discard}`;
+  }
+
+  private renderStepper(model: HudModel | null) {
+    const el = $('stepper');
+    const step = model?.step ?? null;
+    el.classList.toggle('hidden', !step);
+    if (!step) return;
+    el.replaceChildren(
+      ...step.labels.map((label, i) => {
+        const seg = document.createElement('span');
+        seg.className = i < step.index ? 'seg done' : i === step.index ? 'seg cur' : 'seg';
+        seg.textContent = i < step.index ? `✓ ${label}` : label;
+        return seg;
+      }),
+    );
   }
 
   setTimer(secs: number | null, mine: boolean) {
@@ -284,9 +348,15 @@ export class UI {
     if (text === this.timerText && cls === this.timerClass) return;
     this.timerText = text;
     this.timerClass = cls;
+    // The bar's full length is the largest value seen since the timer last cleared.
+    this.timerMax = secs === null ? 0 : Math.max(this.timerMax, secs);
     const el = $('timer');
     el.textContent = text;
     el.className = cls;
+    const bar = $('timer-bar');
+    bar.className = cls;
+    bar.classList.toggle('hidden', secs === null);
+    $('timer-fill').style.transform = `scaleX(${secs === null || !this.timerMax ? 0 : secs / this.timerMax})`;
   }
 
   toast(text: string, kind = 'info') {

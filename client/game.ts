@@ -4,6 +4,7 @@ import type { RoomView } from '../shared/protocol';
 import type { ActionBody, GameEvent, Policy } from '../shared/types';
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { setMusicMood, sfx, voice } from './audio';
+import { hudModel } from './hudmodel';
 import type { Interactable, Interactor } from './interact';
 import { Character } from './scene/characters';
 import { disposeObject } from './scene/dispose';
@@ -238,7 +239,7 @@ export class Game {
     // The server has answered once the state our action was for has changed.
     if (this.inFlight && this.flightKey() !== this.inFlight.key) this.settle();
     this.refreshInteractables();
-    this.ui.setPrompt(this.promptText(), this.promptActive());
+    this.refreshHud();
     if (v?.phase === 'gameOver') this.ui.showGameOver(v, room);
     else this.ui.hideGameOver();
     const me = v?.players[room.you];
@@ -271,7 +272,7 @@ export class Game {
     this.myVote = null;
     this.pendingIndex = null;
     this.refreshInteractables();
-    this.ui.setPrompt(this.promptText(), this.promptActive());
+    this.refreshHud();
   }
 
   /** The socket reopened: an in-flight action may have been lost, and the server will resend state. */
@@ -305,7 +306,7 @@ export class Game {
     this.deadlineAt = null;
     this.lastSecond = -1;
     this.refreshInteractables();
-    this.ui.setPrompt('', false);
+    this.refreshHud();
     this.ui.setTimer(null, false);
   }
 
@@ -744,7 +745,7 @@ export class Game {
           if (v.phase === 'night' && !v.players[me].acked) this.act({ type: 'ack' });
         }
         this.refreshInteractables();
-        this.ui.setPrompt(this.promptText(), true);
+        this.refreshHud();
       },
     });
     if (this.invShown !== null) {
@@ -868,51 +869,17 @@ export class Game {
     return 'not eligible this round';
   }
 
-  // ---------- prompt ----------
+  // ---------- HUD ----------
 
-  promptText(): string {
-    const v = this.view;
-    const room = this.room;
-    if (!room) return '';
-    if (!v) return room.seats.length < 5 ? 'Waiting for players… (5 to 10 seats, the host can add bots)' : 'Waiting for the host to start.';
-    const me = room.you;
-    const mine = v.pending.includes(me);
-    const pres = this.name(v.president);
-    const dead = !v.players[me].alive && v.phase !== 'gameOver' ? 'You are dead: watch in silence. ' : '';
-    const waitingOn = v.pending.filter((s) => s !== me).map((s) => this.name(s));
-    switch (v.phase) {
-      case 'night':
-        if (!v.players[me].acked) return this.envelopeOpen ? 'Memorise your role, then click the card to close your eyes.' : 'Night. Click your envelope to see your secret role.';
-        return `Eyes closed. Waiting for ${waitingOn.length} more…`;
-      case 'nominate': {
-        const limited = this.termLimited().map((s) => this.name(s));
-        const note = limited.length ? ` Term-limited: ${limited.join(', ')}.` : '';
-        return mine
-          ? `You are President. Click a player to nominate them as Chancellor.${note}`
-          : `${dead}Waiting for President ${pres} to nominate a Chancellor.${note}`;
-      }
-      case 'vote':
-        if (mine && this.myVote === null) return `Vote on President ${pres} with Chancellor ${this.name(v.nominee)}: slam JA! or NEIN.`;
-        return `${dead}Votes are in from ${v.players.filter((p) => p.hasVoted).length} of ${v.players.filter((p) => p.alive).length}. Waiting for ${waitingOn.join(', ') || 'the reveal'}.`;
-      case 'legPresident':
-        return mine ? `Click the policy to DISCARD. The other two go to Chancellor ${this.name(v.chancellor)}.` : `${dead}President ${pres} is choosing a policy to discard.`;
-      case 'legChancellor':
-        return mine
-          ? `Click the policy to ENACT; the other is discarded.${v.vetoUnlocked && !v.vetoRefused ? ' Or stamp VETO.' : ''}`
-          : `${dead}Chancellor ${this.name(v.chancellor)} is choosing a policy to enact.`;
-      case 'veto':
-        return mine ? `Chancellor ${this.name(v.chancellor)} wants to veto. Slam JA! to agree or NEIN to refuse.` : `${dead}President ${pres} is considering the veto.`;
-      case 'peek':
-        return mine ? 'These are the next three policies. Click them to put them back.' : `${dead}President ${pres} is peeking at the deck.`;
-      case 'investigate':
-        return mine ? 'Click a player to investigate their party membership.' : `${dead}President ${pres} is choosing someone to investigate.`;
-      case 'special':
-        return mine ? 'Click the player who will be the next President.' : `${dead}President ${pres} is choosing the next President.`;
-      case 'execute':
-        return mine ? 'Aim the revolver and click the player to execute.' : `${dead}President ${pres} has the revolver…`;
-      case 'gameOver':
-        return v.winner === 'liberal' ? 'The Liberals win.' : 'The Fascists win.';
-    }
+  private refreshHud() {
+    const { room, view } = this;
+    if (room && view) {
+      const opts = { envelopeOpen: this.envelopeOpen, myVote: this.myVote, termLimited: this.termLimited() };
+      this.ui.renderHud(hudModel(view, room, opts), this.promptActive());
+    } else if (room) {
+      const text = room.seats.length < 5 ? 'Waiting for players… (5 to 10 seats, the host can add bots)' : 'Waiting for the host to start.';
+      this.ui.renderHud(null, false, text);
+    } else this.ui.renderHud(null, false);
   }
 
   // ---------- per-frame ----------
