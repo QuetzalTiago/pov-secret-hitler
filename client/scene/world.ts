@@ -42,12 +42,12 @@ export function glossy<T extends THREE.MeshStandardMaterial>(m: T, intensity = 0
   }
   return m;
 }
-/** Strength of the HDRI image-based light; the pendant lamp stays the key light. */
-const ENV_INTENSITY = 0.18;
+/** Strength of the HDRI image-based light: kept faint so the bar stays dark and the pendant lamp is the key light. */
+const ENV_INTENSITY = 0.06;
 /** Strength of the hemisphere ambient light before the night dimming. */
-const AMBIENT_INTENSITY = 0.28;
+const AMBIENT_INTENSITY = 0.12;
 /** Strength of the warm fill point light before the lit factor. */
-const FILL_INTENSITY = 3.5;
+const FILL_INTENSITY = 1.5;
 const EYE_Y = 1.27;
 /** Your own hands read small up close next to the patrons' at a distance; scale them up a little. */
 const OWN_HAND_SCALE = 1.2;
@@ -205,7 +205,7 @@ export class World {
     // Plain PCF: PCFSoft samples the shadow map many more times on every shadowed pixel.
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.9;
+    this.renderer.toneMappingExposure = 0.75;
     // Keep renderer.info covering the whole frame (scene + post passes); render() resets it.
     this.renderer.info.autoReset = false;
     const q = new URLSearchParams(location.search);
@@ -232,7 +232,7 @@ export class World {
     this.ambient = new THREE.HemisphereLight(0x9a6848, 0x1c0e06, AMBIENT_INTENSITY);
     this.scene.add(this.ambient);
 
-    this.lamp = new THREE.SpotLight(0xffa65a, 60, 9, Math.PI / 3.2, 0.55, 1.6);
+    this.lamp = new THREE.SpotLight(0xffa65a, 60, 6, Math.PI / 3.2, 0.55, 1.6);
     this.lamp.position.set(0, 2.55, 0);
     this.lamp.target.position.set(0, TABLE_Y, 0);
     this.lamp.castShadow = true;
@@ -439,7 +439,7 @@ export class World {
     composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.4, BLOOM_THRESHOLD));
     composer.addPass(
       new ShaderPass({
-        uniforms: { tDiffuse: { value: null }, darkness: { value: 0.45 }, offset: { value: 1.0 } },
+        uniforms: { tDiffuse: { value: null }, darkness: { value: 0.6 }, offset: { value: 1.0 } },
         vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
         fragmentShader: `uniform sampler2D tDiffuse; uniform float darkness; uniform float offset; varying vec2 vUv;
           void main() {
@@ -545,7 +545,7 @@ export class World {
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshStandardMaterial({ map: signTexture(), roughness: 0.45, metalness: 0.2 }));
     sign.position.set(0, 2.95, -4.97 + 0.02);
     room.add(sign);
-    const neonLight = new THREE.PointLight(0xffb060, 1.0, 5, 1.5);
+    const neonLight = new THREE.PointLight(0xffb060, 0.6, 5, 1.5);
     neonLight.position.set(0, 3.0, -4.5);
     room.add(neonLight);
     // A few empty stools and a dartboard-ish clock on the side wall.
