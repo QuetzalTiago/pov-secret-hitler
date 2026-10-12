@@ -11,6 +11,7 @@ import { eventCopy, powerCopy } from './eventcopy';
 import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, type Mark } from './hudmodel';
 import { loadMarks, saveMarks } from './marks';
 import type { Interactable, Interactor } from './interact';
+import { bloodSeed } from './scene/blood';
 import { createCharacter, type Patron } from './scene/characters';
 import { disposeObject } from './scene/dispose';
 import { ActingRings, Board, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
@@ -156,6 +157,9 @@ export class Game {
   private layoutKey = '';
   private ray = new THREE.Raycaster();
   private tmpV = new THREE.Vector3();
+  private bloodA = new THREE.Vector3(); // victim head
+  private bloodB = new THREE.Vector3(); // other head
+  private bloodDir = new THREE.Vector3();
   // Per-frame scratch (see computeTargets); each is consumed before it is written again.
   private pointV = new THREE.Vector3(); // pointing() result, read at once by setAim/setOwnArm/lookAt
   private envV = new THREE.Vector3(); // envelope spot, alive across the role card block
@@ -282,6 +286,7 @@ export class Game {
     if (this.view?.phase === 'night' && prevPhase !== 'night') {
       this.marks = {}; // a new deal (also a rematch): fresh suspicions
       saveMarks(room.code, this.marks);
+      for (const c of this.chars.values()) c.clearBlood();
     }
     this.rings.set(this.view ? actingSeats(this.view) : []);
     const n = room.game ? room.game.players.length : room.seats.length;
@@ -341,6 +346,25 @@ export class Game {
       if (document.hidden) flagTab();
     }
     if (myTurnKey(v) === null) unflagTab();
+  }
+
+  /** Splashes the victim's chest and face, the neighbours and the shooter's gun arm (the local seat has no patron). */
+  private bloodOnPatrons(by: number, target: number) {
+    const n = this.view?.players.length ?? 0;
+    if (n === 0) return;
+    const kill = this.view!.players.filter((p) => !p.alive).length;
+    const seed = bloodSeed(target, kill);
+    const head = (seat: number, out: THREE.Vector3) => this.chars.get(seat)?.headWorld(out) ?? this.world.layout.head(seat, out);
+    const victim = this.chars.get(target);
+    head(target, this.bloodA);
+    victim?.bloody(this.bloodDir.copy(head(by, this.bloodB)).sub(this.bloodA).normalize(), 1, seed, 'upper');
+    const next = (target + 1) % n;
+    const prev = (target - 1 + n) % n;
+    for (const seat of next === prev ? [next] : [next, prev]) {
+      if (seat === target) continue;
+      this.chars.get(seat)?.bloody(this.bloodDir.copy(this.bloodA).sub(head(seat, this.bloodB)).normalize(), 0.55, seed + 7919 * (seat + 1), 'all');
+    }
+    this.chars.get(by)?.bloody(this.bloodDir.copy(this.bloodA).sub(head(by, this.bloodB)).normalize(), 0.3, seed + 104729, 'gunArm');
   }
 
   /** Plays the beats now due; once the queue is empty the board snaps to the view's counts. */
@@ -787,6 +811,7 @@ export class Game {
         if (e.by !== me) this.gunSnapFrames = 2;
         shooter?.recoil();
         this.chars.get(e.target)?.die();
+        this.bloodOnPatrons(e.by, e.target);
         voice.gunshot();
         voice.death();
         this.world.addShake(e.target === me ? 1.5 : 1.0);

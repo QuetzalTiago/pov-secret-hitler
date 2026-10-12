@@ -458,6 +458,56 @@ describe('RiggedCharacter motion', () => {
   });
 });
 
+describe('RiggedCharacter blood', () => {
+  const colors = (c: ReturnType<typeof build>) => ((c as any).mesh.geometry.getAttribute('color').array as Float32Array);
+  const DIR = new THREE.Vector3(0, 0, 1);
+  const diff = (a: Float32Array, b: Float32Array) => {
+    let n = 0;
+    for (let i = 0; i < a.length; i += 3) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) n++;
+    return n;
+  };
+
+  it('bloody changes colours and clearBlood restores them exactly', () => {
+    const c = build(1);
+    const before = new Float32Array(colors(c));
+    c.bloody(DIR, 1, 42);
+    expect(diff(colors(c), before)).toBeGreaterThan(0);
+    c.clearBlood();
+    expect(colors(c)).toEqual(before);
+  });
+
+  it('is deterministic for the same seat and args', () => {
+    const a = build(3);
+    const b = build(3);
+    a.bloody(DIR, 0.8, 7, 'upper');
+    b.bloody(DIR, 0.8, 7, 'upper');
+    expect(colors(b)).toEqual(colors(a));
+  });
+
+  it('gunArm paints fewer vertices than all, but some', () => {
+    const base = new Float32Array(colors(build(1)));
+    const all = build(1);
+    const arm = build(1);
+    all.bloody(DIR, 1, 42);
+    arm.bloody(DIR, 1, 42, 'gunArm');
+    const nArm = diff(colors(arm), base);
+    expect(nArm).toBeGreaterThan(0);
+    expect(nArm).toBeLessThan(diff(colors(all), base));
+  });
+
+  it('headWorld is a finite point above the hips', () => {
+    const p = build(1).headWorld(new THREE.Vector3());
+    expect([p.x, p.y, p.z].every(Number.isFinite)).toBe(true);
+    expect(p.y).toBeGreaterThan(1);
+  });
+
+  it('the procedural patron ignores blood', () => {
+    const p = new chars.Character(0, 0, 'normal');
+    p.bloody();
+    expect(() => p.clearBlood()).not.toThrow();
+  });
+});
+
 describe('seat constants', () => {
   it('match the seat measured on the real chair', async () => {
     (globalThis as any).self ??= globalThis;

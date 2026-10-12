@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { TABLE_Y, Layout } from '../client/scene/world';
-import { bloodSeed, dropletAt, spray } from '../client/scene/blood';
+import { bloodSeed, dropletAt, paintBlood, spray } from '../client/scene/blood';
 
 const cases = [7, 5, 10];
 
@@ -67,5 +67,55 @@ describe('spray', () => {
     expect(ds.some((d) => d.surface === 'floor')).toBe(true);
     expect(victim).toEqual(v0);
     expect(shooter).toEqual(s0);
+  });
+});
+
+describe('paintBlood', () => {
+  const g = new THREE.SphereGeometry(1, 48, 32);
+  const pos = g.getAttribute('position').array;
+  const nor = g.getAttribute('normal').array;
+  const n = pos.length / 3;
+  const dir = new THREE.Vector3(0, 0, 1);
+  const fresh = () => new Float32Array(n * 3).fill(0.8);
+  const facing = (i: number) => nor[3 * i + 2];
+
+  it('leaves vertices facing away bit-identical and changes some facing ones', () => {
+    const c = fresh();
+    const count = paintBlood(c, pos, nor, dir, 5, 1);
+    let changed = 0;
+    for (let i = 0; i < n; i++) {
+      const f = Math.fround(0.8);
+      const same = c[3 * i] === f && c[3 * i + 1] === f && c[3 * i + 2] === f;
+      if (facing(i) <= 0.15) expect(same).toBe(true);
+      if (!same) changed++;
+    }
+    expect(changed).toBeGreaterThan(0);
+    expect(count).toBe(changed);
+  });
+
+  it('is deterministic per seed and differs across seeds', () => {
+    const a = fresh();
+    const b = fresh();
+    const c = fresh();
+    paintBlood(a, pos, nor, dir, 9, 1);
+    paintBlood(b, pos, nor, dir, 9, 1);
+    paintBlood(c, pos, nor, dir, 10, 1);
+    expect(b).toEqual(a);
+    expect(c).not.toEqual(a);
+  });
+
+  it('amount 0 changes nothing and amount 1 changes more than 0.3', () => {
+    const z = fresh();
+    expect(paintBlood(z, pos, nor, dir, 5, 0)).toBe(0);
+    expect(z).toEqual(fresh());
+    const lo = paintBlood(fresh(), pos, nor, dir, 5, 0.3);
+    const hi = paintBlood(fresh(), pos, nor, dir, 5, 1);
+    expect(hi).toBeGreaterThan(lo);
+  });
+
+  it('skips vertices outside the region', () => {
+    const c = fresh();
+    paintBlood(c, pos, nor, dir, 5, 1, (i) => i % 2 === 0);
+    for (let i = 1; i < n; i += 2) expect([c[3 * i], c[3 * i + 1], c[3 * i + 2]]).toEqual([0.8, 0.8, 0.8].map(Math.fround));
   });
 });

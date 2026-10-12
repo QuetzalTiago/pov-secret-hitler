@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { getAssets, type CharacterTemplate, type Outfit } from './assets';
 import { PatronBadges } from './badges';
+import { paintBlood, type BloodPart } from './blood';
 import { COATS, SKINS, type Patron } from './characters';
 import { disposeObject } from './dispose';
 import { DEATH_DUR, REACTION_DUR, SMOKE_DUR, deathPose, isSmoker, mouthOpen, nextDragDelay, reactionPose, smokePose, type DeathPose, type Reaction, type ReactionPose, type SmokePose } from './life';
@@ -200,6 +201,11 @@ export class RiggedCharacter implements Patron {
   /** Face centre in Head-bone space, and the head's size relative to the accessory geometry's. */
   private faceCenter = new THREE.Vector3();
   private faceScale = 1;
+  /** Vertex colours from before the first bloody(), and each vertex's strongest-weight bone (lazy). */
+  private bloodBase: Float32Array | null = null;
+  private dominant: Int16Array | null = null;
+  private bloodDir = new THREE.Vector3();
+  private bloodInv = new THREE.Matrix4();
   private cig: THREE.Mesh | null = null;
   /** The cigarette's lit end in MiddleHandL space. */
   private ember = new THREE.Vector3();
@@ -499,6 +505,67 @@ export class RiggedCharacter implements Patron {
   die() {
     this.dead = true;
     this.deathT = 0;
+  }
+
+  /** Paints blood onto the vertices facing dirWorld; 'upper' = torso, neck and head, 'gunArm' = the right arm. */
+  bloody(dirWorld: THREE.Vector3, amount: number, seed: number, part: BloodPart = 'all') {
+    const g = this.mesh.geometry;
+    const attr = g.getAttribute('color') as THREE.BufferAttribute;
+    if (!this.bloodBase) this.bloodBase = new Float32Array(attr.array as Float32Array);
+    this.mesh.updateWorldMatrix(true, false);
+    this.bloodInv.copy(this.mesh.matrixWorld).invert();
+    this.bloodDir.copy(dirWorld).transformDirection(this.bloodInv);
+    let region: ((v: number) => boolean) | undefined;
+    if (part !== 'all') {
+      const dominant = this.dominantBones();
+      const set = new Set<number>();
+      const add = (root: THREE.Object3D) => root.traverse((o) => {
+        const bi = this.mesh.skeleton.bones.indexOf(o as THREE.Bone);
+        if (bi >= 0) set.add(bi);
+      });
+      if (part === 'upper') {
+        add(this.head);
+        set.add(this.mesh.skeleton.bones.indexOf(this.torso));
+        set.add(this.mesh.skeleton.bones.indexOf(this.neck));
+      } else add(this.armR.upper);
+      region = (v) => set.has(dominant[v]);
+    }
+    paintBlood(attr.array, g.getAttribute('position').array, g.getAttribute('normal').array, this.bloodDir, seed, amount, region);
+    attr.needsUpdate = true;
+  }
+
+  /** Restores the colours from before any bloody() call. */
+  clearBlood() {
+    if (!this.bloodBase) return;
+    const attr = this.mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
+    (attr.array as Float32Array).set(this.bloodBase);
+    attr.needsUpdate = true;
+    this.bloodBase = null;
+  }
+
+  /** World position of the head centre. */
+  headWorld(out: THREE.Vector3): THREE.Vector3 {
+    this.head.updateWorldMatrix(true, false);
+    return this.head.localToWorld(out.copy(this.faceCenter));
+  }
+
+  /** The strongest-weight bone index of every vertex (same pick as eachDominated). */
+  private dominantBones(): Int16Array {
+    if (this.dominant) return this.dominant;
+    const g = this.mesh.geometry;
+    const si = g.getAttribute('skinIndex');
+    const sw = g.getAttribute('skinWeight');
+    const out = new Int16Array(si.count).fill(-1);
+    for (let i = 0; i < si.count; i++) {
+      let w = 0;
+      for (let k = 0; k < 4; k++) {
+        if (sw.getComponent(i, k) > w) {
+          w = sw.getComponent(i, k);
+          out[i] = si.getComponent(i, k);
+        }
+      }
+    }
+    return (this.dominant = out);
   }
 
   recoil() {

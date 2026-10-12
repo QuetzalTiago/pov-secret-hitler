@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { disposeObject } from './dispose';
 import { DEATH_DUR, REACTION_DUR, SMOKE_DUR, blinkScale, deathPose, isSmoker, mouthOpen, nextBlinkDelay, nextDragDelay, reactionPose, smokePose, type DeathPose, type Reaction, type ReactionPose, type SmokePose } from './life';
 import { PatronBadges } from './badges';
+import type { BloodPart } from './blood';
 import { getAssets } from './assets';
 import { RiggedCharacter } from './rigged';
 import { glossy } from './world';
@@ -111,6 +112,12 @@ export interface Patron {
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion };
   setHandsUp(on: boolean): void;
   die(): void;
+  /** Paints blood onto the vertices facing dirWorld (world space): 'upper' = head and chest, 'gunArm' = the right arm, default 'all'. */
+  bloody(dirWorld: THREE.Vector3, amount: number, seed: number, part?: BloodPart): void;
+  /** Restores the colours from before any bloody() call. */
+  clearBlood(): void;
+  /** World position of the head centre. */
+  headWorld(out: THREE.Vector3): THREE.Vector3;
   recoil(): void;
   react(kind: Reaction, delay?: number): void;
   setTeamGlow(on: boolean): void;
@@ -477,6 +484,15 @@ export class Character implements Patron {
   die() {
     this.dead = true;
     this.deathT = 0;
+  }
+
+  /** The procedural patron has no vertex colours to paint. */
+  bloody() {}
+
+  clearBlood() {}
+
+  headWorld(out: THREE.Vector3) {
+    return this.head.getWorldPosition(out);
   }
 
   recoil() {

@@ -113,3 +113,94 @@ export function spray(
   }
   return out;
 }
+
+export type BloodPart = 'all' | 'upper' | 'gunArm';
+
+/** Dark flat blood ink, linear RGB. */
+export const BLOOD_INK = new THREE.Color(0x4a0606);
+
+const smooth = (a: number, b: number, x: number) => {
+  const t = Math.min(Math.max((x - a) / (b - a), 0), 1);
+  return t * t * (3 - 2 * t);
+};
+
+/** Integer lattice hash to [0,1). */
+function hash4(x: number, y: number, z: number, seed: number): number {
+  let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 2147483647) ^ Math.imul(seed, 1274126177);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = Math.imul(h ^ (h >>> 16), 2246822519);
+  return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
+}
+
+/** Trilinear value noise in [0,1) with a smoothstep fade. */
+function noise3(x: number, y: number, z: number, seed: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const iz = Math.floor(z);
+  const fx = x - ix;
+  const fy = y - iy;
+  const fz = z - iz;
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fy * fy * (3 - 2 * fy);
+  const w = fz * fz * (3 - 2 * fz);
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const c = (dx: number, dy: number, dz: number) => hash4(ix + dx, iy + dy, iz + dz, seed);
+  return lerp(
+    lerp(lerp(c(0, 0, 0), c(1, 0, 0), u), lerp(c(0, 1, 0), c(1, 1, 0), u), v),
+    lerp(lerp(c(0, 0, 1), c(1, 0, 1), u), lerp(c(0, 1, 1), c(1, 1, 1), u), v),
+    w,
+  );
+}
+
+/**
+ * Darkens noisy patches of vertices whose normals face localDir (all arrays are xyz triples, same vertex count).
+ * Deterministic in seed; vertices outside region or not facing localDir are left bit-for-bit untouched.
+ * Returns how many vertices changed.
+ */
+export function paintBlood(
+  colors: { [i: number]: number; length: number },
+  positions: ArrayLike<number>,
+  normals: ArrayLike<number>,
+  localDir: THREE.Vector3,
+  seed: number,
+  amount: number,
+  region?: (vertex: number) => boolean,
+): number {
+  if (amount <= 0 || localDir.lengthSq() === 0) return 0;
+  const dl = localDir.length();
+  const dx = localDir.x / dl;
+  const dy = localDir.y / dl;
+  const dz = localDir.z / dl;
+  const n = Math.floor(positions.length / 3);
+  let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const x = positions[3 * i], y = positions[3 * i + 1], z = positions[3 * i + 2];
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z;
+    if (z > maxZ) maxZ = z;
+  }
+  const cell = (Math.max(maxX - minX, maxY - minY, maxZ - minZ) || 1) / 18;
+  const fine = cell * 0.4;
+  const cap = Math.min(amount, 1);
+  const ink = [BLOOD_INK.r, BLOOD_INK.g, BLOOD_INK.b];
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    if (region && !region(i)) continue;
+    const nx = normals[3 * i], ny = normals[3 * i + 1], nz = normals[3 * i + 2];
+    const nl = Math.hypot(nx, ny, nz);
+    if (nl < 1e-8) continue;
+    const facing = (nx * dx + ny * dy + nz * dz) / nl;
+    if (facing <= 0.15) continue;
+    const x = positions[3 * i], y = positions[3 * i + 1], z = positions[3 * i + 2];
+    const k = 0.6 * noise3(x / cell, y / cell, z / cell, seed) + 0.4 * noise3(x / fine, y / fine, z / fine, seed + 1);
+    const lo = 1 - Math.sqrt(facing) * cap;
+    const w = smooth(lo, lo + 0.25, k) * 0.92;
+    if (w <= 0) continue;
+    for (let c = 0; c < 3; c++) colors[3 * i + c] += (ink[c] - colors[3 * i + c]) * w;
+    count++;
+  }
+  return count;
+}
