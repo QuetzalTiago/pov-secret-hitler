@@ -3,7 +3,7 @@
 // "outfit" material covers everything on the body (coat, skin, shirt, tie, belt), so a patron is a handful of meshes.
 import * as THREE from 'three';
 import { disposeObject } from './dispose';
-import { DEATH_DUR, REACTION_DUR, blinkScale, deathPose, mouthOpen, nextBlinkDelay, reactionPose, type DeathPose, type Reaction, type ReactionPose } from './life';
+import { DEATH_DUR, REACTION_DUR, SMOKE_DUR, blinkScale, deathPose, isSmoker, mouthOpen, nextBlinkDelay, nextDragDelay, reactionPose, smokePose, type DeathPose, type Reaction, type ReactionPose, type SmokePose } from './life';
 import { glowTexture, textSprite } from './textures';
 import { glossy } from './world';
 import { handGeometry } from './hands';
@@ -11,12 +11,15 @@ import {
   aimArmGeometry,
   armGeometry,
   armJoints,
+  CIGARETTE_TIP,
   armbandGeometry,
+  cigaretteGeometry,
   eyesGeometry,
   faceDetailGeometry,
   fingerGeometry,
   hatGeometry,
   headSkinGeometry,
+  limbGeometry,
   mergeParts,
   mouthGeometry,
   neckGeometry,
@@ -45,6 +48,41 @@ function restHandGeometry(side: 1 | -1) {
   hand.rotateY(Math.atan2(dir.x, dir.z));
   const p = wrist.clone().addScaledVector(dir, 0.055).setY(0.815);
   return hand.translate(p.x, p.y, p.z);
+}
+
+/** Body-space hand target (the palm) when the cigarette is at the lips, and the elbow's pull while raised (down and outward). */
+const MOUTH_HAND = new THREE.Vector3(0.03, 1.3, 0.19);
+const ELBOW_HINT = new THREE.Vector3(0.6, -1, -0.2).normalize();
+/** Cigarette in the hand: filter end between the fingers, lit end pointing back and outward (hand space). */
+const CIG_AXIS = new THREE.Vector3(0.5, 0.3, -0.8).normalize();
+const Y_UP = new THREE.Vector3(0, 1, 0);
+
+/** Two-bone left arm of a smoker, solved analytically each frame (body space; shoulder fixed). */
+interface SmokeRig {
+  upper: THREE.Group;
+  fore: THREE.Group;
+  ember: THREE.Mesh;
+  emberMat: THREE.MeshStandardMaterial;
+  shoulder: THREE.Vector3;
+  restHand: THREE.Vector3;
+  restPole: THREE.Vector3;
+  len1: number;
+  len2: number;
+  /** Seconds into a drag, or null between drags. */
+  dragT: number | null;
+  /** Seconds until the next drag. */
+  dragIn: number;
+  pose: SmokePose;
+  hand: THREE.Vector3;
+  reach: THREE.Vector3;
+  u: THREE.Vector3;
+  pole: THREE.Vector3;
+  elbow: THREE.Vector3;
+  basisX: THREE.Vector3;
+  basisY: THREE.Vector3;
+  basisM: THREE.Matrix4;
+  qUpper: THREE.Quaternion;
+  qFore: THREE.Quaternion;
 }
 
 export class Character {
@@ -80,6 +118,8 @@ export class Character {
   private blinkStart = -1;
   private reaction: { kind: Reaction; t: number } | null = null;
   private pose: ReactionPose = { pitch: 0, yaw: 0, lean: 0, armLift: 0 };
+  readonly smoker: boolean;
+  private rig: SmokeRig | null = null;
   private fistQuat = new THREE.Quaternion();
   private pivot = new THREE.Vector3();
   private baseEuler = new THREE.Euler();
@@ -91,6 +131,7 @@ export class Character {
    */
   constructor(public seat: number, styleIndex: number, public variant: 'normal' | 'hitler' = 'normal') {
     const hitler = variant === 'hitler';
+    this.smoker = isSmoker(styleIndex, variant);
     const coatHex = hitler ? 0x7a6844 : COATS[styleIndex % COATS.length];
     const skinHex = hitler ? 0xe8c4a4 : SKINS[(styleIndex * 3) % SKINS.length];
     const shirtHex = hitler ? 0x8c7450 : 0xd8d0c0;
@@ -108,9 +149,9 @@ export class Character {
       paint(neckGeometry(), skinHex),
       paint(shirtGeometry(), shirtHex),
       paint(tieGeometry(), tieHex),
-      paint(armGeometry(1), coatHex),
-      paint(restHandGeometry(1), skinHex),
     ];
+    if (this.smoker) this.rig = this.buildSmokeRig(outfit, coatHex, skinHex);
+    else parts.push(paint(armGeometry(1), coatHex), paint(restHandGeometry(1), skinHex));
     // Right arm (the figure faces +Z, so its right is -X): swapped for the aiming rig when holding the gun.
     const rightArm = new THREE.Mesh(mergeParts([paint(armGeometry(-1), coatHex), paint(restHandGeometry(-1), skinHex)]), outfit);
     this.restArm = [rightArm];
@@ -161,6 +202,8 @@ export class Character {
         this.hitMeshes.push(o);
       }
     });
+    // Added after the traverse: too small to cast shadows or be picked.
+    if (this.rig) this.rig.fore.add(this.rig.ember);
     for (const m of this.mats) this.baseColors.push(m.color.clone());
 
     this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
@@ -175,6 +218,60 @@ export class Character {
     this.glow.renderOrder = 1;
     this.glow.visible = false;
     this.group.add(this.glow);
+  }
+
+  /** Left arm as upper arm + forearm-with-hand pivots (so it can lift the cigarette), matching the resting arm at reach 0. */
+  private buildSmokeRig(outfit: THREE.Material, coatHex: number, skinHex: number): SmokeRig {
+    const { shoulder, elbow, wrist } = armJoints(1);
+    // Where restHandGeometry puts the palm.
+    const restHand = wrist.clone().addScaledVector(wrist.clone().sub(elbow).setY(0).normalize(), 0.055).setY(0.815);
+    const len1 = shoulder.distanceTo(elbow);
+    const len2 = restHand.distanceTo(elbow);
+    const restDir = restHand.clone().sub(shoulder).normalize();
+    const elbowRel = elbow.clone().sub(shoulder);
+    const restPole = elbowRel.addScaledVector(restDir, -elbowRel.dot(restDir)).normalize();
+
+    const upper = new THREE.Group();
+    upper.position.copy(shoulder);
+    upper.add(new THREE.Mesh(paintGeometry(limbGeometry(new THREE.Vector3(), new THREE.Vector3(0, 0, len1), 0.058, 0.054), coatHex), outfit));
+    const fore = new THREE.Group();
+    fore.position.set(0, 0, len1);
+    const sleeve = paintGeometry(limbGeometry(new THREE.Vector3(), new THREE.Vector3(0, 0, wrist.distanceTo(elbow)), 0.052, 0.045), coatHex);
+    // The cigarette is baked into the forearm mesh: filter end between the fingers, lit end pointing back and outward.
+    const cigPos = new THREE.Vector3(0, 0.012, len2 + 0.04);
+    const cig = cigaretteGeometry().applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), CIG_AXIS)).translate(cigPos.x, cigPos.y, cigPos.z);
+    fore.add(new THREE.Mesh(mergeParts([sleeve, paintGeometry(handGeometry('flat', 1).translate(0, 0, len2), skinHex), cig]), outfit));
+    upper.add(fore);
+    this.body.add(upper);
+
+    // Not in this.mats: the tint loop would overwrite its emissive.
+    const emberMat = new THREE.MeshStandardMaterial({ color: 0x220800, emissive: 0xff5a1a, emissiveIntensity: 0.6 });
+    const ember = new THREE.Mesh(new THREE.SphereGeometry(0.0065, 8, 6), emberMat);
+    ember.position.copy(cigPos).addScaledVector(CIG_AXIS, CIGARETTE_TIP);
+    return {
+      upper,
+      fore,
+      ember,
+      emberMat,
+      shoulder,
+      restHand,
+      restPole,
+      len1,
+      len2,
+      dragT: null,
+      dragIn: 1 + Math.random() * 9,
+      pose: { reach: 0, ember: 0.35, exhale: 0 },
+      hand: new THREE.Vector3(),
+      reach: new THREE.Vector3(),
+      u: new THREE.Vector3(),
+      pole: new THREE.Vector3(),
+      elbow: new THREE.Vector3(),
+      basisX: new THREE.Vector3(),
+      basisY: new THREE.Vector3(),
+      basisM: new THREE.Matrix4(),
+      qUpper: new THREE.Quaternion(),
+      qFore: new THREE.Quaternion(),
+    };
   }
 
   /** Belt and cross strap join the body's vertex-coloured geometry; the brass buckle and buttons are their own glossy mesh. */
@@ -328,6 +425,73 @@ export class Character {
     this.aimArm.quaternion.slerpQuaternions(this.restQuat, aimQuat, this.aimAmount);
   }
 
+  /** Test hook / trigger: begin a drag now (ignored for non-smokers, the dead, or mid-drag). */
+  startDrag() {
+    if (this.rig && !this.dead && this.rig.dragT === null) this.rig.dragT = 0;
+  }
+
+  /** Orient `q` so its +Z points along `dir`, keeping local +Y roughly up. */
+  private aimBasis(r: SmokeRig, q: THREE.Quaternion, dir: THREE.Vector3) {
+    r.basisX.crossVectors(Y_UP, dir);
+    if (r.basisX.lengthSq() < 1e-8) r.basisX.set(1, 0, 0);
+    r.basisX.normalize();
+    r.basisY.crossVectors(dir, r.basisX);
+    q.setFromRotationMatrix(r.basisM.makeBasis(r.basisX, r.basisY, dir));
+  }
+
+  private updateSmoke(r: SmokeRig, dt: number, now: number) {
+    if (this.dead) r.dragT = null;
+    else if (r.dragT === null) {
+      r.dragIn -= dt;
+      if (r.dragIn <= 0) {
+        const talking = this.bubble !== null && this.bubbleUntil - now > 1;
+        if (!this.aimTarget && this.aimAmount < 0.05 && !this.reaction && !talking) r.dragT = 0;
+        else r.dragIn = 2;
+      }
+    } else {
+      r.dragT += dt;
+      if (r.dragT >= SMOKE_DUR) {
+        r.dragT = null;
+        r.dragIn = nextDragDelay(Math.random());
+      }
+    }
+    smokePose(r.dragT ?? 0, r.pose);
+    if (this.dead) r.pose.reach = r.pose.exhale = 0;
+    r.emberMat.emissiveIntensity = this.dead ? 0 : 0.6 + 3.4 * r.pose.ember + 0.15 * Math.sin(now * 31 + this.phase) * r.pose.ember;
+
+    // Two-bone IK in body space: the shoulder is fixed, the elbow sits on the circle that keeps both bone lengths.
+    const reach = r.pose.reach;
+    r.hand.lerpVectors(r.restHand, MOUTH_HAND, reach).sub(r.shoulder);
+    const d = Math.min(Math.max(r.hand.length(), 0.05), r.len1 + r.len2 - 1e-3);
+    r.u.copy(r.hand).normalize();
+    r.hand.copy(r.u).multiplyScalar(d);
+    r.pole.lerpVectors(r.restPole, ELBOW_HINT, reach);
+    r.pole.addScaledVector(r.u, -r.pole.dot(r.u)).normalize();
+    const a = (r.len1 * r.len1 - r.len2 * r.len2 + d * d) / (2 * d);
+    const h = Math.sqrt(Math.max(0, r.len1 * r.len1 - a * a));
+    r.elbow.copy(r.u).multiplyScalar(a).addScaledVector(r.pole, h);
+    this.aimBasis(r, r.qUpper, r.elbow.normalize());
+    r.upper.quaternion.copy(r.qUpper);
+    r.reach.copy(r.hand).addScaledVector(r.elbow, -r.len1).normalize();
+    this.aimBasis(r, r.qFore, r.reach);
+    r.fore.quaternion.copy(r.qUpper).invert().multiply(r.qFore);
+  }
+
+  /**
+   * Writes the ember's, the mouth's and the head's facing (slightly down) in world space; returns the exhale amount 0..1.
+   * -1 for non-smokers and the dead (nothing to emit).
+   */
+  smokeEmit(tip: THREE.Vector3, mouth: THREE.Vector3, dir: THREE.Vector3): number {
+    const r = this.rig;
+    if (!r || this.dead) return -1;
+    r.ember.getWorldPosition(tip);
+    this.head.getWorldQuaternion(r.qFore);
+    mouth.set(0, -0.07, 0.16);
+    this.head.localToWorld(mouth);
+    dir.set(0, -0.15, 1).applyQuaternion(r.qFore).normalize();
+    return r.pose.exhale;
+  }
+
   setTeamGlow(on: boolean) {
     this.glowTarget = on ? 1 : 0;
   }
@@ -356,6 +520,7 @@ export class Character {
     if (this.reaction) reactionPose(this.reaction.kind, Math.max(0, this.reaction.t), this.pose);
     else this.pose.pitch = this.pose.yaw = this.pose.lean = this.pose.armLift = 0;
     this.updateAim(dt);
+    if (this.rig) this.updateSmoke(this.rig, dt, now);
     // Idle: breathing and a slow sway.
     const k = 1 - Math.exp(-4 * dt);
     if (!this.dead) this.deathT = null;

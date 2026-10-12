@@ -4,6 +4,8 @@ import {
   aimArmGeometry,
   armGeometry,
   armbandGeometry,
+  CIGARETTE_TIP,
+  cigaretteGeometry,
   eyesGeometry,
   faceDetailGeometry,
   fingerGeometry,
@@ -180,6 +182,19 @@ describe('hats', () => {
     for (const g of [c.cloth, c.trim, c.badge]) expectSmoothMesh(g);
     expect(stats(c.cloth).box.max.y).toBeGreaterThan(0.2);
     expect(stats(c.trim).box.max.z).toBeGreaterThan(0.15); // visor sticks out front
+  });
+});
+
+describe('cigaretteGeometry', () => {
+  it('is a thin vertex-coloured stick along +Z ending at the tip offset', () => {
+    const g = cigaretteGeometry();
+    const { size, box } = stats(g);
+    expect(g.getAttribute('color')).toBeDefined();
+    expect(size.z).toBeCloseTo(CIGARETTE_TIP, 3);
+    expect(box.min.z).toBeCloseTo(0, 3);
+    expect(box.max.z).toBeCloseTo(CIGARETTE_TIP, 3);
+    expect(size.x).toBeGreaterThan(0.011);
+    expect(size.y).toBeLessThanOrEqual(0.0121);
   });
 });
 

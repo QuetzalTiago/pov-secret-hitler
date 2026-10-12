@@ -343,6 +343,10 @@ export class Game {
     void L;
   }
 
+  private smokeTip = new THREE.Vector3();
+  private smokeMouth = new THREE.Vector3();
+  private smokeDir = new THREE.Vector3();
+
   private newCharacter(seat: number, variant: 'normal' | 'hitler'): Character {
     const L = this.world.layout;
     const c = new Character(seat, seat, variant);
@@ -1207,6 +1211,13 @@ export class Game {
       c.setTeamGlow(!!knowsTeam && v?.phase === 'night' && !!role && role !== 'liberal');
       c.chair = this.world.chairObject(seat);
       c.update(dt, this.now);
+      if (c.smoker) {
+        const ex = c.smokeEmit(this.smokeTip, this.smokeMouth, this.smokeDir);
+        if (ex >= 0) {
+          this.world.cigaretteSmoke.wisp(seat, this.smokeTip, dt);
+          this.world.cigaretteSmoke.exhale(seat, this.smokeMouth, this.smokeDir, ex, dt);
+        }
+      }
     }
   }
 

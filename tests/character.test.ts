@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { SMOKE_DUR } from '../client/scene/life';
 
 // Baseline before the patron rebuild (todo #140): meshes / triangles per Character (Sprites excluded).
 //   normal 0: 24 / 1012    normal 1: 25 / 1066    normal 2: 25 / 1102    normal 3: 23 / 1042    normal 4: 23 / 972
@@ -110,5 +111,86 @@ describe('Character rig', () => {
     for (let i = 0; i < 40; i++) d.update(0.05, i * 0.05);
     expect((d as any).restArm.every((m: THREE.Object3D) => !m.visible)).toBe(true);
     expect((d as any).aimArm.visible).toBe(true);
+  });
+});
+
+describe('Character smoking', () => {
+  // Smokers pay upper arm + forearm/hand (cigarette baked in) + ember on top of the non-smoker body.
+  const SMOKER_MESHES: [number, number][] = [[0, 12], [3, 11], [6, 11], [9, 12]];
+  const NON_SMOKER_MESHES: [string, number, 'normal' | 'hitler', number][] = [
+    ['normal 1', 1, 'normal', 9],
+    ['normal 2', 2, 'normal', 9],
+    ['hitler 0', 0, 'hitler', 11],
+  ];
+  const DT = 1 / 60;
+  const MOUTH = new THREE.Vector3(0.03, 1.3, 0.19);
+
+  function handInBody(c: InstanceType<typeof Character>) {
+    c.group.updateMatrixWorld(true);
+    const r = (c as any).rig;
+    return c.body.worldToLocal(r.fore.localToWorld(new THREE.Vector3(0, 0, r.len2)));
+  }
+
+  function smoker() {
+    const c = new Character(0, 0);
+    (c as any).rig.dragIn = 1e9; // only the forced drag
+    return c;
+  }
+
+  it.each(SMOKER_MESHES)('style %i smokes with a rig, cigarette and ember within +4 meshes', (style, meshes) => {
+    const c = new Character(0, style);
+    expect(c.smoker).toBe(true);
+    expect(measure(c).meshes).toBe(meshes);
+    const rig = (c as any).rig;
+    expect(rig.ember.material.emissiveIntensity).toBeGreaterThan(0);
+    // Cigarette (0.012 thick, 0.078 long) is baked into the forearm mesh.
+    const fore = rig.fore.children[0] as THREE.Mesh;
+    expect(fore.geometry.getAttribute('color')).toBeDefined();
+    expect((c as any).mats).not.toContain(rig.ember.material);
+  });
+
+  it.each(NON_SMOKER_MESHES)('%s does not smoke and keeps its mesh count', (_k, style, variant, meshes) => {
+    const c = new Character(0, style, variant);
+    expect(c.smoker).toBe(false);
+    expect(measure(c).meshes).toBe(meshes);
+    expect(c.smokeEmit(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3())).toBe(-1);
+  });
+
+  it('rests the hand where the old arm did, raises it to the mouth for a drag and lowers it again', () => {
+    const c = smoker();
+    c.update(DT, 0);
+    const rest = (c as any).rig.restHand as THREE.Vector3;
+    expect(handInBody(c).distanceTo(rest)).toBeLessThan(0.02);
+    c.startDrag();
+    let now = 0;
+    let peak = Infinity;
+    let exhaled = 0;
+    const tip = new THREE.Vector3();
+    const mouth = new THREE.Vector3();
+    const dir = new THREE.Vector3();
+    for (let i = 0; i < Math.round((SMOKE_DUR + 0.2) * 60); i++) {
+      now += DT;
+      c.update(DT, now);
+      peak = Math.min(peak, handInBody(c).distanceTo(MOUTH));
+      exhaled = Math.max(exhaled, c.smokeEmit(tip, mouth, dir));
+    }
+    expect(peak).toBeLessThan(0.08);
+    expect(exhaled).toBeGreaterThan(0.5);
+    expect(handInBody(c).distanceTo(rest)).toBeLessThan(0.02);
+    // Between drags the mouth is not puffing, and the vectors are world points near the head.
+    expect(c.smokeEmit(tip, mouth, dir)).toBe(0);
+    expect(mouth.y).toBeGreaterThan(1.2);
+    expect(dir.length()).toBeCloseTo(1, 5);
+  });
+
+  it('goes silent and dark when dead', () => {
+    const c = smoker();
+    c.startDrag();
+    for (let i = 0; i < 100; i++) c.update(DT, i * DT);
+    c.die();
+    for (let i = 0; i < 10; i++) c.update(DT, 2 + i * DT);
+    expect(c.smokeEmit(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3())).toBe(-1);
+    expect((c as any).rig.ember.material.emissiveIntensity).toBe(0);
+    expect(handInBody(c).distanceTo((c as any).rig.restHand)).toBeLessThan(0.02);
   });
 });

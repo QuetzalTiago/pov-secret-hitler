@@ -207,6 +207,15 @@ export function armbandGeometry(): { band: THREE.BufferGeometry; disc: THREE.Buf
   return { band, disc };
 }
 
+/** Cigarette along +Z: tan filter at the origin, white paper out to the lit end at z = CIGARETTE_TIP. */
+export const CIGARETTE_TIP = 0.078;
+
+export function cigaretteGeometry(): THREE.BufferGeometry {
+  const filter = new THREE.CylinderGeometry(0.006, 0.006, 0.018, 10).rotateX(Math.PI / 2).translate(0, 0, 0.009);
+  const paper = new THREE.CylinderGeometry(0.006, 0.006, CIGARETTE_TIP - 0.018, 10).rotateX(Math.PI / 2).translate(0, 0, (CIGARETTE_TIP + 0.018) / 2);
+  return mergeParts([paintGeometry(filter, 0xc89a5a), paintGeometry(paper, 0xf2eee2)]);
+}
+
 // ---- Head (head-local space; the head group sits at y 1.4) ----
 
 /** Skull with a narrower jaw and cheekbones, ears and a shaped nose, all in one geometry. */
