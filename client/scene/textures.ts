@@ -668,6 +668,68 @@ export function posterAtlas() {
   });
 }
 
+export const BLOOD_TILES = 4;
+
+/** Four flat-ink blood splat shapes in one row of 128px tiles; spatter tails run along +x. */
+export function bloodAtlas() {
+  return tex('blood', 512, 128, (g) => {
+    const T = 128;
+    for (let i = 0; i < BLOOD_TILES; i++) {
+      const r = rand(900 + i);
+      const cx = i * T + T / 2 - (i % 2 ? 8 : 0);
+      const cy = T / 2;
+      const base = 20 + r() * 10;
+      const blob = (x: number, y: number, rad: number, fill: string) => {
+        const n = 14 + Math.floor(r() * 7);
+        g.fillStyle = fill;
+        g.beginPath();
+        for (let k = 0; k < n; k++) {
+          const a = (k / n) * Math.PI * 2;
+          const d = rad * (0.72 + r() * 0.5);
+          const px = x + Math.cos(a) * d;
+          const py = y + Math.sin(a) * d;
+          if (k) g.lineTo(px, py);
+          else g.moveTo(px, py);
+        }
+        g.closePath();
+        g.fill();
+      };
+      const dot = (x: number, y: number, rad: number, fill: string) => {
+        g.fillStyle = fill;
+        g.beginPath();
+        g.arc(x, y, rad, 0, Math.PI * 2);
+        g.fill();
+      };
+      if (i < 2) {
+        // streak: tapered tail along +x
+        g.fillStyle = '#4a0606';
+        g.beginPath();
+        g.moveTo(cx, cy - base * 0.5);
+        g.lineTo(i * T + T - 8, cy - 2 - r() * 3);
+        g.lineTo(i * T + T - 8, cy + 2 + r() * 3);
+        g.lineTo(cx, cy + base * 0.5);
+        g.closePath();
+        g.fill();
+      }
+      blob(cx, cy, base, '#4a0606');
+      blob(cx + (r() - 0.5) * 6, cy + (r() - 0.5) * 6, base * 0.5, '#2e0303');
+      const sats = 4 + Math.floor(r() * 3);
+      for (let k = 0; k < sats; k++) {
+        const a = r() * Math.PI * 2;
+        const d = base * (1.35 + r() * 0.6);
+        const x = Math.min(i * T + T - 8, Math.max(i * T + 8, cx + Math.cos(a) * d));
+        const y = Math.min(T - 8, Math.max(8, cy + Math.sin(a) * d));
+        dot(x, y, 2 + r() * 3.5, k % 2 ? '#4a0606' : '#2e0303');
+      }
+      for (let k = 0; k < 3; k++) {
+        const a = r() * Math.PI * 2;
+        const d = r() * base * 0.6;
+        dot(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 2 + r() * 2.5, '#6a0b0b');
+      }
+    }
+  });
+}
+
 /** The painted bar sign: dark lacquered board, brass double border, flat brass blackletter name. */
 export function signTexture() {
   return tex('sign', 1024, 256, (g, w, h) => {

@@ -65,6 +65,7 @@ describe('flat ink textures', () => {
     ['signTexture', () => tx.signTexture()],
     ['envelopeTexture', () => tx.envelopeTexture()],
     ['posterAtlas', () => tx.posterAtlas()],
+    ['bloodAtlas', () => tx.bloodAtlas()],
     ['boardTexture', () => tx.boardTexture([null, null, 'peek', 'execute', 'execute', null])],
   ];
 

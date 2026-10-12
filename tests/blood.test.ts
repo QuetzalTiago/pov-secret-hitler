@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { TABLE_Y, Layout } from '../client/scene/world';
-import { bloodSeed, dropletAt, paintBlood, spray } from '../client/scene/blood';
+import { BloodSplats, bloodSeed, dropletAt, paintBlood, spray } from '../client/scene/blood';
 
 const cases = [7, 5, 10];
 
@@ -117,5 +117,73 @@ describe('paintBlood', () => {
     const c = fresh();
     paintBlood(c, pos, nor, dir, 5, 1, (i) => i % 2 === 0);
     for (let i = 1; i < n; i += 2) expect([c[3 * i], c[3 * i + 1], c[3 * i + 2]]).toEqual([0.8, 0.8, 0.8].map(Math.fround));
+  });
+});
+
+describe('BloodSplats', () => {
+  const pos = (b: BloodSplats, i: number) => {
+    const m = new THREE.Matrix4();
+    b.mesh.getMatrixAt(i, m);
+    return new THREE.Vector3().setFromMatrixPosition(m);
+  };
+  const anchorAt = (x: number, y: number, z: number) => {
+    const o = new THREE.Object3D();
+    o.position.set(x, y, z);
+    o.updateMatrixWorld();
+    return o;
+  };
+
+  it('an instance follows a moved anchor', () => {
+    const b = new BloodSplats(null);
+    const a = anchorAt(1, 0, 0);
+    b.add(a, new THREE.Matrix4().makeTranslation(0, 0.01, 0.2), 0);
+    b.update(1);
+    expect(pos(b, 0).distanceTo(new THREE.Vector3(1, 0.01, 0.2))).toBeLessThan(1e-5);
+    a.position.set(-2, 0.5, 3);
+    a.rotation.y = Math.PI / 2;
+    a.updateMatrixWorld();
+    b.update(0.016);
+    const want = new THREE.Vector3(0, 0.01, 0.2).applyMatrix4(a.matrixWorld);
+    expect(pos(b, 0).distanceTo(want)).toBeLessThan(1e-5);
+  });
+
+  it('scales in', () => {
+    const b = new BloodSplats(null);
+    b.add(anchorAt(0, 0, 0), new THREE.Matrix4(), 1);
+    const scale = () => {
+      const m = new THREE.Matrix4();
+      b.mesh.getMatrixAt(0, m);
+      return new THREE.Vector3().setFromMatrixScale(m).x;
+    };
+    b.update(0);
+    expect(scale()).toBeLessThan(0.5);
+    b.update(1);
+    expect(scale()).toBeCloseTo(1, 5);
+  });
+
+  it('the cap recycles the oldest', () => {
+    const b = new BloodSplats(null, 4);
+    for (let i = 0; i < 5; i++) b.add(anchorAt(i, 0, 0), new THREE.Matrix4(), i === 4 ? 3 : 1);
+    b.update(1);
+    expect(b.count).toBe(4);
+    expect(pos(b, 0).x).toBeCloseTo(4);
+    for (let i = 1; i < 4; i++) expect(pos(b, i).x).toBeCloseTo(i);
+    const tile = b.mesh.geometry.getAttribute('tile') as THREE.BufferAttribute;
+    expect(tile.getX(0)).toBe(3);
+    expect(tile.getX(1)).toBe(1);
+  });
+
+  it('clear empties it', () => {
+    const b = new BloodSplats(null);
+    b.add(anchorAt(1, 0, 0), new THREE.Matrix4(), 2);
+    b.update(1);
+    b.clear();
+    expect(b.count).toBe(0);
+    expect(b.mesh.count).toBe(0);
+    expect(b.mesh.visible).toBe(false);
+    expect(b.add(anchorAt(3, 0, 0), new THREE.Matrix4(), 3)).toBe(0);
+    b.update(1);
+    expect(b.count).toBe(1);
+    expect(pos(b, 0).x).toBeCloseTo(3);
   });
 });

@@ -204,3 +204,103 @@ export function paintBlood(
   }
   return count;
 }
+
+export const SPLAT_CAP = 256;
+const SCALE_IN = 0.18;
+
+interface Splat {
+  anchor: THREE.Object3D;
+  local: THREE.Matrix4;
+  born: number;
+}
+
+const mA = new THREE.Matrix4();
+const mS = new THREE.Matrix4();
+
+/**
+ * One draw call for every blood splat: a single InstancedMesh of quads (one atlas tile each).
+ * Each splat follows its anchor, so blood on a card moves with the card.
+ * Instances are in world space: add `mesh` to the scene root, not under a moving parent.
+ */
+export class BloodSplats {
+  readonly mesh: THREE.InstancedMesh;
+  private readonly ring: (Splat | null)[];
+  private readonly tileAttr: THREE.InstancedBufferAttribute;
+  private head = 0;
+  private live = 0;
+  private time = 0;
+
+  constructor(map: THREE.Texture | null = null, cap = SPLAT_CAP, tiles = 4) {
+    const geo = new THREE.PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    this.tileAttr = new THREE.InstancedBufferAttribute(new Float32Array(cap), 1);
+    geo.setAttribute('tile', this.tileAttr);
+    const mat = new THREE.MeshBasicMaterial({
+      map,
+      transparent: true,
+      depthWrite: false,
+      alphaTest: 0.02,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+      toneMapped: true,
+    });
+    mat.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float tile;')
+        .replace(
+          '#include <uv_vertex>',
+          `#include <uv_vertex>\n#ifdef USE_MAP\nvMapUv.x = (vMapUv.x + tile) / ${tiles}.0;\n#endif`,
+        );
+    };
+    mat.customProgramCacheKey = () => 'blood-splats-' + tiles;
+    this.mesh = new THREE.InstancedMesh(geo, mat, cap);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.frustumCulled = false;
+    this.mesh.castShadow = this.mesh.receiveShadow = false;
+    this.mesh.renderOrder = 1;
+    this.mesh.matrixAutoUpdate = false;
+    this.mesh.count = 0;
+    this.mesh.visible = false;
+    this.ring = new Array<Splat | null>(cap).fill(null);
+  }
+
+  get count(): number {
+    return this.live;
+  }
+
+  /** Adds a splat; returns its slot index. When full, recycles the OLDEST splat's slot. */
+  add(anchor: THREE.Object3D, local: THREE.Matrix4, tile: number, at = this.time): number {
+    const slot = this.head;
+    this.ring[slot] = { anchor, local: local.clone(), born: at };
+    this.tileAttr.setX(slot, tile);
+    this.tileAttr.needsUpdate = true;
+    this.head = (slot + 1) % this.ring.length;
+    this.live = Math.min(this.live + 1, this.ring.length);
+    return slot;
+  }
+
+  /** Advances time by dt seconds and rewrites every instance matrix = anchor.matrixWorld x local x scaleIn. */
+  update(dt: number): void {
+    this.time += dt;
+    for (let i = 0; i < this.live; i++) {
+      const s = this.ring[i]!;
+      const k = Math.min(Math.max((this.time - s.born) / SCALE_IN, 0), 1);
+      const e = 1 - (1 - k) ** 3;
+      const f = 0.15 + 0.85 * e;
+      mA.multiplyMatrices(s.anchor.matrixWorld, s.local).multiply(mS.makeScale(f, f, f));
+      this.mesh.setMatrixAt(i, mA);
+    }
+    this.mesh.count = this.live;
+    this.mesh.instanceMatrix.needsUpdate = true;
+    this.mesh.visible = this.live > 0;
+  }
+
+  clear(): void {
+    this.ring.fill(null);
+    this.head = 0;
+    this.live = 0;
+    this.mesh.count = 0;
+    this.mesh.visible = false;
+  }
+}
