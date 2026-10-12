@@ -41,8 +41,8 @@ describe('LIGHTING', () => {
     expect(LIGHTING.fill).toBeLessThanOrEqual(1.5);
     expect(LIGHTING.neon).toBeLessThanOrEqual(0.6);
     expect(LIGHTING.waiterSpot).toBeLessThanOrEqual(8);
-    expect(LIGHTING.lamp.angle).toBeLessThanOrEqual(Math.PI / 3.2);
-    expect(LIGHTING.lamp.distance).toBeLessThanOrEqual(6);
+    // The lamp is the one light allowed to reach the patrons; its short reach keeps the room around them dark.
+    expect(LIGHTING.lamp.distance).toBeLessThanOrEqual(4.5);
     expect(LIGHTING.vignette).toBeGreaterThanOrEqual(0.6);
   });
 });
@@ -62,5 +62,30 @@ describe('print tints', () => {
   it('the policy card face is tinted', () => {
     const face = (props.policyCard().mesh.material as any[])[2];
     expect(face.color.getHex()).toBe(PRINT_TINT);
+  });
+});
+
+describe('pendant lamp', () => {
+  // Spot attenuation as three.js computes it: smoothstep between the cone edge and the penumbra start.
+  const spotFactor = (offAxis: number) => {
+    const { angle, penumbra } = LIGHTING.lamp;
+    const cone = Math.cos(angle);
+    const inner = Math.cos(angle * (1 - penumbra));
+    const t = Math.min(Math.max((Math.cos(offAxis) - cone) / (inner - cone), 0), 1);
+    return t * t * (3 - 2 * t);
+  };
+  const LAMP_Y = 2.55;
+  const offAxis = (horizontal: number, y: number) => Math.atan2(horizontal, LAMP_Y - y);
+
+  it('lights a seated patron at the far end of a 10-player table', () => {
+    const rx = 1.25 + 10 * 0.075;
+    // Head (1.32 m) and chest (~1.0 m) at the chair, rx + 0.42 out along the long axis.
+    expect(spotFactor(offAxis(rx + 0.42, 1.32))).toBeGreaterThan(0.3);
+    expect(spotFactor(offAxis(rx + 0.42, 1.0))).toBeGreaterThan(0.5);
+  });
+
+  it('lights a patron at a 5-player table almost fully', () => {
+    const rx = 1.25 + 5 * 0.075;
+    expect(spotFactor(offAxis(rx + 0.42, 1.0))).toBeGreaterThan(0.8);
   });
 });

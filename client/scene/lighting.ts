@@ -8,8 +8,12 @@ export const LIGHTING = {
   ambient: 0.08,
   /** Warm fill point light before the lit factor. */
   fill: 1.0,
-  /** Pendant lamp spot over the table. */
-  lamp: { intensity: 60, distance: 6, angle: Math.PI / 3.8, penumbra: 0.55, decay: 1.6 },
+  /**
+   * Pendant lamp spot over the table, and the light the patrons are seen by. From 2.55 m up, seated heads sit
+   * 53-63 degrees off its axis (chests ~57), so the cone is wide with a short penumbra to keep them inside the
+   * bright part; the 4.5 m reach stops it there, so the walls and far floor stay dark.
+   */
+  lamp: { intensity: 90, distance: 4.5, angle: Math.PI / 2.5, penumbra: 0.3, decay: 1.6 },
   /** Point light under the bar sign. */
   neon: 0.4,
   /** Spot on the waiter. */
