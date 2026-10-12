@@ -22,7 +22,7 @@ export function lookStep(dx: number, dy: number, sinceLockChange: number): { dx:
   return { dx, dy };
 }
 
-const clamp =(v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /** View-relative yaw/pitch (rad, camera looks down -Z at 0, yaw turns toward -X) that puts `to` in the centre when seen from `from`. */
 export function lookAngles(from: Vec3, to: Vec3): { yaw: number; pitch: number } {

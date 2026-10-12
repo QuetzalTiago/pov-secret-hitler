@@ -16,7 +16,7 @@ describe('lookStep', () => {
   });
 });
 
-const eye ={ x: 0, y: 1.27, z: 2 };
+const eye = { x: 0, y: 1.27, z: 2 };
 
 describe('lookAngles', () => {
   it('straight ahead gives zero yaw', () => {
