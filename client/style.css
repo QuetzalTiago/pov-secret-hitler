@@ -209,6 +209,7 @@ input:disabled { opacity: 0.5; }
 .tag.fascist { color: var(--fas); font-weight: 700; }
 #lobby-chat { font-size: 13px; color: var(--ink-dim); }
 #lobby-chat .line b { color: var(--accent); }
+#lobby-chat-input { width: 100%; box-sizing: border-box; margin-top: 6px; background: rgba(0, 0, 0, 0.45); color: var(--ink); border: 1px solid var(--glass-edge); font-size: 14px; }
 /* HUD */
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 #hud button, #hud input, #hud .panel { pointer-events: auto; }

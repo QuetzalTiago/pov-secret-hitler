@@ -272,6 +272,7 @@ export class UI {
     });
 
     const input = $<HTMLInputElement>('chat-input');
+    const lobbyInput = $<HTMLInputElement>('lobby-chat-input');
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && document.activeElement !== input && !$('hud').classList.contains('hidden')) {
         // Enter on a dialog button activates it natively.
@@ -281,6 +282,7 @@ export class UI {
         input.focus();
       } else if (e.key === 'Escape') {
         input.blur();
+        lobbyInput.blur();
         setSettings(false);
         $('credits').classList.add('hidden');
         $('rules').classList.add('hidden');
@@ -293,6 +295,15 @@ export class UI {
         if (text) h.chat(text);
         input.value = '';
         input.blur();
+        e.stopPropagation();
+      }
+    });
+    // The lobby box keeps focus after sending: waiting players tend to type several lines.
+    lobbyInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const text = lobbyInput.value.trim();
+        if (text) h.chat(text);
+        lobbyInput.value = '';
         e.stopPropagation();
       }
     });
@@ -421,6 +432,7 @@ export class UI {
   resetTable() {
     $('chat-log').replaceChildren();
     $('lobby-chat').replaceChildren();
+    $<HTMLInputElement>('lobby-chat-input').value = '';
     $('confirm-leave').classList.add('hidden');
     this.hideCardConfirm();
     this.hideGameOver();
