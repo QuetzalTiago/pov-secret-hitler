@@ -5,10 +5,10 @@ import { config } from '../server/config';
 import { legalActions, reduce } from '../shared/engine';
 import * as smartbot from '../shared/smartbot';
 import { buildDecision, heuristicChoice } from '../shared/smartbot';
-import { newMemory, observe, profiles } from '../shared/tracker';
+import { newMemory, noteMyAction, noteMyHand, observe, profiles } from '../shared/tracker';
 import type { GameState } from '../shared/types';
 import { viewFor } from '../shared/view';
-import { act, roles, setup, voteAll } from './helpers';
+import { act, elect, roles, setup, voteAll } from './helpers';
 
 const name = (s: number) => `P${s}`;
 
@@ -355,5 +355,46 @@ describe('bot levels', () => {
     expect(sharp.action).toEqual({ type: 'nominate', target: 2 });
     const normal = await decide(v, legal, m, name, () => 0.95, ask);
     expect(normal.action).not.toEqual({ type: 'nominate', target: 2 });
+  });
+});
+describe('bot hands', () => {
+  const session = () => elect(setup(5, { president: 0, roles: roles(5, 4, [3]), deck: ['F', 'L', 'F', ...Array(14).fill('L')] }), 1);
+
+  it('decideNow / decide do not record the hand; noteMyAction once records one passed entry', async () => {
+    const s = session();
+    const v = viewFor(s, 0);
+    const legal = legalActions(s, 0);
+    const m = newMemory(0, 5);
+    const a = decideNow(v, legal, m, name);
+    decideNow(v, legal, m, name);
+    await decide(v, legal, m, name, undefined, async () => null);
+    expect(m.passed).toHaveLength(0);
+    noteMyAction(m, v, a);
+    noteMyAction(m, v, a);
+    expect(m.passed).toHaveLength(1);
+    expect(m.passed[0]).toMatchObject({ round: v.round, to: 1, drew: ['F', 'L', 'F'] });
+    expect(m.passed[0].gave).toHaveLength(2);
+  });
+
+  it('the chancellor hand is recorded once per round, and only when applied', () => {
+    let s = session();
+    s = act(s, 0, { type: 'presDiscard', index: 0 });
+    const v = viewFor(s, 1);
+    const legal = legalActions(s, 1);
+    const m = newMemory(1, 5);
+    decideNow(v, legal, m, name);
+    expect(m.received).toHaveLength(0);
+    noteMyAction(m, v, { type: 'chancEnact', index: 0 });
+    noteMyAction(m, v, { type: 'chancEnact', index: 1 });
+    expect(m.received).toHaveLength(1);
+  });
+
+  it('noteMyHand twice for the same round leaves one passed entry', () => {
+    const v = viewFor(session(), 0);
+    const m = newMemory(0, 5);
+    noteMyHand(m, v, 0);
+    noteMyHand(m, v, 1);
+    expect(m.passed).toHaveLength(1);
+    expect(m.passed[0].gave).toEqual(['L', 'F']);
   });
 });

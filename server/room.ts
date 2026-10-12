@@ -7,7 +7,7 @@ import { BOT_LEVELS, DEFAULT_OPTIONS, PACES, QUICK_START_SEATS } from '../shared
 import type { BotLevel, Pace, RoomView, SeatInfo, ServerMsg, Series, TableOptions } from '../shared/protocol';
 import { MAX_PLAYERS, MIN_PLAYERS } from '../shared/rules';
 import type { ActionBody, GameEvent, GameState, Phase } from '../shared/types';
-import { newMemory, observe, profiles, type Memory } from '../shared/tracker';
+import { newMemory, noteMyAction, observe, profiles, type Memory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
 import { heuristicTalk, planTalk, talkReads, type TalkPlan } from './botchat';
 import {
@@ -480,8 +480,10 @@ export class Room {
   private apply(seat: number, body: ActionBody, extra: GameEvent[] = []): string | null {
     if (!this.game) return 'No game.';
     try {
+      const before = viewFor(this.game, seat);
       const res = reduce(this.game, { ...body, seat } as never);
       this.game = res.state;
+      if (this.memories[seat]) noteMyAction(this.memories[seat], before, body);
       this.lastActivity = Date.now();
       this.after([...extra, ...res.events]);
       return null;

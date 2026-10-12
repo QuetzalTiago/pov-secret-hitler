@@ -1,6 +1,6 @@
 // Per-seat game memory for bots. Built ONLY from that seat's own view and public events,
 // so a bot never knows more than the human sitting in that chair would.
-import type { GameEvent, Party, Policy } from './types';
+import type { ActionBody, GameEvent, Party, Policy } from './types';
 import type { GameView } from './view';
 
 export interface Election {
@@ -84,15 +84,21 @@ export function observe(m: Memory, view: GameView, events: GameEvent[]): void {
   for (const r of view.yourInvestigations) m.known.set(r.target, r.party);
 }
 
-/** Records my own hand when I act on it (called by the bot just before it moves). */
+/** Records my own hand when the action is applied to the game (see noteMyAction), never when it is only decided. */
 export function noteMyHand(m: Memory, view: GameView, discardIndex: number | null): void {
   if (!view.hand) return;
-  if (view.phase === 'legPresident' && discardIndex !== null && view.chancellor !== null) {
+  if (view.phase === 'legPresident' && discardIndex !== null && view.chancellor !== null && !m.passed.some((p) => p.round === view.round)) {
     m.passed.push({ round: view.round, to: view.chancellor, gave: view.hand.filter((_, i) => i !== discardIndex), drew: view.hand.slice() });
   }
   if (view.phase === 'legChancellor' && !m.received.some((r) => r.round === view.round)) {
     m.received.push({ round: view.round, from: view.president, got: view.hand.slice() });
   }
+}
+
+/** Call once a seat's action was applied; `view` is that seat's view from BEFORE it. */
+export function noteMyAction(m: Memory, view: GameView, body: ActionBody): void {
+  if (body.type === 'presDiscard') noteMyHand(m, view, body.index);
+  if (body.type === 'chancEnact' || body.type === 'proposeVeto') noteMyHand(m, view, null);
 }
 
 export interface PlayerProfile {

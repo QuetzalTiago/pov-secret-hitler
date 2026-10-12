@@ -3,7 +3,7 @@ import { botAction, randomAction, type Rand } from '../shared/bot';
 import { createGame, legalActions, pendingActors, reduce } from '../shared/engine';
 import { nextRandom } from '../shared/rng';
 import { buildDecision, heuristicChoice, LEVELS, type BotLevel, type Strategy } from '../shared/smartbot';
-import { newMemory, noteMyHand, observe, type Memory } from '../shared/tracker';
+import { newMemory, noteMyAction, observe, type Memory } from '../shared/tracker';
 import type { ActionBody, GameEvent, GameState } from '../shared/types';
 import { viewFor } from '../shared/view';
 
@@ -37,8 +37,6 @@ export const smartChooser =
     const v = viewFor(s, seat);
     const d = buildDecision(v, legal, memory, (x) => names[x], { strategy });
     const body = d.options[heuristicChoice(d, rand, noise)].action;
-    if (body.type === 'presDiscard') noteMyHand(memory, v, body.index);
-    if (body.type === 'chancEnact' || body.type === 'proposeVeto') noteMyHand(memory, v, null);
     return body;
   };
 
@@ -74,8 +72,10 @@ export function runGame(
     const seat = actors[Math.floor(rand() * actors.length)];
     const legal = legalActions(s, seat);
     const body = choose(seat, s)({ s, seat, legal, rand, memory: memories[seat], names });
+    const before = viewFor(s, seat);
     const res = reduce(s, { ...body, seat } as never);
     s = res.state;
+    noteMyAction(memories[seat], before, body);
     if (opts.trackMemory) memories.forEach((m, i) => observe(m, viewFor(s, i), res.events));
     events += res.events.length;
     opts.onStep?.(s, res.events);

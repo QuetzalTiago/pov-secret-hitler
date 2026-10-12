@@ -2,7 +2,7 @@
 // Jev is only asked to break near-ties among the options the strategy scores about equally. Always
 // returns a legal action. The bot level picks the strategy and how noisy its choice is.
 import { buildDecision, heuristicChoice, LEVELS, sampleChoice, type BotLevel, type Rand } from '../shared/smartbot';
-import { noteMyHand, type Memory } from '../shared/tracker';
+import type { Memory } from '../shared/tracker';
 import type { ActionBody } from '../shared/types';
 import type { GameView } from '../shared/view';
 import { askChoice } from './jev';
@@ -48,8 +48,6 @@ export async function decide(
     source = 'heuristic';
   }
   const action = d.options[key].action;
-  if (action.type === 'presDiscard') noteMyHand(memory, view, action.index);
-  if (action.type === 'chancEnact' || action.type === 'proposeVeto') noteMyHand(memory, view, null);
   return { action, source };
 }
 
@@ -58,7 +56,5 @@ export function decideNow(view: GameView, legal: ActionBody[], memory: Memory, n
   if (legal.length === 1 || TRIVIAL.has(legal[0].type)) return legal[0];
   const d = buildDecision(view, legal, memory, name, { strategy: LEVELS[level].strategy });
   const action = d.options[heuristicChoice(d, rand, LEVELS[level].noise)].action;
-  if (action.type === 'presDiscard') noteMyHand(memory, view, action.index);
-  if (action.type === 'chancEnact' || action.type === 'proposeVeto') noteMyHand(memory, view, null);
   return action;
 }
