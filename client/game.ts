@@ -19,6 +19,7 @@ import { disposeObject } from './scene/dispose';
 import { ActingRings, Board, CARD_H, CARD_W, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
 import { COLORS, ballotFace, bloodAtlas, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
 import { slowmoScale, tweens } from './scene/tween';
+import { fanLayer } from './scene/handfan';
 import { Mover, TABLE_Y, type World } from './scene/world';
 import { flagTab, unflagTab } from './tabflag';
 import { TurnCue, myTurnKey } from './turncue';
@@ -1269,6 +1270,7 @@ export class Game {
     const cam = this.world.camera;
     pos.set(off * 0.125, y - Math.abs(off) * 0.01, z).applyMatrix4(cam.matrixWorld);
     mul(q, cam.quaternion, Q('x', Math.PI / 2 - 0.12, QA), Q('y', -off * 0.08, QB));
+    pos.addScaledVector(this.tmpV.set(0, 1, 0).applyQuaternion(q), fanLayer(i, k)); // fanned cards never share a plane
   }
 
   private computeTargets() {
@@ -1333,7 +1335,9 @@ export class Game {
         const off = i - (held.length - 1) / 2;
         const pos = L.front(p.holder, off * 0.09, 0.02, 0.86, this.frontV);
         pos.y += 0.16;
-        p.mover.set(pos, mul(QOUT, Q('y', L.yaw(p.holder), QA), Q('x', Math.PI / 2 - 0.25, QB), Q('y', -off * 0.12, QC)), 7);
+        const q = mul(QOUT, Q('y', L.yaw(p.holder), QA), Q('x', Math.PI / 2 - 0.25, QB), Q('y', -off * 0.12, QC));
+        pos.addScaledVector(this.tmpV.set(0, 1, 0).applyQuaternion(q), fanLayer(i, held.length));
+        p.mover.set(pos, q, 7);
         p.card.setGlow(0);
         p.card.setFace(cardBack('POLICY'));
       }
