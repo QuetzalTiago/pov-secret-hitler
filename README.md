@@ -168,5 +168,6 @@ This project is licensed under the same **CC BY-NC-SA 4.0** license (see [LICENS
 adapt it for **non-commercial** purposes, with attribution, under the same license.
 
 Third-party assets keep their own licenses:
+- 3D models, textures and HDRI: [client/models/CREDITS.md](client/models/CREDITS.md) (all CC0: Quaternius, Poly Haven, Kenney and others via Poly Pizza)
 - Sound effects: [client/sfx/CREDITS.md](client/sfx/CREDITS.md) (CC0 and CC BY-SA 3.0)
 - Music: "Bass Walker" by Kevin MacLeod, CC BY 3.0, see [client/music/CREDITS.md](client/music/CREDITS.md)
