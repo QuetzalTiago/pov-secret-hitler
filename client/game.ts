@@ -1340,7 +1340,8 @@ export class Game {
         const off = i - (held.length - 1) / 2;
         const pos = L.front(p.holder, off * 0.09, 0.02, 0.86, this.frontV);
         pos.y += 0.16;
-        const q = mul(QOUT, Q('y', L.yaw(p.holder), QA), Q('x', Math.PI / 2 - 0.25, QB), Q('y', -off * 0.12, QC));
+        // Half a turn about the card's normal so the back (seen by everyone else) reads upright.
+        const q = mul(QOUT, Q('y', L.yaw(p.holder), QA), Q('x', Math.PI / 2 - 0.25, QB), Q('y', Math.PI - off * 0.12, QC));
         pos.addScaledVector(this.tmpV.set(0, 1, 0).applyQuaternion(q), fanLayer(i, held.length));
         p.mover.set(pos, q, 7);
         p.card.setGlow(0);
