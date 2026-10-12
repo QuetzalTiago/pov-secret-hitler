@@ -69,7 +69,7 @@ afterEach(() => {
 async function loadArt() {
   g.fetch = async (url: string) => ({ ok: true, blob: async () => ({ url }) });
   g.createImageBitmap = async () => ({ width: 512, height: 720, close() {} });
-  await art.loadOfficialArt({ search: '' });
+  await art.loadOfficialArt();
 }
 
 const cases: [string, Key, () => unknown][] = [
@@ -84,7 +84,6 @@ const cases: [string, Key, () => unknown][] = [
   ['roleCard liberal', 'role-liberal', () => tx.roleCard('liberal')],
   ['roleCard fascist', 'role-fascist', () => tx.roleCard('fascist')],
   ['roleCard hitler', 'role-hitler', () => tx.roleCard('hitler')],
-  ['roleCard hitler seed 3', 'role-hitler', () => tx.roleCard('hitler', 3)],
   ['membershipCard Ana', 'member-liberal', () => tx.membershipCard('Ana', 'liberal')],
   ['membershipCard Bo', 'member-fascist', () => tx.membershipCard('Bo', 'fascist')],
 ];

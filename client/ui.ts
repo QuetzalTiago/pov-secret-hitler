@@ -51,7 +51,7 @@ export function gameOverRow(p: PlayerView, you: number): HTMLLIElement {
   img.alt = '';
   img.width = 48;
   img.height = 68;
-  img.src = portraitUrl(p.role === 'hitler' ? 'hitler' : p.role === 'fascist' ? 'fascist' : 'liberal', p.seat);
+  img.src = portraitUrl(p.role === 'hitler' ? 'hitler' : p.role === 'fascist' ? 'fascist' : 'liberal');
   li.appendChild(img);
   li.appendChild(document.createTextNode(`${p.name}${p.seat === you ? ' (you)' : ''}`));
   const span = document.createElement('span');
@@ -497,7 +497,7 @@ export class UI {
         const seal = document.createElement('img');
         seal.className = 'seal';
         seal.alt = '';
-        seal.src = sealUrl(party, 32);
+        seal.src = sealUrl(party);
         nodes.push(seal);
       }
       nodes.push(document.createTextNode(text));
@@ -754,7 +754,7 @@ export class UI {
   enact(policy: 'L' | 'F', count: number, chaos: boolean) {
     const el = $('enact');
     const b = enactBanner(policy, count, chaos);
-    $<HTMLImageElement>('enact-seal').src = sealUrl(policy, 96);
+    $<HTMLImageElement>('enact-seal').src = sealUrl(policy);
     $('enact-masthead').textContent = b.masthead;
     $('enact-dateline').textContent = b.dateline;
     $('enact-kicker').textContent = b.kicker;

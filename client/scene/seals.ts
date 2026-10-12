@@ -1,4 +1,4 @@
-import { BLOCK, COLORS, emblem } from './textures';
+import { BLOCK, COLORS } from './textures';
 
 const NOTCHES = 24;
 /** Below this radius the rim notches and ring lettering are skipped so the seal stays legible. */
@@ -48,10 +48,10 @@ function secretX(g: CanvasRenderingContext2D, cx: number, cy: number, r: number)
 }
 
 /**
- * Ornate party seal: a flat field disc with an ink outline, a stepped art-deco rim, lettering between two rings
- * and the party emblem in the centre. `party === null` is the neutral seal (a secret X) that reveals nothing.
+ * The neutral envelope seal: a flat field disc with an ink outline, a stepped art-deco rim, lettering between
+ * two rings and a secret X in the centre. It reveals no party.
  */
-export function drawSeal(g: CanvasRenderingContext2D, party: 'L' | 'F' | null, cx: number, cy: number, r: number, field: string): void {
+export function drawNeutralSeal(g: CanvasRenderingContext2D, cx: number, cy: number, r: number, field: string): void {
   const detailed = r >= MIN_DETAIL_R;
   g.save();
   g.fillStyle = field;
@@ -88,11 +88,9 @@ export function drawSeal(g: CanvasRenderingContext2D, party: 'L' | 'F' | null, c
   g.stroke();
 
   if (detailed) {
-    const text = party === 'L' ? 'LIBERAL PARTY ★ ' : party === 'F' ? 'FASCIST PARTY ★ ' : 'SECRET • SECRET • ';
-    ringText(g, text, cx, cy, r * 0.74, Math.round(r * 0.17));
+    ringText(g, 'SECRET • SECRET • ', cx, cy, r * 0.74, Math.round(r * 0.17));
   }
 
-  if (party === null) secretX(g, cx, cy, r * 0.62);
-  else emblem(g, party, cx, cy, r * 0.5, party === 'L' ? COLORS.liberal : COLORS.fascist);
+  secretX(g, cx, cy, r * 0.62);
   g.restore();
 }

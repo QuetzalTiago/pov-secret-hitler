@@ -74,7 +74,7 @@ describe('placardTexture', () => {
     expect(drawn).toHaveLength(0);
     g.fetch = async (url: string) => ({ ok: true, blob: async () => ({ url }) });
     g.createImageBitmap = async () => ({ width: 1024, height: 275, close() {} });
-    await art.loadOfficialArt({ search: '' });
+    await art.loadOfficialArt();
     const img = art.officialImage('placard-president');
     expect(img).not.toBeNull();
     drawn.length = 0;
@@ -88,7 +88,7 @@ describe('placardTexture', () => {
   it('ignores other titles', async () => {
     g.fetch = async (url: string) => ({ ok: true, blob: async () => ({ url }) });
     g.createImageBitmap = async () => ({ width: 1024, height: 275, close() {} });
-    await art.loadOfficialArt({ search: '' });
+    await art.loadOfficialArt();
     tx.placardTexture('SOMEONE', '#fff');
     expect(drawn).toHaveLength(0);
   });

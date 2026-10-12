@@ -56,13 +56,12 @@ describe('flat ink textures', () => {
     ['policyFace F', () => tx.policyFace('F')],
     ['cardBack', () => tx.cardBack()],
     ['cardBack BALLOT', () => tx.cardBack('BALLOT')],
+    ['cardBack DISCARD', () => tx.cardBack('DISCARD')],
     ['ballotFace ja', () => tx.ballotFace(true)],
     ['ballotFace nein', () => tx.ballotFace(false)],
     ['roleCard liberal', () => tx.roleCard('liberal')],
     ['roleCard fascist', () => tx.roleCard('fascist')],
     ['roleCard hitler', () => tx.roleCard('hitler')],
-    ['roleCard liberal seed 3', () => tx.roleCard('liberal', 3)],
-    ['roleCard hitler seed 1', () => tx.roleCard('hitler', 1)],
     ['membershipCard Ana', () => tx.membershipCard('Ana', 'liberal')],
     ['membershipCard Bo', () => tx.membershipCard('Bo', 'fascist')],
   ];
@@ -87,46 +86,30 @@ describe('flat ink textures', () => {
 });
 
 describe('board texture', () => {
-  it('pins the fallback slot centres the 3D markers rely on', () => {
-    const close = (a: readonly number[], b: number[]) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], 6));
-    close(tx.BOARD_SLOTS_FALLBACK.liberal(0), [140 / 1024, 172 / 640]);
-    close(tx.BOARD_SLOTS_FALLBACK.liberal(4), [884 / 1024, 172 / 640]);
-    close(tx.BOARD_SLOTS_FALLBACK.fascist(5), [900 / 1024, 422 / 640]);
-    close(tx.BOARD_SLOTS_FALLBACK.tracker(3), [700 / 1024, 580 / 640]);
-  });
-
-  it('falls back to the procedural slots and draws without images', () => {
-    const powers = [null, null, 'peek', 'execute', 'execute', null];
-    expect(tx.officialBoard(powers)).toBeNull();
-    expect(tx.boardSlots(powers)).toBe(tx.BOARD_SLOTS_FALLBACK);
-    tx.boardTexture(powers);
-    expect(calls.images).toEqual([]);
-  });
-
   it('pins the official slot centres', () => {
     const close = (a: readonly number[], b: number[]) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i], 6));
     const lib = 660 / 2018;
     const split = lib / (lib + 673 / 2035);
-    close(tx.BOARD_SLOTS_OFFICIAL.liberal(0), [428 / 2018, (330.5 / 660) * split]);
-    close(tx.BOARD_SLOTS_OFFICIAL.fascist(5), [1751 / 2035, split + (341 / 673) * (1 - split)]);
-    close(tx.BOARD_SLOTS_OFFICIAL.tracker(3), [1290 / 2018, (586.5 / 660) * split]);
+    close(tx.BOARD_SLOTS.liberal(0), [428 / 2018, (330.5 / 660) * split]);
+    close(tx.BOARD_SLOTS.fascist(5), [1751 / 2035, split + (341 / 673) * (1 - split)]);
+    close(tx.BOARD_SLOTS.tracker(3), [1290 / 2018, (586.5 / 660) * split]);
     for (let i = 0; i < 6; i++) {
-      const [u, v] = tx.BOARD_SLOTS_OFFICIAL.fascist(i);
+      const [u, v] = tx.BOARD_SLOTS.fascist(i);
       expect(u).toBeGreaterThan(0);
       expect(u).toBeLessThan(1);
       expect(v).toBeGreaterThan(split);
       expect(v).toBeLessThan(1);
     }
     for (let i = 0; i < 5; i++) {
-      const [u, v] = tx.BOARD_SLOTS_OFFICIAL.liberal(i);
+      const [u, v] = tx.BOARD_SLOTS.liberal(i);
       expect(u).toBeGreaterThan(0);
       expect(u).toBeLessThan(1);
       expect(v).toBeGreaterThan(0);
       expect(v).toBeLessThan(split);
     }
     for (let i = 0; i < 4; i++) {
-      const [, v] = tx.BOARD_SLOTS_OFFICIAL.tracker(i);
-      expect(v).toBeGreaterThan(tx.BOARD_SLOTS_OFFICIAL.liberal(0)[1]);
+      const [, v] = tx.BOARD_SLOTS.tracker(i);
+      expect(v).toBeGreaterThan(tx.BOARD_SLOTS.liberal(0)[1]);
       expect(v).toBeLessThan(split);
     }
     expect(tx.BOARD_ASPECT).toBeCloseTo(1.5203, 3);
@@ -137,14 +120,34 @@ describe('board texture', () => {
     expect(tx.fascistBoardKey([null, 'investigate', 'special', 'execute', 'execute', null])).toBe('board-fascist-78');
     expect(tx.fascistBoardKey(['investigate', 'investigate', 'special', 'execute', 'execute', null])).toBe('board-fascist-910');
   });
+});
 
-  it('letters its titles and WIN slots in the blocky face', () => {
-    tx.boardTexture([null, null, 'peek', 'execute', 'execute', null]);
-    for (const word of ['LIBERAL', 'FASCIST', 'ELECTION TRACKER', 'WIN']) {
-      const hits = calls.texts.filter((t) => t.text === word);
-      expect(hits.length, word).toBeGreaterThan(0);
-      expect(hits.every((t) => t.font.includes('Big Shoulders Display')), word).toBe(true);
+describe('fallback without art', () => {
+  const plain: [string, () => unknown, string[]][] = [
+    ['policyFace L', () => tx.policyFace('L'), ['LIBERAL']],
+    ['policyFace F', () => tx.policyFace('F'), ['FASCIST']],
+    ['cardBack', () => tx.cardBack(), ['POLICY']],
+    ['cardBack DISCARD', () => tx.cardBack('DISCARD'), ['DISCARD']],
+    ['ballotFace ja', () => tx.ballotFace(true), ['JA!']],
+    ['ballotFace nein', () => tx.ballotFace(false), ['NEIN!']],
+    ['roleCard liberal', () => tx.roleCard('liberal'), ['LIBERAL']],
+    ['roleCard fascist', () => tx.roleCard('fascist'), ['FASCIST']],
+    ['roleCard hitler', () => tx.roleCard('hitler'), ['HITLER']],
+    ['membershipCard', () => tx.membershipCard('Ana', 'liberal'), ['LIBERAL', 'Ana']],
+    ['placardTexture', () => tx.placardTexture('PRESIDENT', '#ffffff'), ['PRESIDENT']],
+    ['boardTexture', () => tx.boardTexture([null, null, 'peek', 'execute', 'execute', null]), ['LIBERAL', 'FASCIST']],
+  ];
+
+  it.each(plain)('%s draws its title in the blocky face, no gradients, no images', (_name, make, titles) => {
+    expect(tx.officialBoard([])).toBeNull();
+    make();
+    for (const title of titles) {
+      const hits = calls.texts.filter((t) => t.text === title);
+      expect(hits.length, title).toBeGreaterThan(0);
+      expect(hits.every((t) => t.font.includes('Big Shoulders Display')), title).toBe(true);
     }
+    expect(calls.gradient).toBe(0);
+    expect(calls.images).toEqual([]);
   });
 });
 
@@ -166,11 +169,5 @@ describe('board texture with official art', () => {
     expect((lw as number) / (lh + fh)).toBeCloseTo(tx.BOARD_ASPECT, 3);
     expect(calls.texts).toEqual([]);
     expect(calls.gradient).toBe(0);
-  });
-
-  it('reports the official slots while both images are present, else the fallback', () => {
-    expect(tx.boardSlots([null, null, 'peek', 'execute', 'execute', null])).toBe(tx.BOARD_SLOTS_OFFICIAL);
-    // No 9-10 board image in the mock.
-    expect(tx.boardSlots(['investigate', 'investigate', 'special', 'execute', 'execute', null])).toBe(tx.BOARD_SLOTS_FALLBACK);
   });
 });

@@ -17,29 +17,25 @@ official art covers.
 Mackenzie Schubert, "Secret Hitler illustration & graphic design" (Medium, Dec 2015):
 https://medium.com/@mackenzieschubert/secret-hitler-illustration-graphic-design-435be3e3586c
 
-What he did. These are now the guide for the procedural fallback and for anything the official art does not cover
-(discard back, envelope, bar signage, fallback canvases):
+What he did. These are now the guide for anything the official art does not cover (discard back, envelope, bar signage):
 
 - Flat inks, no gradation: solid shapes and a few inks.
-- Simple, blocky typography, with portraits drawn to match its weight and angularity.
+- Simple, blocky typography.
 - One ornate seal per party, reducing cleanly to a simple icon.
-- Policy-track borders simplified from period documents, with iconography that tells the tracks apart.
 - The election tracker lives on the liberal board.
-- Fascists are lizards in suits; liberals are 1930s humans. No human masks on the lizards.
-- Portraits read like photographs: silhouette and contrast carry them.
 - The envelope and the secret "X" are the identity motif.
 
 ## How the official art is used
 
-- `officialImage(key)` hands out the loaded image; `?art=old` in the URL forces the procedural fallback.
-- Textures draw the official image when it is loaded and their procedural draw otherwise; `redrawTextures()`
+- `officialImage(key)` hands out the loaded image; a null result means the image has not loaded.
+- Textures draw the official image when it is loaded and a plain fallback otherwise; `redrawTextures()`
   swaps in late art.
-- The discard back and the envelope stay procedural: no official art exists for them.
+- The envelope stays procedural: no official art exists for it. The discard back has no art either, so it is the plain fallback card.
 
 ## Fallback
 
-The procedural textures, seals and portraits are only the fallback (failed or slow load, or `?art=old`). They follow
-the flat-ink rules, palette, seals, borders and portraits sections below.
+When an image has not loaded (failed or slow load), every card, board and placard is a plain dark fill with its title
+in the blocky face. Nothing else is drawn; the flat-ink rules and palette below still apply.
 
 ## Our adaptation
 
@@ -85,35 +81,16 @@ card stock.
 - Never set game-critical text (votes, roles, prompts, counts) in blackletter.
 - All fonts are self-hosted under `client/fonts`. The CSP is `default-src 'self'`, so no font CDNs.
 
-## Seals (fallback)
+## Neutral seal
 
-- Round, with a stepped art-deco rim.
-- Ring lettering: "LIBERAL PARTY" / "FASCIST PARTY".
-- Centre: the existing liberal bird / fascist skull emblem.
-- Flat fills with a thick ink outline. It must reduce to a recognisable icon at small sizes first, ornament second.
-
-## Borders and board (fallback)
-
-- Liberal track: wave or laurel band.
-- Fascist track: stepped key band.
-- Slots carry iconography in flat ink: seal miniatures and power icons.
-- The election tracker belongs on the liberal board, not as a separate object.
-- Borders are simplified period-document borders: few steps, thick strokes, no hairline filigree.
-
-## Portraits (fallback)
-
-- Flat, blocky busts with photograph-like silhouettes. 2-3 inks, no gradients.
-- Fascists: lizards in suits and hats.
-- Hitler: a lizard with a distinct peaked cap, in `hitler` red.
-- Liberals: 1930s humans in a fedora or cloche.
-- Several seeded variants per kind, so a table of cards is not a row of clones.
-- No human masks on lizards. The silhouette must be recognisable at small sizes.
+- The envelope carries one neutral oxblood seal with the secret X and "SECRET" ring lettering; it never shows a party.
+- Flat fills with a thick ink outline, a stepped art-deco rim, readable at small sizes first, ornament second.
 
 ## Do-nots
 
 - Never recolour, retouch or trace the official art beyond cropping, rotating and recompressing.
 - On fallback canvases and in the HUD:
-  - No canvas gradients (`createLinearGradient` / `createRadialGradient`) on cards, board, seals, portraits or signs.
+  - No canvas gradients (`createLinearGradient` / `createRadialGradient`) on cards, board, seals or signs.
   - No gilt or metallic shading.
   - At most a light grain.
   - No glows on cards.
@@ -125,8 +102,7 @@ card stock.
 - `client/art/` and `client/art/CREDITS.md`: the official art and its credits.
 - `scripts/official-art.py` and `scripts/official-art.md`: generate the official assets.
 - `client/scene/officialart.ts`: loads the official images (`officialImage(key)`).
-- `client/scene/textures.ts`: official draw plus the procedural fallback (`COLORS`, cards, boards, signs).
+- `client/scene/textures.ts`: official draw plus the plain fallback (`COLORS`, cards, boards, signs).
 - `client/art.ts`: HUD portrait and seal URLs (`portraitUrl`, `sealUrl`).
-- `client/scene/seals.ts`: fallback party seals (`drawSeal`).
-- `client/scene/portraits.ts`: fallback seeded lizard and human portraits (`drawPortrait`).
+- `client/scene/seals.ts`: the neutral envelope seal (`drawNeutralSeal`).
 - `tests/textures-palette.test.ts`: pins fallback large-fill luminance.

@@ -62,7 +62,7 @@ describe('posterAtlas', () => {
 
   it('draws every official image inside its 512x768 cell, in cell order', async () => {
     stubArt();
-    await art.loadOfficialArt({ search: '' });
+    await art.loadOfficialArt();
     tx.posterAtlas();
     expect(drawn.map((a) => a[0])).toEqual(KEYS.map((k) => art.officialImage(k)));
     for (const a of drawn) {
@@ -76,7 +76,7 @@ describe('posterAtlas', () => {
 
   it('draws only the logo in cell 3 when a policy card is missing', async () => {
     stubArt(['policy-L']);
-    await art.loadOfficialArt({ search: '' });
+    await art.loadOfficialArt();
     expect(art.officialImage('policy-L')).toBeNull();
     tx.posterAtlas();
     const imgs = drawn.map((a) => a[0]);
@@ -88,7 +88,7 @@ describe('posterAtlas', () => {
     tx.posterAtlas();
     expect(drawn).toHaveLength(0);
     stubArt();
-    await art.loadOfficialArt({ search: '' });
+    await art.loadOfficialArt();
     tx.redrawTextures();
     expect(drawn).toHaveLength(6);
   });

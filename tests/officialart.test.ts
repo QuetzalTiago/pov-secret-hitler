@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ART_KEYS, artForcedOld, loadOfficialArt, officialImage, resetOfficialArt } from '../client/scene/officialart';
+import { ART_KEYS, loadOfficialArt, officialImage, resetOfficialArt } from '../client/scene/officialart';
 
 const g = globalThis as any;
 const saved = { fetch: g.fetch, createImageBitmap: g.createImageBitmap };
@@ -40,25 +40,17 @@ afterEach(() => {
 describe('official art loader', () => {
   it('loads every image', async () => {
     expect(officialImage('policy-L')).toBeNull();
-    const n = await loadOfficialArt({ search: '' });
+    const n = await loadOfficialArt();
     expect(n).toBe(ART_KEYS.length);
     expect(n).toBe(20);
     expect(officialImage('policy-L')?.width).toBe(512);
     expect(fetchCalls).toHaveLength(20);
   });
 
-  it('?art=old loads nothing', async () => {
-    expect(await loadOfficialArt({ search: '?art=old' })).toBe(0);
-    expect(fetchCalls).toHaveLength(0);
-    expect(officialImage('policy-L')).toBeNull();
-    expect(artForcedOld('?art=old')).toBe(true);
-    expect(artForcedOld('?join=ABCD')).toBe(false);
-  });
-
   it('a failing image stays null without rejecting', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     failUrl = 'role-hitler';
-    expect(await loadOfficialArt({ search: '' })).toBe(19);
+    expect(await loadOfficialArt()).toBe(19);
     expect(officialImage('role-hitler')).toBeNull();
     expect(officialImage('role-fascist')).not.toBeNull();
     expect(warn).toHaveBeenCalledTimes(1);
@@ -66,13 +58,13 @@ describe('official art loader', () => {
 
   it('a never-resolving image does not hold the load past the cap', async () => {
     logoDelayMs = -1;
-    expect(await loadOfficialArt({ timeoutMs: 20, search: '' })).toBe(19);
+    expect(await loadOfficialArt({ timeoutMs: 20 })).toBe(19);
     expect(officialImage('logo')).toBeNull();
   });
 
   it('an image arriving after the cap is closed, not stored', async () => {
     logoDelayMs = 50;
-    await loadOfficialArt({ timeoutMs: 20, search: '' });
+    await loadOfficialArt({ timeoutMs: 20 });
     await new Promise((r) => setTimeout(r, 80));
     expect(officialImage('logo')).toBeNull();
     const logoUrl = Object.keys(closers).find((u) => u.includes('logo'))!;
@@ -81,7 +73,7 @@ describe('official art loader', () => {
 
   it('returns 0 without createImageBitmap', async () => {
     delete g.createImageBitmap;
-    expect(await loadOfficialArt({ search: '' })).toBe(0);
+    expect(await loadOfficialArt()).toBe(0);
     expect(officialImage('policy-L')).toBeNull();
   });
 });

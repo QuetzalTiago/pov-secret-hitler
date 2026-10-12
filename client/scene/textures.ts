@@ -1,9 +1,8 @@
-// Every texture is drawn on a canvas: official art images when loaded (see officialart.ts), procedural draws otherwise.
+// Every texture is drawn on a canvas: official art images when loaded (see officialart.ts), a plain dark card with the blocky title otherwise.
 import * as THREE from 'three';
 import { officialImage, type ArtKey } from './officialart';
 import { rand } from './rand';
-import { drawPortrait } from './portraits';
-import { drawSeal } from './seals';
+import { drawNeutralSeal } from './seals';
 
 const DISPLAY = '"Jost", "Futura", "Century Gothic", "Trebuchet MS", sans-serif';
 const MONO = '"Courier Prime", "Courier New", Courier, monospace';
@@ -437,20 +436,14 @@ export function emblem(g: CanvasRenderingContext2D, kind: 'L' | 'F', cx: number,
   g.restore();
 }
 
-/** Outer ink edge of a card, drawn inside the canvas. */
-function inkEdge(g: CanvasRenderingContext2D, w: number, h: number, width = 6) {
-  frame(g, w, h, COLORS.ink, width / 2, width);
+/** Fallback for a card, board or placard whose official image has not loaded: a plain dark fill with the blocky title. */
+function plainCard(g: CanvasRenderingContext2D, w: number, h: number, title: string, color = COLORS.stock) {
+  g.fillStyle = COLORS.ink;
+  g.fillRect(0, 0, w, h);
+  blockTitle(g, title, w / 2, h / 2, 44, color, w - 40);
 }
 
-/** An aged-stock panel inset from the card edge with an ink outline and a thin brass rule. */
-function panel(g: CanvasRenderingContext2D, w: number, h: number, inset: number, outline = 3) {
-  g.fillStyle = COLORS.stock;
-  g.fillRect(inset, inset, w - inset * 2, h - inset * 2);
-  frame(g, w, h, COLORS.ink, inset, outline);
-  frame(g, w, h, COLORS.brass, inset + 6, 1.5);
-}
-
-// Card canvases stay 256x360: the fallback layouts are hand-placed in those pixels and the 64-entry texture cache would need 4x the memory at 512x720.
+// Card canvases stay 256x360: the texture cache holds 64 entries and 512x720 would need 4x the memory.
 /** Fills the canvas with the loaded official image for `key`; false (nothing drawn) while it is missing. */
 function fillImage(g: CanvasRenderingContext2D, key: ArtKey, w: number, h: number): boolean {
   const img = officialImage(key);
@@ -462,16 +455,7 @@ function fillImage(g: CanvasRenderingContext2D, key: ArtKey, w: number, h: numbe
 export function policyFace(p: 'L' | 'F') {
   return tex(`policy-${p}`, 256, 360, (g, w, h) => {
     if (fillImage(g, `policy-${p}`, w, h)) return;
-    const lib = p === 'L';
-    const deep = lib ? COLORS.liberalDeep : COLORS.fascistDeep;
-    g.fillStyle = deep;
-    g.fillRect(0, 0, w, h);
-    inkEdge(g, w, h);
-    panel(g, w, h, 20);
-    drawSeal(g, p, w / 2, h * 0.4, 78, deep);
-    blockTitle(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.74, 46, deep, w - 60);
-    centerText(g, 'P O L I C Y', w / 2, h * 0.84, `bold 16px ${MONO}`, COLORS.ink);
-    age(g, w, h, p === 'L' ? 2 : 4);
+    plainCard(g, w, h, p === 'L' ? 'LIBERAL' : 'FASCIST');
   });
 }
 
@@ -481,118 +465,32 @@ export function cardBack(label = 'POLICY') {
   return tex(`back-${label}`, 256, 360, (g, w, h) => {
     const key = BACK_ART[label.toUpperCase()];
     if (key && fillImage(g, key, w, h)) return;
-    g.fillStyle = COLORS.ink;
-    g.fillRect(0, 0, w, h);
-    // Fine brass diagonal lattice, low alpha.
-    g.save();
-    g.globalAlpha = 0.2;
-    g.strokeStyle = COLORS.brass;
-    g.lineWidth = 1;
-    for (let i = -h; i < w + h; i += 12) {
-      g.beginPath();
-      g.moveTo(i, 0);
-      g.lineTo(i + h, h);
-      g.moveTo(i + h, 0);
-      g.lineTo(i, h);
-      g.stroke();
-    }
-    g.restore();
-    frame(g, w, h, COLORS.brass, 12, 2);
-    frame(g, w, h, COLORS.brass, 18, 1);
-    g.fillStyle = COLORS.ink;
-    g.fillRect(30, h / 2 - 38, w - 60, 76);
-    g.strokeStyle = COLORS.brass;
-    g.lineWidth = 2;
-    g.strokeRect(30, h / 2 - 38, w - 60, 76);
-    g.lineWidth = 1;
-    g.strokeRect(36, h / 2 - 32, w - 72, 64);
-    blockTitle(g, label.toUpperCase(), w / 2, h / 2 + 1, 40, COLORS.brass, w - 72);
-    age(g, w, h, 8);
+    plainCard(g, w, h, label.toUpperCase());
   });
 }
 
 export function ballotFace(ja: boolean) {
   return tex(`ballot-${ja}`, 256, 360, (g, w, h) => {
     if (fillImage(g, ja ? 'ballot-ja' : 'ballot-nein', w, h)) return;
-    g.fillStyle = COLORS.stock;
-    g.fillRect(0, 0, w, h);
-    inkEdge(g, w, h);
-    frame(g, w, h, COLORS.ink, 14, 2);
-    // Corner mark: a round stamp for JA, a square one for NEIN.
-    g.fillStyle = COLORS.ink;
-    if (ja) {
-      g.beginPath();
-      g.arc(40, 44, 12, 0, Math.PI * 2);
-      g.fill();
-    } else {
-      g.fillRect(28, 32, 24, 24);
-    }
-    // The vote word, tilted like a rubber stamp: a faded double impression.
-    g.save();
-    g.translate(w / 2, h / 2);
-    g.rotate(((ja ? -6 : 6) * Math.PI) / 180);
-    const word = ja ? 'JA!' : 'NEIN!';
-    const size = ja ? 120 : 92;
-    g.font = `800 ${size}px ${BLOCK}`;
-    const wide = g.measureText(word).width;
-    const font = `800 ${wide > w - 60 ? Math.floor((size * (w - 60)) / wide) : size}px ${BLOCK}`;
-    g.globalAlpha = 0.45;
-    centerText(g, word, 3, 2, font, COLORS.ink);
-    g.globalAlpha = 0.75;
-    centerText(g, word, 0, 0, font, COLORS.ink);
-    g.restore();
-    centerText(g, 'BALLOT', w / 2, h * 0.88, `bold 18px ${MONO}`, COLORS.ink);
-    age(g, w, h, ja ? 1 : 6);
+    plainCard(g, w, h, ja ? 'JA!' : 'NEIN!');
   });
 }
 
-export function roleCard(role: 'liberal' | 'fascist' | 'hitler', seed = 0) {
-  return tex(`role-${role}-${seed}`, 256, 360, (g, w, h) => {
+export function roleCard(role: 'liberal' | 'fascist' | 'hitler') {
+  return tex(`role-${role}`, 256, 360, (g, w, h) => {
     if (fillImage(g, `role-${role}`, w, h)) return;
-    const lib = role === 'liberal';
-    const hit = role === 'hitler';
-    const deep = lib ? COLORS.liberalDeep : COLORS.fascistDeep;
-    g.fillStyle = lib ? COLORS.liberalDeep : hit ? COLORS.hitler : COLORS.fascistDeep;
-    g.fillRect(0, 0, w, h);
-    inkEdge(g, w, h);
-    panel(g, w, h, 18);
-    centerText(g, 'SECRET ROLE', w / 2, 50, `bold 16px ${MONO}`, COLORS.ink);
-    drawPortrait(g, role, seed, 34, 66, w - 68, 168);
-    g.strokeStyle = COLORS.ink;
-    g.lineWidth = 4;
-    g.strokeRect(34, 66, w - 68, 168);
-    drawSeal(g, lib ? 'L' : 'F', w - 34, 234, 22, deep);
-    const title = hit ? 'HITLER' : lib ? 'LIBERAL' : 'FASCIST';
-    blockTitle(g, title, w / 2, h * 0.74, hit ? 60 : 52, hit ? COLORS.hitler : deep, w - 60);
-    centerText(g, lib ? 'Liberal party' : 'Fascist party', w / 2, h * 0.83, `bold 16px ${MONO}`, COLORS.ink);
-    centerText(g, 'click to close your eyes', w / 2, h * 0.91, `13px ${MONO}`, COLORS.kraft);
-    age(g, w, h, 10 + role.length);
+    plainCard(g, w, h, role.toUpperCase());
   });
 }
 
 export function membershipCard(name: string, party: 'liberal' | 'fascist') {
   return tex(`member-${name}-${party}`, 256, 360, (g, w, h) => {
-    if (fillImage(g, `member-${party}`, w, h)) {
-      // Name strip across the very top, clear of the header and the seal.
-      const strip = Math.round(h * 0.075);
-      g.fillStyle = COLORS.ink;
-      g.fillRect(0, 0, w, strip);
-      blockTitle(g, name, w / 2, strip / 2 + 1, 22, COLORS.stock, w - 24);
-      return;
-    }
-    const lib = party === 'liberal';
-    const deep = lib ? COLORS.liberalDeep : COLORS.fascistDeep;
-    g.fillStyle = COLORS.stock;
-    g.fillRect(0, 0, w, h);
-    inkEdge(g, w, h);
-    frame(g, w, h, deep, 10, 4);
-    frame(g, w, h, COLORS.brass, 17, 1.5);
-    centerText(g, 'PARTY MEMBERSHIP', w / 2, 44, `bold 17px ${MONO}`, COLORS.ink);
-    blockTitle(g, name, w / 2, 86, 30, COLORS.ink, w - 60);
-    drawSeal(g, lib ? 'L' : 'F', w / 2, h * 0.5, 62, deep);
-    blockTitle(g, lib ? 'LIBERAL' : 'FASCIST', w / 2, h * 0.75, 52, deep, w - 60);
-    centerText(g, 'click to put it away', w / 2, h * 0.9, `13px ${MONO}`, COLORS.kraft);
-    age(g, w, h, 20 + name.length);
+    if (!fillImage(g, `member-${party}`, w, h)) plainCard(g, w, h, party.toUpperCase());
+    // Name strip across the very top, clear of the header and the seal.
+    const strip = Math.round(h * 0.075);
+    g.fillStyle = COLORS.ink;
+    g.fillRect(0, 0, w, strip);
+    blockTitle(g, name, w / 2, strip / 2 + 1, 22, COLORS.stock, w - 24);
   });
 }
 
@@ -815,7 +713,7 @@ export function envelopeTexture() {
     g.lineTo(w, 0);
     g.stroke();
     // Neutral oxblood seal: the envelope is identical for every player, so it never shows a party.
-    drawSeal(g, null, w / 2, h * 0.55, 22, COLORS.fascistDeep);
+    drawNeutralSeal(g, w / 2, h * 0.55, 22, COLORS.fascistDeep);
     // Oxblood rubber stamp, slightly crooked.
     g.save();
     g.translate(w / 2, h * 0.85);
@@ -850,11 +748,7 @@ export function placardTexture(title: string, color: string) {
       g.drawImage(img, r.x, r.y, r.w, r.h);
       return;
     }
-    g.fillStyle = COLORS.ink;
-    g.fillRect(0, 0, w, h);
-    frame(g, w, h, COLORS.brass, 8, 3);
-    frame(g, w, h, COLORS.brass, 14, 1);
-    centerText(g, title, w / 2, h / 2 + 2, `800 56px ${DISPLAY}`, color);
+    plainCard(g, w, h, title, color);
   });
 }
 
@@ -867,145 +761,6 @@ export function labelTexture(text: string, color: string, bg = '#1c130c') {
     const size = text.length > 8 ? 30 : 44;
     centerText(g, text, w / 2, h / 2 + 2, `800 ${size}px ${DISPLAY}`, color);
   });
-}
-
-const POWER_LABEL: Record<string, string> = {
-  peek: 'Policy peek',
-  investigate: 'Investigate',
-  special: 'Special election',
-  execute: 'Execution',
-};
-
-/** Original flat icon for a presidential power, centred at (cx, cy) and kept within +-s. */
-function powerIcon(g: CanvasRenderingContext2D, kind: string, cx: number, cy: number, s: number, color = COLORS.stock) {
-  g.save();
-  g.lineCap = 'round';
-  g.lineJoin = 'round';
-  g.strokeStyle = color;
-  g.fillStyle = color;
-  g.lineWidth = 4;
-  if (kind === 'peek') {
-    g.beginPath();
-    g.moveTo(cx - s, cy);
-    g.quadraticCurveTo(cx, cy - s * 1.1, cx + s, cy);
-    g.quadraticCurveTo(cx, cy + s * 1.1, cx - s, cy);
-    g.closePath();
-    g.stroke();
-    g.beginPath();
-    g.arc(cx, cy, s * 0.36, 0, Math.PI * 2);
-    g.fill();
-  } else if (kind === 'investigate') {
-    const r = s * 0.55;
-    const lx = cx - s * 0.3;
-    const ly = cy - s * 0.3;
-    g.lineWidth = 5;
-    g.beginPath();
-    g.arc(lx, ly, r, 0, Math.PI * 2);
-    g.stroke();
-    g.lineWidth = 8;
-    g.beginPath();
-    g.moveTo(lx + r * Math.SQRT1_2 + 2, ly + r * Math.SQRT1_2 + 2);
-    g.lineTo(cx + s * 0.85, cy + s * 0.85);
-    g.stroke();
-  } else if (kind === 'special') {
-    g.beginPath();
-    g.rect(cx - s * 0.8, cy - s * 0.9, s * 1.6, s * 0.3);
-    g.fill();
-    g.stroke();
-    g.beginPath();
-    g.moveTo(cx - s * 0.6, cy - s * 0.6);
-    g.lineTo(cx + s * 0.6, cy - s * 0.6);
-    g.lineTo(cx + s * 0.85, cy + s * 0.9);
-    g.lineTo(cx - s * 0.85, cy + s * 0.9);
-    g.closePath();
-    g.fill();
-    g.stroke();
-  } else if (kind === 'execute') {
-    const hw = s * 0.32;
-    g.beginPath();
-    g.moveTo(cx - hw, cy + s);
-    g.lineTo(cx - hw, cy - s * 0.2);
-    g.quadraticCurveTo(cx - hw, cy - s, cx, cy - s);
-    g.quadraticCurveTo(cx + hw, cy - s, cx + hw, cy - s * 0.2);
-    g.lineTo(cx + hw, cy + s);
-    g.closePath();
-    g.fill();
-    g.stroke();
-    g.strokeStyle = COLORS.fascistDeep;
-    g.lineWidth = 2;
-    g.beginPath();
-    g.moveTo(cx - hw, cy + s * 0.45);
-    g.lineTo(cx + hw, cy + s * 0.45);
-    g.stroke();
-  }
-  g.restore();
-}
-
-/** A recessed slot: dark fill, flat inset shadow along the top and left, brass-ruled edge. */
-function recess(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill: string) {
-  g.fillStyle = fill;
-  g.fillRect(x, y, w, h);
-  g.fillStyle = 'rgba(0,0,0,0.45)';
-  g.fillRect(x, y, w, 10);
-  g.fillRect(x, y + 10, 8, h - 10);
-  g.strokeStyle = COLORS.brass;
-  g.lineWidth = 2;
-  g.strokeRect(x, y, w, h);
-  g.save();
-  g.globalAlpha = 0.35;
-  g.lineWidth = 1;
-  g.strokeRect(x + 4, y + 4, w - 8, h - 8);
-  g.restore();
-}
-
-/** Deco wave band: a row of scallop arcs across x..x+w within height h, broken over `gap` (x range). */
-function waveBand(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, gap?: [number, number]) {
-  const r = h / 2;
-  g.save();
-  g.globalAlpha = 0.55;
-  g.strokeStyle = color;
-  g.lineWidth = 3;
-  g.lineCap = 'round';
-  g.beginPath();
-  for (let cx = x + r; cx + r <= x + w; cx += h) {
-    if (gap && cx + r > gap[0] && cx - r < gap[1]) continue;
-    g.moveTo(cx - r, y + h);
-    g.arc(cx, y + h, r, Math.PI, 0);
-  }
-  g.stroke();
-  g.restore();
-}
-
-/** Deco key band: a stepped Greek-key meander across x..x+w within height h, broken over `gap` (x range). */
-function keyBand(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, gap?: [number, number]) {
-  const cell = h * 1.5;
-  g.save();
-  g.globalAlpha = 0.55;
-  g.strokeStyle = color;
-  g.lineWidth = 3;
-  g.lineJoin = 'miter';
-  g.beginPath();
-  for (let cx = x; cx + cell <= x + w; cx += cell) {
-    if (gap && cx + cell > gap[0] && cx < gap[1]) continue;
-    g.moveTo(cx, y + h);
-    g.lineTo(cx, y);
-    g.lineTo(cx + h, y);
-    g.lineTo(cx + h, y + h * 0.6);
-    g.lineTo(cx + h * 0.4, y + h * 0.6);
-    g.moveTo(cx + h, y + h);
-    g.lineTo(cx + cell, y + h);
-  }
-  g.stroke();
-  g.restore();
-}
-
-/** A small dark plaque with a brass outline that the panel title sits on. */
-function titlePlaque(g: CanvasRenderingContext2D, cx: number, y: number, w: number, h: number, fill: string) {
-  g.fillStyle = fill;
-  g.fillRect(cx - w / 2, y, w, h);
-  g.strokeStyle = COLORS.brass;
-  g.lineWidth = 2;
-  g.strokeRect(cx - w / 2, y, w, h);
 }
 
 /** Which official fascist board art matches a game's power list (5-6 has peek at slot 3, 7-8 investigates at slot 2, 9-10 at slot 1). */
@@ -1030,7 +785,7 @@ const BOARD_SPLIT = LIB_FRAC / (LIB_FRAC + FAS_FRAC);
 /** Width / height of the composite board (the table mesh and texture share it). */
 export const BOARD_ASPECT = 1 / (LIB_FRAC + FAS_FRAC);
 
-/** The central board: the official art when loaded, else liberal track, fascist track with powers and election tracker inlaid in dark leather. */
+/** The central board: the official art when loaded, else a plain dark card with the two track titles. */
 export function boardTexture(powers: (string | null)[]) {
   return tex(`board-${powers.join(',')}`, 2048, Math.round(2048 / BOARD_ASPECT), (g, cw, ch) => {
     const official = officialBoard(powers);
@@ -1039,106 +794,10 @@ export function boardTexture(powers: (string | null)[]) {
       g.drawImage(official.fascist, 0, ch * BOARD_SPLIT, cw, ch * (1 - BOARD_SPLIT));
       return;
     }
-    // The procedural board is laid out on 1024 x 640 and scaled to fill the canvas.
-    const [w, h] = [1024, 640];
-    g.save();
-    g.scale(cw / w, ch / h);
-    // Dark leather / walnut ground with grain streaks.
-    g.fillStyle = '#2a1a10';
-    g.fillRect(0, 0, w, h);
-    const r = rand(77);
-    g.strokeStyle = '#120a05';
-    for (let i = 0; i < 120; i++) {
-      const y = r() * h;
-      g.globalAlpha = 0.1 + r() * 0.25;
-      g.lineWidth = 1 + r() * 3;
-      g.beginPath();
-      g.moveTo(0, y);
-      for (let x = 0; x <= w; x += 32) g.lineTo(x, y + Math.sin(x * 0.015 + i) * (2 + r() * 5));
-      g.stroke();
-    }
-    g.globalAlpha = 1;
-    frame(g, w, h, COLORS.brass, 8, 3);
-    frame(g, w, h, COLORS.brass, 16, 1);
-    // Liberal track: a recessed navy panel.
-    g.fillStyle = COLORS.liberalDeep;
-    g.fillRect(40, 40, w - 80, 230);
-    g.strokeStyle = COLORS.brass;
-    g.lineWidth = 2;
-    g.strokeRect(40, 40, w - 80, 230);
-    const plaque: [number, number] = [w / 2 - 130, w / 2 + 130];
-    waveBand(g, 48, 44, w - 96, 12, COLORS.line, plaque);
-    waveBand(g, 48, 256, w - 96, 11, COLORS.line);
-    titlePlaque(g, w / 2, 46, 240, 42, COLORS.liberalDeep);
-    centerText(g, 'LIBERAL', w / 2, 68, `800 34px ${BLOCK}`, COLORS.brass);
-    const lx = (i: number) => 140 + i * 186;
-    for (let i = 0; i < 5; i++) {
-      recess(g, lx(i) - 60, 92, 120, 160, '#10202f');
-      if (i === 4) {
-        drawSeal(g, 'L', lx(i), 165, 40, COLORS.liberalDeep);
-        centerText(g, 'WIN', lx(i), 232, `800 20px ${BLOCK}`, COLORS.brass);
-      }
-    }
-    // Fascist track: a recessed oxblood panel.
-    g.fillStyle = COLORS.fascistDeep;
-    g.fillRect(40, 290, w - 80, 230);
-    g.strokeStyle = COLORS.brass;
-    g.lineWidth = 2;
-    g.strokeRect(40, 290, w - 80, 230);
-    keyBand(g, 48, 294, w - 96, 12, COLORS.line, plaque);
-    titlePlaque(g, w / 2, 296, 240, 42, COLORS.fascistDeep);
-    centerText(g, 'FASCIST', w / 2, 318, `800 34px ${BLOCK}`, COLORS.brass);
-    const fx = (i: number) => 125 + i * 155;
-    for (let i = 0; i < 6; i++) {
-      const x = fx(i);
-      recess(g, x - 60, 342, 120, 160, '#2a0a06');
-      if (i >= 3) {
-        // Danger hatch, clipped to the slot.
-        g.save();
-        g.beginPath();
-        g.rect(x - 60, 342, 120, 160);
-        g.clip();
-        g.strokeStyle = COLORS.fascist;
-        g.globalAlpha = 0.35;
-        g.lineWidth = 3;
-        g.beginPath();
-        for (let k = -160; k < 120; k += 16) {
-          g.moveTo(x - 60 + k, 502);
-          g.lineTo(x - 60 + k + 160, 342);
-        }
-        g.stroke();
-        g.restore();
-      }
-      const p = powers[i];
-      if (i === 5) {
-        drawSeal(g, 'F', x, 410, 40, COLORS.fascistDeep);
-        centerText(g, 'WIN', x, 480, `800 20px ${BLOCK}`, COLORS.brass);
-      } else if (p && POWER_LABEL[p]) {
-        powerIcon(g, p, x, 395, 20, COLORS.brass);
-        POWER_LABEL[p].split(' ').forEach((wd, j) => centerText(g, wd, x, 440 + j * 18, `800 17px ${BLOCK}`, COLORS.line));
-      }
-    }
-    centerText(g, 'Hitler as chancellor wins from the 4th slot on  •  Veto unlocks at 5', w / 2, 512, `bold 13px ${MONO}`, COLORS.stock);
-    // Election tracker: a dark strip with brass rings.
-    g.fillStyle = '#150d07';
-    g.fillRect(40, 540, w - 80, 80);
-    g.strokeStyle = COLORS.brass;
-    g.lineWidth = 2;
-    g.strokeRect(40, 540, w - 80, 80);
-    centerText(g, 'ELECTION TRACKER', 250, 580, `800 24px ${BLOCK}`, COLORS.brass);
-    for (let i = 0; i < 4; i++) {
-      g.fillStyle = '#0c0704';
-      g.strokeStyle = COLORS.brass;
-      g.lineWidth = 4;
-      g.beginPath();
-      g.arc(430 + i * 90, 580, 22, 0, Math.PI * 2);
-      g.fill();
-      g.stroke();
-      if (i === 3) centerText(g, '!', 430 + i * 90, 581, `800 22px ${BLOCK}`, COLORS.fascist);
-    }
-    centerText(g, '3 failed = top policy enacted', 860, 580, `bold 13px ${MONO}`, COLORS.stock);
-    g.restore();
-    age(g, cw, ch, 21);
+    g.fillStyle = COLORS.ink;
+    g.fillRect(0, 0, cw, ch);
+    blockTitle(g, 'LIBERAL', cw / 2, (ch * BOARD_SPLIT) / 2, 120, COLORS.stock, cw - 200);
+    blockTitle(g, 'FASCIST', cw / 2, (ch * (BOARD_SPLIT + 1)) / 2, 120, COLORS.stock, cw - 200);
   });
 }
 
@@ -1148,28 +807,16 @@ type BoardSlots = {
   tracker: (i: number) => readonly [number, number];
 };
 
-/** Slot centres (u,v in 0..1 of the board texture) on the procedural board. */
-export const BOARD_SLOTS_FALLBACK: BoardSlots = {
-  liberal: (i) => [(140 + i * 186) / 1024, 172 / 640],
-  fascist: (i) => [(125 + i * 155) / 1024, 422 / 640],
-  tracker: (i) => [(430 + i * 90) / 1024, 580 / 640],
-};
-
 const LIB_X = [428, 716.5, 1008, 1298.5, 1591];
 const TRK_X = [697, 894.5, 1092, 1290];
 const FAS_X = [292, 581.5, 872.5, 1165, 1460.5, 1751];
 
 /** Slot centres on the official composite board, measured from the art. */
-export const BOARD_SLOTS_OFFICIAL: BoardSlots = {
+export const BOARD_SLOTS: BoardSlots = {
   liberal: (i) => [LIB_X[i] / 2018, (330.5 / 660) * BOARD_SPLIT],
   fascist: (i) => [FAS_X[i] / 2035, BOARD_SPLIT + (341 / 673) * (1 - BOARD_SPLIT)],
   tracker: (i) => [TRK_X[i] / 2018, (586.5 / 660) * BOARD_SPLIT],
 };
-
-/** Slot centres matching whichever board art boardTexture(powers) currently draws. */
-export function boardSlots(powers: (string | null)[]): BoardSlots {
-  return officialBoard(powers) ? BOARD_SLOTS_OFFICIAL : BOARD_SLOTS_FALLBACK;
-}
 
 export function textSprite(
   text: string,

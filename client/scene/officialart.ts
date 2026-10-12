@@ -1,5 +1,5 @@
 // Official card and board art from Lee Yingtong Li's colour remake (CC BY-NC-SA 4.0, credits in client/art/CREDITS.md).
-// null means "draw the procedural texture"; ?art=old forces that fallback.
+// null means "not loaded yet": the texture draws its plain fallback.
 import policyLUrl from '../art/policy-L.webp?url';
 import policyFUrl from '../art/policy-F.webp?url';
 import policyBackUrl from '../art/policy-back.webp?url';
@@ -53,14 +53,9 @@ export function officialImage(key: ArtKey): ImageBitmap | null {
   return images.get(key) ?? null;
 }
 
-/** True when `?art=old` asks for the procedural textures. */
-export function artForcedOld(search = typeof location !== 'undefined' ? location.search : ''): boolean {
-  return new URLSearchParams(search).get('art') === 'old';
-}
-
 /** Loads every image, never rejects, and resolves with how many are available; slow or failed ones stay null. */
-export async function loadOfficialArt(opts: { timeoutMs?: number; search?: string } = {}): Promise<number> {
-  if (artForcedOld(opts.search) || typeof createImageBitmap !== 'function' || typeof fetch !== 'function') return 0;
+export async function loadOfficialArt(opts: { timeoutMs?: number } = {}): Promise<number> {
+  if (typeof createImageBitmap !== 'function' || typeof fetch !== 'function') return 0;
   let open = true;
   const load = async (key: ArtKey) => {
     try {

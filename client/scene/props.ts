@@ -1,7 +1,7 @@
 // Physical props on the table.
 import * as THREE from 'three';
 import {
-  BOARD_ASPECT, ballotFace, boardSlots, boardTexture, cardBack, envelopeTexture, officialBoard, placardTexture, policyFace, ringTexture,
+  BOARD_ASPECT, BOARD_SLOTS, ballotFace, boardTexture, cardBack, envelopeTexture, placardTexture, policyFace, ringTexture,
 } from './textures';
 import { revolverGeometry } from './gun';
 import { ease, tween, type Tween } from './tween';
@@ -147,9 +147,8 @@ export class Board {
   /** Big enough that the official art reads from your seat (it was 1.0 m and blurred into a strip). */
   readonly w = 1.3;
   readonly h = this.w / BOARD_ASPECT;
-  /** Uniform scale for policy tiles: the official slots are bigger than the procedural ones. A Mover drives tile scale, so game.ts applies this to it. */
-  tileScale = 1;
-  private powers: (string | null)[] = [null, null, 'peek', 'execute', 'execute', null];
+  /** Uniform scale for policy tiles, sized to the official slots; slots scale with the board width, so the tiles do too. A Mover drives tile scale, so game.ts applies this to it. */
+  readonly tileScale = 1.25 * this.w;
   private surface: THREE.Mesh;
   liberalTiles: THREE.Mesh[] = [];
   fascistTiles: THREE.Mesh[] = [];
@@ -176,6 +175,7 @@ export class Board {
       const m = new THREE.Mesh(tileGeo, [edge, edge, new THREE.MeshStandardMaterial({ map: policyFace('L') }), edge, edge, edge]);
       m.visible = false;
       m.castShadow = true;
+      m.scale.set(this.tileScale, 1, this.tileScale);
       this.liberalTiles.push(m);
       this.group.add(m);
     }
@@ -183,6 +183,7 @@ export class Board {
       const m = new THREE.Mesh(tileGeo, [edge, edge, new THREE.MeshStandardMaterial({ map: policyFace('F') }), edge, edge, edge]);
       m.visible = false;
       m.castShadow = true;
+      m.scale.set(this.tileScale, 1, this.tileScale);
       this.fascistTiles.push(m);
       this.group.add(m);
     }
@@ -193,11 +194,9 @@ export class Board {
     this.token.castShadow = true;
     this.group.add(this.token);
     this.group.position.set(0, TABLE_Y + 0.006, -0.02);
-    this.refreshArt();
   }
 
   setPowers(powers: (string | null)[]) {
-    this.powers = powers;
     const key = powers.join(',');
     if (key !== this.powersKey) {
       this.powersKey = key;
@@ -210,19 +209,11 @@ export class Board {
       const face = new THREE.MeshStandardMaterial({ map: t, color: 0xd0d0d0, roughness: 0.9, metalness: 0, envMapIntensity: 0.2 });
       this.surface.material = [side, side, face, side, side, side];
     }
-    this.refreshArt();
-  }
-
-  /** Sizes the policy tiles for whichever board art is showing; call again once the official art loads. */
-  refreshArt() {
-    // Slots scale with the board width, so the tiles do too.
-    this.tileScale = (officialBoard(this.powers) ? 1.25 : 1) * this.w;
-    for (const t of [...this.liberalTiles, ...this.fascistTiles]) t.scale.set(this.tileScale, 1, this.tileScale);
   }
 
   /** Local position of a board slot. */
   slot(kind: 'liberal' | 'fascist' | 'tracker', i: number): THREE.Vector3 {
-    const [u, v] = boardSlots(this.powers)[kind](i);
+    const [u, v] = BOARD_SLOTS[kind](i);
     return new THREE.Vector3((u - 0.5) * this.w, 0.01, (v - 0.5) * this.h);
   }
 }

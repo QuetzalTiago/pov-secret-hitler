@@ -995,12 +995,6 @@ export class Game {
     });
   }
 
-  /** Resizes and re-seats the tiles and token once the official board art has loaded. */
-  refreshBoardArt() {
-    this.board.refreshArt();
-    if (this.view) this.syncTiles(true);
-  }
-
   private syncTiles(instant: boolean) {
     const place = (tiles: THREE.Mesh[], count: number, kind: 'liberal' | 'fascist', offset: number) => {
       tiles.forEach((t, i) => {
@@ -1289,7 +1283,7 @@ export class Game {
     this.envMover.set(this.tmpV.copy(envPos).setY(envPos.y + (hovered === 'envelope' ? 0.02 : 0)), Q('y', L.yaw(me), QA));
     this.envMover.visible = !!v;
     this.envelope.setGlow(hovered === 'envelope' || (v?.phase === 'night' && !this.envelopeOpen && !v.players[me]?.acked) ? 0.6 + Math.sin(now * 4) * 0.3 : 0);
-    if (v?.yourRole) this.roleCard.setFace(roleCard(v.yourRole, me));
+    if (v?.yourRole) this.roleCard.setFace(roleCard(v.yourRole));
     if (this.envelopeOpen) {
       this.handPose(0, 1, -0.38, -0.05, this.handP, this.handQ);
       this.roleMover.set(this.handP, this.handQ, 10);
@@ -1525,7 +1519,7 @@ export class Game {
         if (!p.role || (this.rolesHeld && !this.revealedSeats.has(p.seat))) continue;
         let r = this.reveals.get(p.seat);
         if (!r) {
-          const card = new Card(roleCard(p.role, p.seat), cardBack('ROLE'), 1.2);
+          const card = new Card(roleCard(p.role), cardBack('ROLE'), 1.2);
           card.mesh.position.copy(L.front(p.seat, -0.34, -0.02));
           this.world.scene.add(card.mesh);
           r = { card, mover: this.world.track(new Mover(card.mesh)) };
