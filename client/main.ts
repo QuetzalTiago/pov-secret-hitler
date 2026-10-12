@@ -5,6 +5,7 @@ import { Game } from './game';
 import { Interactor } from './interact';
 import { Net } from './net';
 import { createPerfHud } from './perf';
+import { loadAssets } from './scene/assets';
 import { GRAPHICS_MODES, saveGraphicsPref } from './scene/quality';
 import { redrawTextures } from './scene/textures';
 import { World } from './scene/world';
@@ -129,7 +130,8 @@ if (/^[A-Z]{4}$/.test(invite)) {
   if (s && s.code !== invite) saveSession(null); // the invite wins over an old table
   if (!s || s.code !== invite) ui.setInvite(invite);
 }
-net.connect();
+// Models load first so the scene can use them; a slow or failed load must not hold the table up.
+void Promise.race([loadAssets(), new Promise((r) => setTimeout(r, 10_000))]).then(() => net.connect());
 const showHome = ui.showHome.bind(ui);
 ui.showHome = () => {
   interactor.setLockable(false);
