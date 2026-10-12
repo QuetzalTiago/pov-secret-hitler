@@ -6,7 +6,8 @@ import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { BeatQueue, VOTE_REVEAL_MS, scheduleBatch, type Beat } from './beats';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
 import { ENACT_BANNER_DELAY_MS, ceremonyEndsAt } from './enact';
-import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, type Mark } from './hudmodel';
+import { eventCopy, powerCopy } from './eventcopy';
+import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, type Mark } from './hudmodel';
 import { loadMarks, saveMarks } from './marks';
 import type { Interactable, Interactor } from './interact';
 import { createCharacter, type Patron } from './scene/characters';
@@ -53,13 +54,6 @@ const QC = new THREE.Quaternion();
 const QOUT = new THREE.Quaternion();
 const DISCARD_LIFT = new THREE.Vector3(0, 0.02, 0);
 const BOARD_LIFT = new THREE.Vector3(0, 0.03, 0);
-
-const POWER_TEXT: Record<string, string> = {
-  peek: 'Policy peek: the President looks at the top three policies.',
-  investigate: 'Investigate loyalty: the President inspects a party card.',
-  special: 'Special election: the President picks the next President.',
-  execute: 'Execution: the President picks up the revolver.',
-};
 
 export class Game {
   room: RoomView | null = null;
@@ -615,9 +609,9 @@ export class Game {
     return this.room?.seats[seat]?.name ?? this.view?.players[seat]?.name ?? `Seat ${seat + 1}`;
   }
 
-  /** 'You nominate' / 'Vera nominates'. */
-  private subj(seat: number, verb: string): string {
-    return seat === this.room?.you ? `You ${verb}` : `${this.name(seat)} ${verb}s`;
+  private say(e: Beat) {
+    const c = eventCopy(e, (s) => this.name(s), this.room?.you);
+    if (c) this.ui.toast(c.text, c.kind);
   }
 
   private onBeat(e: Beat) {
@@ -626,20 +620,19 @@ export class Game {
     switch (e.k) {
       case 'nightStart':
         sfx.night();
-        this.ui.toast('Night falls. Open your envelope.', 'night');
+        this.say(e);
         break;
       case 'timedOut':
-        if (e.seat === me) this.ui.toast('Time ran out, a move was made for you', 'bad');
+        this.say(e);
         break;
       case 'newPresident':
         sfx.slide();
-        this.ui.toast(e.seat === me ? 'You are the President.' : `${this.name(e.seat)} is President.`, e.special ? 'power' : 'info');
+        this.say(e);
         break;
       case 'nominated':
         sfx.nominate();
         this.pointAt = { by: e.president, target: e.target, until: this.now + 2.5 };
-        if (e.target === me) this.ui.toast(`${this.name(e.president)} nominates YOU for Chancellor!`, 'power');
-        else this.ui.toast(`${this.subj(e.president, 'nominate')} ${this.name(e.target)} for Chancellor.`);
+        this.say(e);
         this.chars.get(e.target)?.react('recoil', 0.15);
         break;
       case 'voted':
@@ -647,14 +640,12 @@ export class Game {
         if (e.seat === me) this.world.addShake(0.35);
         break;
       case 'votes': {
-        const ja = e.votes.filter((x) => x === true).length;
-        const nein = e.votes.filter((x) => x === false).length;
         this.reveal = { votes: e.votes, until: this.now + VOTE_REVEAL_MS / 1000 };
         this.voteCards.forEach((vc) => (vc.shown = false));
         this.later(() => sfx.flip(), 150);
         // One shout for the table, decided by the group: JA! if the government passed, NEIN! if it failed.
         this.later(() => voice.vote(e.passed), 300);
-        this.ui.toast(e.passed ? `JA! ${ja} to ${nein}. The government is elected.` : `NEIN. ${ja} to ${nein}. The election fails.`, e.passed ? 'good' : 'bad');
+        this.say(e);
         e.votes.forEach((vote, i) => {
           if (vote !== null) this.chars.get(i)?.react(vote ? 'thumbsUp' : 'thumbsDown', 0.35 + 0.08 * i);
         });
@@ -664,24 +655,24 @@ export class Game {
         this.shown.tracker = e.value;
         if (e.value > 0) {
           sfx.trackerAdvance();
-          this.ui.toast(`Election tracker: ${e.value} of 3.`, 'bad');
+          this.say(e);
         }
         break;
       case 'vetoTracker':
         this.shown.tracker = e.value;
         sfx.trackerAdvance();
-        this.ui.toast(`The veto counts as a failed government: election tracker ${e.value} of 3.`, 'bad');
+        this.say(e);
         break;
       case 'chaos':
         sfx.chaos();
         duckMusic(2.5);
         this.world.addShake(0.8);
-        this.ui.toast('CHAOS! Three failed governments. The top policy is enacted.', 'bad');
+        this.say(e);
         break;
       case 'vetoUnlocked':
         if (v?.phase === 'gameOver') break;
         sfx.vetoUnlocked();
-        this.ui.toast('VETO UNLOCKED. The Chancellor may now propose to discard both policies, if the President agrees.', 'power');
+        this.say(e);
         break;
       case 'hitlerRevealed':
         this.heldRoles[e.seat] = 'hitler';
@@ -691,7 +682,7 @@ export class Game {
         duckMusic(3);
         this.world.addShake(0.9);
         this.chars.get(e.seat)?.react('fist', 0);
-        this.ui.toast(e.seat === me ? 'You were Hitler!' : `${this.name(e.seat)} was Hitler!`, 'bad');
+        this.say(e);
         break;
       case 'drawn':
         sfx.draw();
@@ -755,16 +746,13 @@ export class Game {
           this.world.addShake(0.5);
           this.ui.enact(e.policy, count, !!e.chaos);
         }, ENACT_BANNER_DELAY_MS);
-        this.ui.toast(
-          e.chaos ? `The top policy is ${e.policy === 'L' ? 'Liberal' : 'Fascist'}.` : `${e.policy === 'L' ? 'Liberal' : 'Fascist'} policy enacted.`,
-          e.policy === 'L' ? 'liberal' : 'fascist',
-        );
+        this.say(e);
         if (!e.chaos && this.lastChancellor !== null) this.chars.get(this.lastChancellor)?.react('fist', 0);
         break;
       }
       case 'reshuffled':
         sfx.slide();
-        this.ui.toast('The discard pile is shuffled back into the deck.');
+        this.say(e);
         break;
       case 'power':
         if (this.now < this.ceremonyUntil) this.deferredPower = { power: e.power, president: e.president, at: this.ceremonyUntil };
@@ -787,11 +775,11 @@ export class Game {
           if (res) this.invCard.setFace(membershipCard(this.name(e.target), res.party));
           this.invCard.mesh.position.copy(this.world.layout.front(e.target));
         }
-        this.ui.toast(`${this.subj(e.by, 'investigate')} ${this.name(e.target)}.`, 'power');
+        this.say(e);
         break;
       case 'specialElected':
         this.pointAt = { by: e.by, target: e.target, until: this.now + 2.5 };
-        this.ui.toast(`${this.subj(e.by, 'call')} a special election: ${this.name(e.target)} will preside.`, 'power');
+        this.say(e);
         break;
       case 'executed': {
         this.shot = { by: e.by, target: e.target, until: this.now + 2.8 };
@@ -812,16 +800,16 @@ export class Game {
         this.world.flash(muzzle, dir);
         this.slowmoClock = 0;
         this.ui.flash();
-        this.ui.toast(e.target === me ? 'You have been executed.' : `${this.name(e.target)} has been executed.`, 'bad');
+        this.say(e);
         break;
       }
       case 'vetoProposed':
         sfx.stamp();
-        this.ui.toast(`${this.subj(e.seat, 'propose')} a VETO.`, 'power');
+        this.say(e);
         break;
       case 'vetoAnswer':
         sfx.stamp();
-        this.ui.toast(e.accepted ? 'Veto accepted. Both policies are discarded.' : 'Veto refused. The Chancellor must enact.', e.accepted ? 'power' : 'bad');
+        this.say(e);
         if (e.accepted) this.pool.filter((p) => p.where === 'held').forEach((p) => this.sendTo(p, 'discard'));
         break;
       case 'acked':
@@ -831,7 +819,7 @@ export class Game {
 
   /** Power toast and sound, and for a peek the deal of the top three cards to the President. */
   private presentPower(power: Power, president: number) {
-    this.ui.toast(POWER_TEXT[power], 'power');
+    this.ui.toast(powerCopy(power), 'power');
     if (power === 'execute') sfx.cock();
     if (power === 'peek') {
       sfx.draw();
@@ -1553,16 +1541,7 @@ export class Game {
     }
     const t = guideTarget(cands);
     const m = t && edgeMarker(t.ndc);
-    const label =
-      v?.phase === 'nominate' ? 'Pick a Chancellor'
-      : v?.phase === 'investigate' ? 'Investigate a player'
-      : v?.phase === 'special' ? 'Pick the next President'
-      : v?.phase === 'execute' ? 'Pick who to shoot'
-      : v?.phase === 'vote' ? 'Vote JA or NEIN'
-      : v?.phase === 'veto' ? 'JA or NEIN on the veto'
-      : v?.phase === 'legChancellor' && this.interactor.items.has('veto') ? 'Veto token'
-      : v?.phase === 'night' ? 'Your envelope'
-      : 'Your move';
+    const label = actionLabel(v?.phase, this.interactor.items.has('veto'));
     this.ui.setMarker('act', m && { ...m, label });
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, type HudOpts } from '../client/hudmodel';
+import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, type HudOpts } from '../client/hudmodel';
 import type { RoomView } from '../shared/protocol';
 import type { Role } from '../shared/types';
 import type { GameView } from '../shared/view';
@@ -279,5 +279,27 @@ describe('cardConfirmCopy', () => {
     expect(c.verb).toBe('ENACT');
     expect(c.policy).toBe('LIBERAL POLICY');
     expect(c.confirm).toBe('Enact it');
+  });
+});
+
+describe('actionLabel', () => {
+  it('labels each phase', () => {
+    expect(actionLabel('nominate', false)).toBe('Pick a Chancellor');
+    expect(actionLabel('investigate', false)).toBe('Investigate a player');
+    expect(actionLabel('special', false)).toBe('Pick the next President');
+    expect(actionLabel('execute', false)).toBe('Pick who to shoot');
+    expect(actionLabel('vote', false)).toBe('Vote JA or NEIN');
+    expect(actionLabel('veto', false)).toBe('JA or NEIN on the veto');
+    expect(actionLabel('night', false)).toBe('Your envelope');
+  });
+
+  it('legChancellor shows the veto token only when it is there', () => {
+    expect(actionLabel('legChancellor', true)).toBe('Veto token');
+    expect(actionLabel('legChancellor', false)).toBe('Your move');
+  });
+
+  it('falls back to Your move', () => {
+    expect(actionLabel(undefined, false)).toBe('Your move');
+    expect(actionLabel('legPresident', true)).toBe('Your move');
   });
 });

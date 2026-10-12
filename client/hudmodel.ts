@@ -308,3 +308,16 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
     roster,
   };
 }
+
+/** Edge-marker label for your next move. */
+export function actionLabel(phase: GameView['phase'] | undefined, vetoToken: boolean): string {
+  return phase === 'nominate' ? 'Pick a Chancellor'
+    : phase === 'investigate' ? 'Investigate a player'
+    : phase === 'special' ? 'Pick the next President'
+    : phase === 'execute' ? 'Pick who to shoot'
+    : phase === 'vote' ? 'Vote JA or NEIN'
+    : phase === 'veto' ? 'JA or NEIN on the veto'
+    : phase === 'legChancellor' && vetoToken ? 'Veto token'
+    : phase === 'night' ? 'Your envelope'
+    : 'Your move';
+}
