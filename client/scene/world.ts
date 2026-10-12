@@ -7,6 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { disposeObject } from './dispose';
+import { handGeometry } from './hands';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
 import { ease, sequence, tween, type Tween } from './tween';
 import {
@@ -554,8 +555,9 @@ export class World {
         this.tableGroup.add(band);
       }
       const dir = wrist.clone().sub(elbow).setY(0).normalize();
-      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.032, 0.11), skin);
-      hand.position.copy(wrist).addScaledVector(dir, 0.05).setY(TABLE_Y + 0.017);
+      // The camera looks toward -Z, so the yaw below mirrors local X: flip the side to keep the thumb on the inner side.
+      const hand = new THREE.Mesh(handGeometry('flat', -side as 1 | -1), skin);
+      hand.position.copy(wrist).addScaledVector(dir, 0.05).setY(TABLE_Y + 0.02); // palm bottom on the table
       hand.rotation.y = Math.atan2(dir.x, dir.z);
       for (const m of [upper, fore, hand]) {
         m.castShadow = true;
@@ -577,8 +579,10 @@ export class World {
     if (!this.ownArm) {
       const skin = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
       const fore = new THREE.Mesh(new THREE.BoxGeometry(0.085, 1, 0.08), this.sleeve);
-      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.09), skin);
-      const finger = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.022, 0.08), skin);
+      const handGeo = handGeometry('fist', -1); // a right fist, knuckles at +Z; turned to look down -Z
+      handGeo.rotateY(Math.PI);
+      const hand = new THREE.Mesh(handGeo, skin);
+      const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.011, 0.06, 2, 6).rotateX(Math.PI / 2), skin);
       finger.position.set(0, 0.02, -0.08); // the hand looks down -Z, so the finger sticks out in front
       hand.add(finger);
       fore.visible = hand.visible = false;
