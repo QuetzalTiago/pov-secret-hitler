@@ -42,7 +42,11 @@ export function glossy<T extends THREE.MeshStandardMaterial>(m: T, intensity = 0
   return m;
 }
 /** Strength of the HDRI image-based light; the pendant lamp stays the key light. */
-const ENV_INTENSITY = 0.35;
+const ENV_INTENSITY = 0.18;
+/** Strength of the hemisphere ambient light before the night dimming. */
+const AMBIENT_INTENSITY = 0.28;
+/** Strength of the warm fill point light before the lit factor. */
+const FILL_INTENSITY = 3.5;
 const EYE_Y = 1.27;
 /** Your own hands read small up close next to the patrons' at a distance; scale them up a little. */
 const OWN_HAND_SCALE = 1.2;
@@ -200,7 +204,7 @@ export class World {
     // Plain PCF: PCFSoft samples the shadow map many more times on every shadowed pixel.
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 0.9;
     // Keep renderer.info covering the whole frame (scene + post passes); render() resets it.
     this.renderer.info.autoReset = false;
     const q = new URLSearchParams(location.search);
@@ -224,7 +228,7 @@ export class World {
     this.scene.background = new THREE.Color(0x070504);
     this.scene.fog = new THREE.FogExp2(0x100a06, 0.085);
 
-    this.ambient = new THREE.HemisphereLight(0x9a6848, 0x1c0e06, 0.55);
+    this.ambient = new THREE.HemisphereLight(0x9a6848, 0x1c0e06, AMBIENT_INTENSITY);
     this.scene.add(this.ambient);
 
     this.lamp = new THREE.SpotLight(0xffa65a, 60, 9, Math.PI / 3.2, 0.55, 1.6);
@@ -235,7 +239,7 @@ export class World {
     this.lamp.shadow.bias = -0.0008;
     this.scene.add(this.lamp, this.lamp.target);
 
-    this.fill = new THREE.PointLight(0xff7a3a, 7, 12, 1.6);
+    this.fill = new THREE.PointLight(0xff7a3a, FILL_INTENSITY, 12, 1.6);
     this.fill.position.set(-3.2, 2.2, -3.4);
     this.scene.add(this.fill);
 
@@ -539,7 +543,7 @@ export class World {
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshStandardMaterial({ map: signTexture(), roughness: 0.45, metalness: 0.2 }));
     sign.position.set(0, 2.95, -4.97 + 0.02);
     room.add(sign);
-    const neonLight = new THREE.PointLight(0xffb060, 1.6, 5, 1.5);
+    const neonLight = new THREE.PointLight(0xffb060, 1.0, 5, 1.5);
     neonLight.position.set(0, 3.0, -4.5);
     room.add(neonLight);
     // A few empty stools and a dartboard-ish clock on the side wall.
@@ -943,8 +947,8 @@ export class World {
     const flicker = 1 - (Math.sin(t * 13.7) * Math.sin(t * 7.3) > 0.93 ? 0.35 : 0) * (0.3 + danger) - Math.random() * 0.03 * (1 + danger * 4);
     const lit = 1 - this.night * 0.93;
     this.lamp.intensity = 60 * lit * flicker;
-    this.fill.intensity = 7 * lit;
-    this.ambient.intensity = 0.55 * (1 - this.night * 0.85);
+    this.fill.intensity = FILL_INTENSITY * lit;
+    this.ambient.intensity = AMBIENT_INTENSITY * (1 - this.night * 0.85);
     this.handLight.intensity = 0.9 * (1 - this.night * 0.6);
     this.lamp.color.copy(LAMP_WARM).lerp(LAMP_HOT, Math.min(1, this.tension * 0.6 + danger * 0.3));
     // Boost only while the bloom pass runs (render() skips the composer on steps without shadows).
