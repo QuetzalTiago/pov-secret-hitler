@@ -115,7 +115,9 @@ input:disabled { opacity: 0.5; }
 }
 
 /* Home / lobby */
-#home h1 { margin-bottom: -4px; }
+#home h1 { margin-bottom: -4px; font-family: var(--font-black); text-transform: none; font-weight: 400; letter-spacing: 0; font-size: 52px; }
+#home h1 span { font-family: var(--font-display); }
+.era { margin: 0; font-family: var(--font-type); font-size: 12px; letter-spacing: 0.35em; text-transform: uppercase; color: var(--ink-dim); }
 #home .sub { font-size: 14px; }
 #invite-banner {
   background: rgba(201, 162, 74, 0.1); color: var(--ink); border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: var(--radius-m); padding: 9px 12px;
@@ -256,6 +258,11 @@ input:disabled { opacity: 0.5; }
   -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: inset 0 0 40px rgba(60, 40, 15, 0.35), 0 14px 40px rgba(0, 0, 0, 0.6);
   animation: cta-pulse 1.8s ease-out infinite;
 }
+#prompt.mine::before {
+  content: "AMTLICH · Reichskanzlei"; display: block; margin-bottom: 4px; padding-bottom: 3px;
+  font-family: var(--font-type); font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--parch-dim);
+  border-bottom: 1px solid color-mix(in srgb, var(--parch-ink) 30%, transparent);
+}
 #prompt.mine #pr-chip { background: var(--parch-ink); border-color: transparent; color: var(--accent); }
 #prompt.mine #pr-title, #prompt.mine #pr-detail, #timer.mine { color: var(--parch-ink); }
 #prompt.mine #pr-wait { color: var(--parch-dim); }
@@ -294,14 +301,18 @@ input:disabled { opacity: 0.5; }
 .toast {
   border-left: 6px solid var(--accent); color: var(--ink);
   padding: 7px 14px; border-radius: var(--radius-s); font-size: 15px; font-weight: 700; transition: opacity 0.8s;
+  font-family: var(--font-type); text-transform: uppercase; letter-spacing: 0.06em;
+  background-image: radial-gradient(circle at 6px 0, transparent 2.5px, rgba(0, 0, 0, 0.45) 3px, transparent 3.5px);
+  background-size: 12px 8px; background-repeat: repeat-x; background-position: top left;
 }
+.toast::before { content: "Telegramm"; display: block; font-size: 9px; letter-spacing: 0.3em; line-height: 1.2; color: var(--ink-faint); }
 .toast.fade { opacity: 0; }
 .toast.good, .toast.liberal { border-left-color: var(--lib); }
 .toast.bad, .toast.fascist { border-left-color: var(--fas); }
 .toast.power { border-left-color: #8d65b3; }
 .toast.night { border-left-color: var(--hitler); }
 #chat { position: absolute; left: 14px; bottom: 200px; width: min(340px, calc(100vw - 28px)); display: flex; flex-direction: column; gap: 6px; }
-#chat-log { max-height: 180px; overflow: hidden; display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--ink); text-shadow: 0 1px 3px #000; }
+#chat-log { max-height: 180px; overflow: hidden; display: flex; flex-direction: column; gap: 2px; font-family: var(--font-type); font-size: 14px; color: var(--ink); text-shadow: 0 1px 3px #000; }
 #chat-log .line b { color: var(--accent); }
 #chat-log .line.self b { color: var(--lib); }
 #chat-input { background: rgba(0, 0, 0, 0.45); color: var(--ink); border: 1px solid var(--glass-edge); font-size: 14px; }
