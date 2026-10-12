@@ -167,8 +167,9 @@ input:disabled { opacity: 0.5; }
 }
 
 /* Home / lobby */
-#home h1 { margin-bottom: -4px; font-family: var(--font-block); text-transform: uppercase; font-weight: 800; letter-spacing: 0.02em; font-size: 52px; }
-#home h1 span { font-family: var(--font-display); }
+#home h1 { position: relative; line-height: 0; margin-bottom: -4px; width: fit-content; max-width: 100%; }
+#home h1 img { display: block; width: 260px; max-width: 100%; height: auto; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5)); }
+#home h1 span { position: absolute; top: -6px; left: -10px; z-index: 1; font-family: var(--font-display); font-size: 16px; line-height: 1.2; }
 .era { margin: 0; font-family: var(--font-type); font-size: 12px; letter-spacing: 0.35em; text-transform: uppercase; color: var(--ink-dim); }
 #home .sub { font-size: 14px; }
 #invite-banner {

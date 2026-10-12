@@ -1,5 +1,6 @@
-// Every texture in the game is drawn at runtime on a canvas. No image assets.
+// Every texture is drawn on a canvas: official art images when loaded (see officialart.ts), procedural draws otherwise.
 import * as THREE from 'three';
+import { officialImage, type ArtKey } from './officialart';
 import { rand } from './rand';
 import { drawPortrait } from './portraits';
 import { drawSeal } from './seals';
@@ -775,8 +776,25 @@ export function envelopeTexture() {
   });
 }
 
+const PLACARD_ART: Record<string, ArtKey> = { PRESIDENT: 'placard-president', CHANCELLOR: 'placard-chancellor' };
+
+/** Largest rect with the image's aspect that fits inside w x h, centred. */
+export function containRect(iw: number, ih: number, w: number, h: number) {
+  const s = Math.min(w / iw, h / ih);
+  return { x: (w - iw * s) / 2, y: (h - ih * s) / 2, w: iw * s, h: ih * s };
+}
+
 export function placardTexture(title: string, color: string) {
   return tex(`placard-${title}`, 512, 128, (g, w, h) => {
+    const key = PLACARD_ART[title];
+    const img = key ? officialImage(key) : null;
+    if (img) {
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, w, h);
+      const r = containRect(img.width, img.height, w, h);
+      g.drawImage(img, r.x, r.y, r.w, r.h);
+      return;
+    }
     g.fillStyle = COLORS.ink;
     g.fillRect(0, 0, w, h);
     frame(g, w, h, COLORS.brass, 8, 3);
