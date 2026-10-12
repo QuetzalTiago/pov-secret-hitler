@@ -35,7 +35,7 @@ export interface UIHandlers {
 export function seriesLine(series: Series, names: string[]): string {
   if (series.liberal + series.fascist === 0) return '';
   const wins = names
-    .map((n) => [n, series.wins[n] ?? 0] as const)
+    .map((n) => [n, (Object.hasOwn(series.wins, n) ? series.wins[n] : 0)] as const)
     .filter(([, w]) => w >= 1)
     .sort((a, b) => b[1] - a[1])
     .map(([n, w]) => `${n} ${w}`);

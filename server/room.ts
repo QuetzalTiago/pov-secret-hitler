@@ -71,7 +71,7 @@ export class Room {
   private abandonTimer: NodeJS.Timeout | null = null;
   private closed = false;
   /** Running score of games at this table; wins are keyed by player name (seats get re-indexed). */
-  series: Series = { liberal: 0, fascist: 0, wins: {} };
+  series: Series = { liberal: 0, fascist: 0, wins: emptyWins() };
   options: TableOptions = { ...DEFAULT_OPTIONS };
   /** Seat tokens of humans who pressed Play again after the game ended. */
   private ready = new Set<string>();
@@ -301,6 +301,7 @@ export class Room {
       memories: this.memories.map((m) => ({ ...m, known: [...m.known.entries()] })),
       series: this.series,
       options: this.options,
+      ready: [...this.ready],
     };
   }
 
@@ -308,6 +309,7 @@ export class Room {
   static restore(snap: RoomSnapshot, onEmpty: (room: Room) => void): Room {
     if (snap?.v !== 1 || typeof snap.code !== 'string' || !Array.isArray(snap.seats)) throw new Error('bad room snapshot');
     if (snap.stage !== 'lobby' && snap.stage !== 'game') throw new Error('bad room snapshot');
+    if (snap.stage === 'game' && !snap.game) throw new Error('bad room snapshot');
     if (snap.game && snap.seats.length !== snap.game.players.length) throw new Error('bad room snapshot');
     if (!Number.isInteger(snap.host) || snap.host < 0 || snap.host >= snap.seats.length) throw new Error('bad room snapshot');
     const room = new Room(snap.code, onEmpty);
@@ -323,6 +325,10 @@ export class Room {
     const now = Date.now();
     room.seats = snap.seats.map((s) => ({ ...s, conn: null, disconnectedAt: s.bot ? null : now, left: false }));
     for (const s of room.seats) if (!s.bot) room.startGrace(s);
+    if (room.game?.phase === 'gameOver' && Array.isArray(snap.ready)) {
+      const tokens = new Set(room.seats.filter((s) => !s.bot).map((s) => s.token));
+      for (const t of snap.ready) if (typeof t === 'string' && tokens.has(t)) room.ready.add(t);
+    }
     room.lastActivity = now;
     room.resetTimerIfNeeded(); // fresh phase timer
     if (room.stage === 'game') room.startMoodTimer();
@@ -509,7 +515,7 @@ export class Room {
   private recordResult(g: GameState, winner: 'liberal' | 'fascist') {
     this.series[winner] += 1;
     for (const p of g.players) {
-      if ((p.role === 'liberal' ? 'liberal' : 'fascist') === winner) this.series.wins[p.name] = (this.series.wins[p.name] ?? 0) + 1;
+      if ((p.role === 'liberal' ? 'liberal' : 'fascist') === winner) this.series.wins[p.name] = (Object.hasOwn(this.series.wins, p.name) ? this.series.wins[p.name] : 0) + 1;
     }
   }
 
@@ -1225,6 +1231,7 @@ export interface RoomSnapshot {
   memories: StoredMemory[];
   series?: Series;
   options?: TableOptions;
+  ready?: string[];
 }
 
 const isCount = (n: unknown) => typeof n === 'number' && Number.isFinite(n);
@@ -1237,9 +1244,15 @@ function validOptions(o: unknown): TableOptions {
   };
 }
 
+/** Wins are keyed by player name, so no prototype: "constructor" and "__proto__" are ordinary names. */
+function emptyWins(): Record<string, number> {
+  return Object.create(null) as Record<string, number>;
+}
+
 function validSeries(s: unknown): Series {
   const x = s as Series | undefined;
-  const ok = typeof x === 'object' && x !== null && isCount(x.liberal) && isCount(x.fascist)
-    && typeof x.wins === 'object' && x.wins !== null && Object.values(x.wins).every(isCount);
-  return ok ? { liberal: x!.liberal, fascist: x!.fascist, wins: { ...x!.wins } } : { liberal: 0, fascist: 0, wins: {} };
+  if (typeof x !== 'object' || x === null || !isCount(x.liberal) || !isCount(x.fascist)) return { liberal: 0, fascist: 0, wins: emptyWins() };
+  const wins = emptyWins();
+  if (typeof x.wins === 'object' && x.wins !== null) for (const [k, v] of Object.entries(x.wins)) if (isCount(v)) wins[k] = v;
+  return { liberal: x.liberal, fascist: x.fascist, wins };
 }

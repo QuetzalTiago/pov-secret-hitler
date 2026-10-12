@@ -174,5 +174,57 @@ describe('persistence', () => {
     it('rejects a host outside the seats', () => {
       for (const host of [-1, 5, 1.5, '0']) expect(() => restore({ ...snap(), host })).toThrow('bad room snapshot');
     });
+    it('rejects a game stage without a game', () => {
+      expect(() => restore({ ...snap(), game: null })).toThrow('bad room snapshot');
+    });
+    it('keeps a series win for players named after Object.prototype keys across a snapshot round trip', () => {
+      const names = ['constructor', 'toString', '__proto__'];
+      const conns: Conn[] = names.map((_, i) => ({ id: i, room: null, seat: -1, send: () => {} }));
+      const room = new Room('ABCD', () => {});
+      names.forEach((n, i) => room.join(conns[i], n));
+      for (let i = 0; i < 2; i++) room.addBot(conns[0]);
+      expect(room.start(conns[0])).toBeNull();
+      (room as any).recordResult(room.game, 'liberal');
+      (room as any).recordResult(room.game, 'fascist');
+      const restored = restore(JSON.parse(JSON.stringify(room.snapshot())));
+      room.close();
+      expect(restored.series.liberal).toBe(1);
+      expect(restored.series.fascist).toBe(1);
+      for (const n of names) {
+        expect(Object.hasOwn(restored.series.wins, n)).toBe(true);
+        expect(typeof restored.series.wins[n]).toBe('number');
+        expect(restored.series.wins[n]).toBe(1);
+      }
+      restored.close();
+    });
+    it('drops only a corrupted wins entry from an old snapshot', () => {
+      const series = { liberal: 2, fascist: 1, wins: { Ann: 2, constructor: 'function Object() { [native code] }1' } };
+      const room = restore({ ...snap(), series });
+      expect(room.series.liberal).toBe(2);
+      expect(room.series.fascist).toBe(1);
+      expect(room.series.wins.Ann).toBe(2);
+      expect(Object.hasOwn(room.series.wins, 'constructor')).toBe(false);
+      room.close();
+    });
+    it('keeps ready tokens across a snapshot round trip', () => {
+      const conns: Conn[] = [0, 1].map((id) => ({ id, room: null, seat: -1, send: () => {} }));
+      const room = new Room('ABCD', () => {});
+      room.join(conns[0], 'A');
+      room.join(conns[1], 'B');
+      for (let i = 0; i < 3; i++) room.addBot(conns[0]);
+      expect(room.start(conns[0])).toBeNull();
+      room.game = { ...room.game!, phase: 'gameOver', winner: 'liberal', winReason: 'liberalPolicies' };
+      (room as any).after([{ k: 'gameOver', winner: 'liberal', reason: 'liberalPolicies' }]);
+      expect(room.playAgain(conns[0])).toBeNull();
+      const s = JSON.parse(JSON.stringify(room.snapshot()));
+      room.close();
+      s.ready.push('no-such-token');
+      const restored = restore(s);
+      const ready = (n: string) => restored.seatInfo().find((x) => x.name === n)!.ready;
+      expect(ready('A')).toBe(true);
+      expect(ready('B')).toBe(false);
+      expect((restored as any).ready.size).toBe(1);
+      restored.close();
+    });
   });
 });

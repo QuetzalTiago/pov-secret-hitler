@@ -144,6 +144,10 @@ describe('seriesLine', () => {
   it('is empty before any game', () => {
     expect(seriesLine({ liberal: 0, fascist: 0, wins: {} }, ['Ana'])).toBe('');
   });
+  it('does not read Object.prototype members as wins', () => {
+    const series = JSON.parse('{"liberal":1,"fascist":0,"wins":{"Ana":1}}');
+    expect(seriesLine(series, ['constructor', 'toString', 'Ana'])).toBe('Series · Liberals 1 – Fascists 0 · Ana 1');
+  });
   it('lists the score and seated winners, most wins first', () => {
     expect(seriesLine({ liberal: 2, fascist: 1, wins: { Bo: 1, Ana: 2, Gone: 3, Cy: 0 } }, ['Bo', 'Ana', 'Cy'])).toBe(
       'Series · Liberals 2 – Fascists 1 · Ana 2, Bo 1',
