@@ -1,6 +1,7 @@
 // Every texture is drawn on a canvas: official art images when loaded (see officialart.ts), a plain dark card with the blocky title otherwise.
 import * as THREE from 'three';
 import { officialImage, type ArtKey } from './officialart';
+import { textureAnisotropy } from './quality';
 import { rand } from './rand';
 import { drawNeutralSeal } from './seals';
 
@@ -76,7 +77,7 @@ function tex(key: string, w: number, h: number, draw: (g: CanvasRenderingContext
   draw(g, w, h);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = textureAnisotropy();
   redraws.set(t, () => {
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, w, h);

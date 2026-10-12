@@ -6,6 +6,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import type { Assets } from './assets';
 import { disposeObject } from './dispose';
 import { bottlesGeometry, buntingGeometry, hallGlowGeometry, hallPropsGeometry, posterGeometry } from './beerhall';
@@ -14,7 +15,7 @@ import { riggedHandGeometry } from './ownhands';
 import { cuffGeometry, pointingFingerGeometry, sleeveGeometry, unitSleeveGeometry } from './ownbody';
 import { cylinderBetween, limbGeometry, mergeParts } from './patron';
 import { lookFor } from './looks';
-import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
+import { AdaptiveQuality, readGraphicsPref, setTextureAnisotropy, smaaOn, textureAnisotropy, type GraphicsMode, type QualityStep } from './quality';
 import { buildBackBar, chairModel, lampModel, stoolModel } from './roomprops';
 import { CigaretteSmoke } from './smoke';
 import { WAITER_SPOT, Waiter } from './waiter';
@@ -141,6 +142,7 @@ export class World {
   readonly fx: boolean;
   private readonly bulbGlow: number;
   private composer?: EffectComposer;
+  private smaa?: SMAAPass;
   scene = new THREE.Scene();
   camera: THREE.PerspectiveCamera;
   layout = new Layout(5, 0);
@@ -232,6 +234,7 @@ export class World {
 
     this.ambient = new THREE.HemisphereLight(0x9a6848, 0x1c0e06, LIGHTING.ambient);
     this.scene.add(this.ambient);
+    this.applyFiltering(this.quality.current);
 
     this.lamp = new THREE.SpotLight(0xffa65a, LIGHTING.lamp.intensity, LIGHTING.lamp.distance, LIGHTING.lamp.angle, LIGHTING.lamp.penumbra, LIGHTING.lamp.decay);
     this.lamp.position.set(0, 2.55, 0);
@@ -439,6 +442,9 @@ export class World {
       }),
     );
     composer.addPass(new OutputPass());
+    // After tone mapping, so it smooths the final image; only enabled on High.
+    this.smaa = new SMAAPass();
+    composer.addPass(this.smaa);
     return composer;
   }
 
@@ -1077,6 +1083,37 @@ export class World {
     // Turning the light's shadow off changes the light state, so lit materials recompile without it.
     this.lamp.castShadow = step.shadows;
     this.renderer.shadowMap.enabled = step.shadows;
+    this.applyFiltering(step);
+  }
+
+  /** SMAA and max anisotropy are High-only; textures loaded later read textureAnisotropy() when created. */
+  private applyFiltering(step: QualityStep) {
+    if (this.smaa) this.smaa.enabled = smaaOn(this.quality.mode, step);
+    const aniso = this.quality.mode === 'high' ? this.renderer.capabilities.getMaxAnisotropy() : 4;
+    if (aniso === textureAnisotropy()) return;
+    setTextureAnisotropy(aniso);
+    this.retuneAnisotropy(aniso);
+  }
+
+  /** Re-filters the textures already in the scene; ones props.ts pinned at 16 are never lowered. */
+  private retuneAnisotropy(aniso: number) {
+    const seen = new Set<THREE.Texture>();
+    this.scene.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        const slots = m as unknown as Record<string, unknown>;
+        for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'bumpMap', 'alphaMap']) {
+          const t = slots[k];
+          if (!(t instanceof THREE.Texture) || seen.has(t)) continue;
+          seen.add(t);
+          if (t.anisotropy !== aniso && !(t.anisotropy >= 16 && aniso < 16)) {
+            t.anisotropy = aniso;
+            t.needsUpdate = true;
+          }
+        }
+      }
+    });
   }
 
   /** `frameMs` is the wall time since the last frame; in auto mode slow machines get a lower render scale. */

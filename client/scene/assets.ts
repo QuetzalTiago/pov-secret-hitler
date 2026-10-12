@@ -26,6 +26,7 @@ import counterDiffUrl from '../models/tex/counter_wood_diff.webp?url';
 import counterNorUrl from '../models/tex/counter_wood_nor.webp?url';
 import counterRoughUrl from '../models/tex/counter_wood_rough.webp?url';
 import envUrl from '../models/env/warm_bar_1k.hdr?url';
+import { textureAnisotropy } from './quality';
 
 // CC0 glTF assets (credits in client/models/CREDITS.md). Loading never rejects: null means "use the procedural scene".
 
@@ -140,7 +141,7 @@ export function loadAssets(): Promise<Assets | null> {
         const t = await texLoader.loadAsync(url);
         t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
         t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        t.anisotropy = 4;
+        t.anisotropy = textureAnisotropy();
         return t;
       };
       const texSet = async (d: string, n: string, r: string): Promise<TexSet> => {

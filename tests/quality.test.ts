@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AdaptiveQuality, qualitySteps } from '../client/scene/quality';
+import { AdaptiveQuality, qualitySteps, setTextureAnisotropy, smaaOn, textureAnisotropy } from '../client/scene/quality';
 
 const run = (q: AdaptiveQuality, ms: number, totalMs: number) => {
   const drops = [];
@@ -82,5 +82,21 @@ describe('adaptive quality', () => {
     const q = new AdaptiveQuality(2, 'low');
     expect(q.setMode('auto')).toEqual({ pixelRatio: 1.5, shadows: true });
     expect(run(q, 40, 9000)).toEqual([{ pixelRatio: 1, shadows: true }]);
+  });
+});
+
+describe('high graphics filtering', () => {
+  it('turns SMAA on only for High with shadows', () => {
+    expect(smaaOn('high', { pixelRatio: 1, shadows: true })).toBe(true);
+    expect(smaaOn('auto', { pixelRatio: 1, shadows: true })).toBe(false);
+    expect(smaaOn('low', { pixelRatio: 1, shadows: true })).toBe(false);
+    expect(smaaOn('high', { pixelRatio: 1, shadows: false })).toBe(false);
+  });
+
+  it('keeps a settable texture anisotropy that defaults to 4', () => {
+    expect(textureAnisotropy()).toBe(4);
+    setTextureAnisotropy(16);
+    expect(textureAnisotropy()).toBe(16);
+    setTextureAnisotropy(4);
   });
 });

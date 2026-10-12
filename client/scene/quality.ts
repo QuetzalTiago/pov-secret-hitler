@@ -24,6 +24,13 @@ export function saveGraphicsPref(mode: GraphicsMode) {
   }
 }
 
+let anisotropy = 4;
+/** Anisotropic filtering for new textures; World raises it to the GPU maximum on High. */
+export const textureAnisotropy = () => anisotropy;
+export function setTextureAnisotropy(n: number) {
+  anisotropy = n;
+}
+
 export interface QualityStep {
   pixelRatio: number;
   shadows: boolean;
@@ -41,6 +48,11 @@ const WINDOW_MS = 2000;
 const SLOW_MS = 25;
 /** Slow windows in a row before stepping down. */
 const STRIKES = 2;
+
+/** High adds an SMAA pass, but not on the lowest step (which skips post-processing). */
+export function smaaOn(mode: GraphicsMode, step: QualityStep): boolean {
+  return mode === 'high' && step.shadows;
+}
 
 export function qualitySteps(devicePixelRatio: number): QualityStep[] {
   const top = Math.min(devicePixelRatio, 1.5);
