@@ -1,8 +1,9 @@
 // Turns server RoomViews + events into a physical, animated table. Holds no authority.
 import * as THREE from 'three';
 import type { RoomView } from '../shared/protocol';
-import type { ActionBody, GameEvent, Party, Policy, Power } from '../shared/types';
+import type { ActionBody, Party, Policy, Power, Role } from '../shared/types';
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
+import { BeatQueue, VOTE_REVEAL_MS, scheduleBatch, type Beat } from './beats';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
 import { ENACT_BANNER_DELAY_MS, ceremonyEndsAt } from './enact';
 import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, type Mark } from './hudmodel';
@@ -17,7 +18,7 @@ import { Mover, TABLE_Y, type World } from './scene/world';
 import { flagTab, unflagTab } from './tabflag';
 import { TurnCue, myTurnKey } from './turncue';
 import type { UI } from './ui';
-import { victoryBanner, victoryDelay, type VictoryBanner } from './victory';
+import { victoryBanner, type VictoryBanner } from './victory';
 
 type Where = 'pile' | 'held' | 'discard' | 'board';
 interface PoolCard {
@@ -86,6 +87,13 @@ export class Game {
   private invMover: Mover;
   private reveals = new Map<number, { card: Card; mover: Mover }>();
   private tiles = { liberal: 0, fascist: 0 };
+  private beats = new BeatQueue();
+  /** Counts the board shows right now; trails the view while a batch of beats plays out. */
+  private shown = { liberal: 0, fascist: 0, tracker: 0 };
+  /** At game over the view carries every role; hold them back until the Hitler beat and the victory. */
+  private rolesHeld = false;
+  private heldRoles: (Role | null)[] = [];
+  private revealedSeats = new Set<number>();
   private tileMovers: Mover[] = [];
   private tokenMover!: Mover;
 
@@ -171,6 +179,10 @@ export class Game {
     private ui: UI,
     private send: (a: ActionBody) => void,
   ) {
+    ui.onEnactSkip = () => {
+      this.ceremonyUntil = Math.min(this.ceremonyUntil, this.now);
+      if (this.deferredPower) this.deferredPower.at = this.now;
+    };
     ui.onLookAt = (seat) => this.world.glanceAt(this.world.layout.head(seat), 3);
     ui.onMark = (seat) => {
       const next = nextMark(this.marks[seat] ?? null);
@@ -239,6 +251,7 @@ export class Game {
   onRoom(room: RoomView) {
     const prevPhase = this.view?.phase;
     const prevRound = this.view?.round;
+    const prevView = this.view;
     this.room = room;
     this.view = room.game;
     if (this.marksCode !== room.code) {
@@ -255,7 +268,25 @@ export class Game {
     this.syncCharacters();
     if (room.game) this.board.setPowers(room.game.powers);
 
-    for (const e of room.events) this.onEvent(e);
+    if (prevPhase === undefined) {
+      this.beats.clear();
+      if (room.game) this.shown = { liberal: room.game.liberal, fascist: room.game.fascist, tracker: room.game.tracker };
+    }
+    const s = scheduleBatch(room.events, { chancellor: room.game?.chancellor ?? null, fascistBefore: prevView?.fascist ?? room.game?.fascist ?? 0 });
+    const base = this.beats.push(s, performance.now());
+    const over = room.events.find((e) => e.k === 'gameOver');
+    if (over && over.k === 'gameOver') {
+      const mine = this.view?.yourRole ? (this.view.yourRole === 'liberal' ? 'liberal' : 'fascist') : null;
+      const banner = victoryBanner(over.winner, over.reason, mine);
+      this.ceremony = true;
+      this.rolesHeld = true;
+      this.heldRoles = prevView?.players.map((p) => p.role ?? null) ?? [];
+      this.revealedSeats.clear();
+      this.syncCharacters();
+      clearTimeout(this.ceremonyTimer);
+      this.ceremonyTimer = setTimeout(() => this.startVictory(over.winner, banner, mine), Math.max(0, base + s.victoryAt! - performance.now()));
+    }
+    this.drainBeats();
 
     const v = this.view;
     if (v) {
@@ -286,6 +317,22 @@ export class Game {
     if (myTurnKey(v) === null) unflagTab();
   }
 
+  /** Plays the beats now due; once the queue is empty the board snaps to the view's counts. */
+  private drainBeats() {
+    const due = this.beats.due(performance.now());
+    for (const b of due) this.onBeat(b);
+    const v = this.view;
+    let changed = due.length > 0;
+    if (v && !this.beats.pending) {
+      const sh = this.shown;
+      if (sh.liberal !== v.liberal || sh.fascist !== v.fascist || sh.tracker !== v.tracker) {
+        this.shown = { liberal: v.liberal, fascist: v.fascist, tracker: v.tracker };
+        changed = true;
+      }
+    }
+    if (changed && v) this.syncTiles(false);
+  }
+
   /** The roles panel shows once the game is over and no win ceremony is running. */
   private syncGameOverPanel() {
     const v = this.view;
@@ -295,6 +342,9 @@ export class Game {
 
   private startVictory(winner: Party, banner: VictoryBanner, mine: Party | null) {
     if (!this.ceremony) return;
+    this.rolesHeld = false;
+    this.revealedSeats.clear();
+    if (this.room) this.syncCharacters();
     sfx.victory(winner, mine === null ? null : mine === winner);
     duckMusic(6);
     this.world.addShake(0.7);
@@ -314,6 +364,9 @@ export class Game {
     this.ceremonyTimer = undefined;
     if (this.ceremony) this.ui.cancelVictory();
     this.ceremony = false;
+    this.rolesHeld = false;
+    this.revealedSeats.clear();
+    if (this.room) this.syncCharacters();
   }
 
   /** The state our in-flight action answers; null with no game. */
@@ -352,6 +405,8 @@ export class Game {
 
   private clearTable() {
     this.cancelVictory();
+    this.beats.clear();
+    this.shown = { liberal: 0, fascist: 0, tracker: 0 };
     this.tiles = { liberal: 0, fascist: 0 };
     this.tokenMover.set(this.board.slot('tracker', 0).setY(0.014));
     this.board.liberalTiles.concat(this.board.fascistTiles).forEach((t) => (t.visible = false));
@@ -476,10 +531,11 @@ export class Game {
       c.dead = !!p && !p.alive;
       let label = info?.name ?? p?.name ?? '?';
       let color = '#f0e6d2';
-      if (p?.role && p.role !== 'liberal') {
-        label += p.role === 'hitler' ? ' · HITLER' : ' · FASCIST';
+      const role = this.rolesHeld ? this.heldRoles[seat] ?? null : p?.role ?? null;
+      if (role && role !== 'liberal') {
+        label += role === 'hitler' ? ' · HITLER' : ' · FASCIST';
         color = '#ff8f7a';
-      } else if (p?.role === 'liberal' && v?.phase === 'gameOver') {
+      } else if (role === 'liberal' && v?.phase === 'gameOver' && !this.rolesHeld) {
         label += ' · LIBERAL';
         color = '#9fd0ef';
       }
@@ -502,7 +558,7 @@ export class Game {
     return seat === this.room?.you ? `You ${verb}` : `${this.name(seat)} ${verb}s`;
   }
 
-  private onEvent(e: GameEvent) {
+  private onBeat(e: Beat) {
     const v = this.view;
     const me = this.room?.you;
     switch (e.k) {
@@ -518,7 +574,7 @@ export class Game {
         this.ui.toast(e.seat === me ? 'You are the President.' : `${this.name(e.seat)} is President.`, e.special ? 'power' : 'info');
         break;
       case 'nominated':
-        sfx.slide();
+        sfx.nominate();
         this.pointAt = { by: e.president, target: e.target, until: this.now + 2.5 };
         if (e.target === me) this.ui.toast(`${this.name(e.president)} nominates YOU for Chancellor!`, 'power');
         else this.ui.toast(`${this.subj(e.president, 'nominate')} ${this.name(e.target)} for Chancellor.`);
@@ -531,7 +587,7 @@ export class Game {
       case 'votes': {
         const ja = e.votes.filter((x) => x === true).length;
         const nein = e.votes.filter((x) => x === false).length;
-        this.reveal = { votes: e.votes, until: this.now + 4.5 };
+        this.reveal = { votes: e.votes, until: this.now + VOTE_REVEAL_MS / 1000 };
         this.voteCards.forEach((vc) => (vc.shown = false));
         setTimeout(() => sfx.flip(), 150);
         // One shout for the table, decided by the group: JA! if the government passed, NEIN! if it failed.
@@ -543,10 +599,37 @@ export class Game {
         break;
       }
       case 'tracker':
+        this.shown.tracker = e.value;
         if (e.value > 0) {
-          sfx.tick();
+          sfx.trackerAdvance();
           this.ui.toast(`Election tracker: ${e.value} of 3.`, 'bad');
         }
+        break;
+      case 'vetoTracker':
+        this.shown.tracker = e.value;
+        sfx.trackerAdvance();
+        this.ui.toast(`The veto counts as a failed government: election tracker ${e.value} of 3.`, 'bad');
+        break;
+      case 'chaos':
+        sfx.chaos();
+        duckMusic(2.5);
+        this.world.addShake(0.8);
+        this.ui.toast('CHAOS! Three failed governments. The top policy is enacted.', 'bad');
+        break;
+      case 'vetoUnlocked':
+        if (v?.phase === 'gameOver') break;
+        sfx.vetoUnlocked();
+        this.ui.toast('VETO UNLOCKED. The Chancellor may now propose to discard both policies, if the President agrees.', 'power');
+        break;
+      case 'hitlerRevealed':
+        this.heldRoles[e.seat] = 'hitler';
+        this.revealedSeats.add(e.seat);
+        this.syncCharacters();
+        sfx.hitlerReveal();
+        duckMusic(3);
+        this.world.addShake(0.9);
+        this.chars.get(e.seat)?.react('fist', 0);
+        this.ui.toast(e.seat === me ? 'You were Hitler!' : `${this.name(e.seat)} was Hitler!`, 'bad');
         break;
       case 'drawn':
         sfx.draw();
@@ -589,6 +672,7 @@ export class Game {
         break;
       }
       case 'enacted': {
+        const count = ++this.shown[e.policy === 'L' ? 'liberal' : 'fascist'];
         const held = this.pool.filter((p) => p.where === 'held');
         let card = held[0];
         if (e.chaos || !card) {
@@ -599,8 +683,7 @@ export class Game {
         if (card) {
           card.face = e.policy;
           card.card.setFace(policyFace(e.policy));
-          const slot = e.policy === 'L' ? (v?.liberal ?? 1) - 1 : (v?.fascist ?? 1) - 1;
-          card.boardSlot = this.board.slot(e.policy === 'L' ? 'liberal' : 'fascist', Math.max(0, slot)).add(this.board.group.position);
+          card.boardSlot = this.board.slot(e.policy === 'L' ? 'liberal' : 'fascist', Math.max(0, count - 1)).add(this.board.group.position);
           this.sendTo(card, 'board');
         }
         this.ceremonyUntil = ceremonyEndsAt(this.now);
@@ -608,10 +691,10 @@ export class Game {
           sfx.enact(e.policy);
           duckMusic(2.5);
           this.world.addShake(0.5);
-          this.ui.enact(e.policy, (e.policy === 'L' ? v?.liberal : v?.fascist) ?? 0, !!e.chaos);
+          this.ui.enact(e.policy, count, !!e.chaos);
         }, ENACT_BANNER_DELAY_MS);
         this.ui.toast(
-          `${e.chaos ? 'Chaos! The top policy is enacted: ' : ''}${e.policy === 'L' ? 'Liberal' : 'Fascist'} policy enacted.`,
+          e.chaos ? `The top policy is ${e.policy === 'L' ? 'Liberal' : 'Fascist'}.` : `${e.policy === 'L' ? 'Liberal' : 'Fascist'} policy enacted.`,
           e.policy === 'L' ? 'liberal' : 'fascist',
         );
         if (!e.chaos && this.lastChancellor !== null) this.chars.get(this.lastChancellor)?.react('fist', 0);
@@ -671,14 +754,6 @@ export class Game {
         this.ui.toast(e.accepted ? 'Veto accepted. Both policies are discarded.' : 'Veto refused. The Chancellor must enact.', e.accepted ? 'power' : 'bad');
         if (e.accepted) this.pool.filter((p) => p.where === 'held').forEach((p) => this.sendTo(p, 'discard'));
         break;
-      case 'gameOver': {
-        const mine = v?.yourRole ? (v.yourRole === 'liberal' ? 'liberal' : 'fascist') : null;
-        const banner = victoryBanner(e.winner, e.reason, mine);
-        this.ceremony = true;
-        clearTimeout(this.ceremonyTimer);
-        this.ceremonyTimer = setTimeout(() => this.startVictory(e.winner, banner, mine), victoryDelay(e.reason));
-        break;
-      }
       case 'acked':
         break;
     }
@@ -756,7 +831,6 @@ export class Game {
   }
 
   private syncTiles(instant: boolean) {
-    const v = this.view!;
     const place = (tiles: THREE.Mesh[], count: number, kind: 'liberal' | 'fascist', offset: number) => {
       tiles.forEach((t, i) => {
         const m = this.tileMovers[offset + i];
@@ -774,10 +848,11 @@ export class Game {
         }
       });
     };
-    place(this.board.liberalTiles, v.liberal, 'liberal', 0);
-    place(this.board.fascistTiles, v.fascist, 'fascist', 5);
-    this.tiles = { liberal: v.liberal, fascist: v.fascist };
-    this.tokenMover.set(this.board.slot('tracker', Math.min(3, v.tracker)).setY(0.014), undefined, instant ? 50 : 5);
+    const { liberal, fascist, tracker } = this.shown;
+    place(this.board.liberalTiles, liberal, 'liberal', 0);
+    place(this.board.fascistTiles, fascist, 'fascist', 5);
+    this.tiles = { liberal, fascist };
+    this.tokenMover.set(this.board.slot('tracker', Math.min(3, tracker)).setY(0.014), undefined, instant ? 50 : 5);
   }
 
   // ---------- interaction ----------
@@ -1261,7 +1336,7 @@ export class Game {
     // Revealed role cards at game over.
     if (v?.phase === 'gameOver') {
       for (const p of v.players) {
-        if (!p.role) continue;
+        if (!p.role || (this.rolesHeld && !this.revealedSeats.has(p.seat))) continue;
         let r = this.reveals.get(p.seat);
         if (!r) {
           const card = new Card(roleCard(p.role, p.seat), cardBack('ROLE'), 1.2);
@@ -1407,6 +1482,7 @@ export class Game {
   update(dt: number) {
     this.now += dt;
     tweens.update(dt);
+    this.drainBeats();
     if (this.inFlight && this.now - this.inFlight.at > 5) this.actionRejected();
     const v = this.view;
     const dp = this.deferredPower;

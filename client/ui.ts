@@ -54,6 +54,7 @@ export class UI {
   private copyTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private errorTimer: ReturnType<typeof setTimeout> | undefined;
   private enactTimer: ReturnType<typeof setTimeout> | undefined;
+  private enactOn = false;
   private victoryTimers: ReturnType<typeof setTimeout>[] = [];
   private victoryDone: (() => void) | null = null;
   private rosterKey = '';
@@ -61,6 +62,8 @@ export class UI {
   /** Set by the game: a roster row was clicked, turn the camera to that seat. */
   onLookAt?: (seat: number) => void;
   onMark?: (seat: number) => void;
+  /** Set by the game: the player skipped the Extrablatt banner. */
+  onEnactSkip: (() => void) | null = null;
 
   constructor(private h: UIHandlers) {
     const nameInput = $<HTMLInputElement>('name');
@@ -153,6 +156,29 @@ export class UI {
     $('copy-code').onclick = () => this.copy(this.room?.code ?? '', 'copy-code', 'copied');
     $('copy-invite').onclick = () => this.copy(UI.inviteLink(this.room?.code ?? ''), 'copy-invite', 'Link copied!');
     $('invite-link').onclick = () => $<HTMLInputElement>('invite-link').select();
+
+    // Capture phase: a click or Space that skips the banner must not also act on the table.
+    window.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (!this.enactOn) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this.skipEnact();
+      },
+      { capture: true },
+    );
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        const t = document.activeElement;
+        if (e.key !== ' ' || !this.enactOn || t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this.skipEnact();
+      },
+      { capture: true },
+    );
 
     $('victory').onclick = () => this.finishVictory();
     window.addEventListener('keydown', (e) => {
@@ -616,7 +642,21 @@ export class UI {
     el.classList.add(b.cls);
     void el.offsetWidth;
     el.classList.add('on');
-    this.enactTimer = setTimeout(() => el.classList.add('hidden'), ENACT_BANNER_MS);
+    this.enactOn = true;
+    this.enactTimer = setTimeout(() => {
+      el.classList.add('hidden');
+      this.enactOn = false;
+    }, ENACT_BANNER_MS);
+  }
+
+  /** Dismisses the enact banner early; false when none is showing. */
+  skipEnact(): boolean {
+    if (!this.enactOn) return false;
+    clearTimeout(this.enactTimer);
+    $('enact').classList.add('hidden');
+    this.enactOn = false;
+    this.onEnactSkip?.();
+    return true;
   }
 
   /** Full-screen win ceremony; onDone fires once after VICTORY_MS or when skipped, never after cancelVictory(). */
