@@ -5,7 +5,7 @@ import type { GameView, PlayerView } from '../shared/view';
 import type { Badge, CardConfirmCopy, HudModel, ScreenBlood } from './hudmodel';
 import { SCREEN_BLOOD_S, screenBloodFrame, screenSplats, type ScreenSplat } from './screenblood';
 import { portraitUrl, sealUrl } from './art';
-import { isMuted, setMuted } from './audio';
+import { getMusicVolume, getSfxVolume, isMuted, setMusicVolume, setMuted, setSfxVolume } from './audio';
 import { nearBottom } from './chatscroll';
 import { ENACT_BANNER_MS, enactBanner } from './enact';
 import { fullscreenSupported, isFullscreen, isFullscreenKey, toggleFullscreen } from './fullscreen';
@@ -212,6 +212,12 @@ export class UI {
       this.showSound();
     };
     this.showSound();
+    const musicVol = $('music-vol') as HTMLInputElement;
+    const sfxVol = $('sfx-vol') as HTMLInputElement;
+    musicVol.value = String(getMusicVolume());
+    sfxVol.value = String(getSfxVolume());
+    musicVol.oninput = () => setMusicVolume(Number(musicVol.value));
+    sfxVol.oninput = () => setSfxVolume(Number(sfxVol.value));
     const fsBtn = $('fullscreen-btn');
     const fsHint = $('fs-hint');
     if (!fullscreenSupported()) {

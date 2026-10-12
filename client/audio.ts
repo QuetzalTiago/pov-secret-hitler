@@ -1,8 +1,11 @@
 // All sounds are synthesized with WebAudio. No audio files.
 
+import { clampVolume, loadAudioPrefs, musicScale, saveAudioPrefs, sfxGain } from './audioprefs';
+
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
-let muted = false;
+const store = typeof localStorage === 'undefined' ? null : localStorage;
+const prefs = loadAudioPrefs(store);
 
 export function initAudio() {
   if (ctx) {
@@ -12,7 +15,7 @@ export function initAudio() {
   try {
     ctx = new AudioContext();
     master = ctx.createGain();
-    master.gain.value = muted ? 0 : 0.8;
+    master.gain.value = sfxGain(prefs);
     master.connect(ctx.destination);
     // Shared room reverb: a synthesized impulse response (decaying stereo noise), no audio files.
     reverb = ctx.createConvolver();
@@ -27,12 +30,23 @@ export function initAudio() {
 }
 
 export function setMuted(m: boolean) {
-  muted = m;
-  if (master && ctx) master.gain.setTargetAtTime(m ? 0 : 0.8, ctx.currentTime, 0.05);
+  prefs.sound = !m;
+  saveAudioPrefs(store, { sound: prefs.sound });
+  if (master && ctx) master.gain.setTargetAtTime(sfxGain(prefs), ctx.currentTime, 0.05);
 }
 
 export function isMuted() {
-  return muted;
+  return !prefs.sound;
+}
+
+export function getSfxVolume() {
+  return prefs.sfxVolume;
+}
+
+export function setSfxVolume(v: number) {
+  prefs.sfxVolume = clampVolume(v);
+  saveAudioPrefs(store, { sfxVolume: prefs.sfxVolume });
+  if (master && ctx) master.gain.setTargetAtTime(sfxGain(prefs), ctx.currentTime, 0.05);
 }
 
 let reverb: ConvolverNode | null = null;
@@ -415,21 +429,14 @@ export const voice = {
 import bassWalkerUrl from './music/bass-walker.mp3';
 
 const MUSIC_VOLUME = 0.35;
-let musicOn = readMusicPref();
+let musicOn = prefs.music;
 let musicEl: HTMLAudioElement | null = null;
 let musicGain: GainNode | null = null;
 let musicFilter: BiquadFilterNode | null = null;
 let mood = '';
-let musicTarget = MUSIC_VOLUME; // the current mood's volume, what a duck restores to
+let moodFactor = 1;
+let musicTarget = MUSIC_VOLUME * musicScale(prefs.musicVolume); // the current mood's volume, what a duck restores to
 let duckTimer: ReturnType<typeof setTimeout> | undefined;
-
-function readMusicPref(): boolean {
-  try {
-    return localStorage.getItem('sh-music') !== 'off';
-  } catch {
-    return true;
-  }
-}
 
 export function isMusicOn() {
   return musicOn;
@@ -448,18 +455,25 @@ export function startMusic() {
   musicFilter.type = 'lowpass';
   musicFilter.frequency.value = 7000;
   musicGain = ctx.createGain();
-  musicGain.gain.value = musicOn ? MUSIC_VOLUME : 0;
+  musicGain.gain.value = musicOn ? musicTarget : 0;
   src.connect(musicFilter).connect(musicGain).connect(ctx.destination);
   if (musicOn) void musicEl.play().catch(() => {});
 }
 
+export function getMusicVolume() {
+  return prefs.musicVolume;
+}
+
+export function setMusicVolume(v: number) {
+  prefs.musicVolume = clampVolume(v);
+  saveAudioPrefs(store, { musicVolume: prefs.musicVolume });
+  musicTarget = MUSIC_VOLUME * musicScale(prefs.musicVolume) * moodFactor;
+  if (ctx && musicGain && musicOn && !duckTimer) musicGain.gain.setTargetAtTime(musicTarget, ctx.currentTime, 0.1);
+}
+
 export function setMusicOn(on: boolean) {
   musicOn = on;
-  try {
-    localStorage.setItem('sh-music', on ? 'on' : 'off');
-  } catch {
-    /* ignore */
-  }
+  saveAudioPrefs(store, { music: on });
   if (!musicEl || !musicGain || !ctx) return;
   if (on) {
     void musicEl.play().catch(() => {});
@@ -477,7 +491,8 @@ export function setMusicMood(night: boolean, danger: boolean) {
   if (key === mood) return;
   mood = key;
   const t = ctx.currentTime;
-  musicTarget = MUSIC_VOLUME * (danger ? 0.55 : night ? 0.5 : 1);
+  moodFactor = danger ? 0.55 : night ? 0.5 : 1;
+  musicTarget = MUSIC_VOLUME * musicScale(prefs.musicVolume) * moodFactor;
   if (!duckTimer) musicGain.gain.setTargetAtTime(musicTarget, t, 0.6);
   musicFilter.frequency.setTargetAtTime(danger ? 900 : night ? 2500 : 7000, t, 0.6);
 }
