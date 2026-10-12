@@ -22,62 +22,63 @@
         <div id="enact-pips"></div>
       </div>
     </div>
-    <div id="victory" role="dialog" aria-modal="true" aria-labelledby="victory-title" tabindex="-1" class="hidden"><div id="victory-particles"></div><div class="box"><div id="victory-masthead"></div><div id="victory-dateline"></div><div id="victory-title"></div><div id="victory-reason"></div><div id="victory-stamp"></div></div><div id="victory-skip">Click or press Esc to continue</div></div>
+    <div id="victory" role="dialog" aria-modal="true" aria-labelledby="victory-title" tabindex="-1" class="hidden"><div id="victory-particles"></div><div class="box"><div id="victory-masthead"></div><div id="victory-dateline"></div><div id="victory-title"></div><div id="victory-reason"></div><div id="victory-stamp"></div></div><div id="victory-skip" data-es="Haz clic o pulsa Esc para continuar">Click or press Esc to continue</div></div>
 
     <!-- Lobby -->
     <div id="lobby" class="overlay">
       <div id="lobby-toggles">
-        <button class="mini graphics-toggle" title="Auto lowers resolution, then shadows, if the game runs slowly">Graphics: auto</button>
+        <button class="mini graphics-toggle" title="Auto lowers resolution, then shadows, if the game runs slowly" data-es-title="Auto baja la resolución y luego las sombras si el juego va lento">Graphics: auto</button>
         <button id="music-lobby" class="mini music-toggle">Music: on</button>
+        <button class="mini lang-toggle" aria-label="Language / Idioma" title="Language / Idioma">Español</button>
       </div>
       <div class="panel" id="home">
-        <p class="era">Berlin · 1932</p>
+        <p class="era" data-es="Berlín · 1932">Berlin · 1932</p>
         <h1 class="logo"><span>POV</span><img src="./art/logo.webp" alt="Secret Hitler" /></h1>
         <p class="domain">povsecrethitler.app</p>
-        <p class="sub">The social deduction classic, first-person at a smoky bar table · 5–10 players</p>
-        <div id="invite-banner" class="hidden">You're invited to table <b id="invite-code"></b></div>
-        <label>Your name<input id="name" maxlength="16" autocomplete="off" placeholder="e.g. Rosa" /></label>
-        <button id="create" class="primary">Open a new table</button>
-        <button id="quick-start">Play vs bots</button>
-        <div class="or">or join a table</div>
+        <p class="sub" data-es="El clásico de deducción social, en primera persona en una mesa de bar llena de humo · 5–10 jugadores">The social deduction classic, first-person at a smoky bar table · 5–10 players</p>
+        <div id="invite-banner" class="hidden"><span data-es="Te han invitado a la mesa">You're invited to table</span> <b id="invite-code"></b></div>
+        <label><span data-es="Tu nombre">Your name</span><input id="name" maxlength="16" autocomplete="off" placeholder="e.g. Rosa" data-es-placeholder="p. ej. Rosa" /></label>
+        <button id="create" class="primary" data-es="Abrir una mesa nueva">Open a new table</button>
+        <button id="quick-start" data-es="Jugar contra bots">Play vs bots</button>
+        <div class="or" data-es="o únete a una mesa">or join a table</div>
         <div class="row">
-          <input id="code" maxlength="4" autocomplete="off" placeholder="CODE" />
-          <button id="join">Join</button>
+          <input id="code" maxlength="4" autocomplete="off" placeholder="CODE" data-es-placeholder="CÓDIGO" />
+          <button id="join" data-es="Unirse">Join</button>
         </div>
-        <button id="home-credits" class="link">Credits &amp; license</button>
+        <button id="home-credits" class="link" data-es="Créditos y licencia">Credits &amp; license</button>
       </div>
       <div class="panel hidden" id="room">
-        <h2>Table <span id="room-code" class="code"></span> <button id="copy-code" class="mini">copy</button></h2>
-        <p class="sub">Send this link to your friends. Everyone sits in the order they join.</p>
+        <h2><span data-es="Mesa">Table</span> <span id="room-code" class="code"></span> <button id="copy-code" class="mini" data-es="copiar">copy</button></h2>
+        <p class="sub" data-es="Envía este enlace a tus amigos. Todos se sientan en el orden en que se unen.">Send this link to your friends. Everyone sits in the order they join.</p>
         <div class="invite">
-          <input id="invite-link" readonly aria-label="Invite link" />
-          <button id="copy-invite" class="primary">Copy invite link</button>
+          <input id="invite-link" readonly aria-label="Invite link" data-es-aria-label="Enlace de invitación" />
+          <button id="copy-invite" class="primary" data-es="Copiar enlace de invitación">Copy invite link</button>
         </div>
         <p id="seat-count" class="sub"></p>
         <p id="lobby-series" class="sub hidden"></p>
         <p id="lobby-record" class="sub hidden"></p>
         <ul id="seats"></ul>
         <div id="host-controls">
-          <div id="pace" class="row" role="group" aria-label="Pace">
-            <button id="pace-relaxed" class="pace-btn">Relaxed</button>
-            <button id="pace-normal" class="pace-btn">Normal</button>
-            <button id="pace-fast" class="pace-btn">Fast</button>
+          <div id="pace" class="row" role="group" aria-label="Pace" data-es-aria-label="Ritmo">
+            <button id="pace-relaxed" class="pace-btn" data-es="Tranquilo">Relaxed</button>
+            <button id="pace-normal" class="pace-btn" data-es="Normal">Normal</button>
+            <button id="pace-fast" class="pace-btn" data-es="Rápido">Fast</button>
           </div>
-          <div id="bot-level" class="row" role="group" aria-label="Bot level">
-            <button id="bot-level-casual" class="pace-btn" title="Easy-going bots that make mistakes">Casual bots</button>
-            <button id="bot-level-normal" class="pace-btn" title="Bots that read the table">Normal bots</button>
-            <button id="bot-level-sharp" class="pace-btn" title="Bots that always play their best read">Sharp bots</button>
+          <div id="bot-level" class="row" role="group" aria-label="Bot level" data-es-aria-label="Nivel de los bots">
+            <button id="bot-level-casual" class="pace-btn" title="Easy-going bots that make mistakes" data-es-title="Bots relajados que cometen errores" data-es="Bots casuales">Casual bots</button>
+            <button id="bot-level-normal" class="pace-btn" title="Bots that read the table" data-es-title="Bots que leen la mesa" data-es="Bots normales">Normal bots</button>
+            <button id="bot-level-sharp" class="pace-btn" title="Bots that always play their best read" data-es-title="Bots que siempre juegan su mejor lectura" data-es="Bots agudos">Sharp bots</button>
           </div>
           <div class="row">
-            <button id="add-bot">+ Bot</button>
-            <button id="remove-bot">− Bot</button>
+            <button id="add-bot" data-es="+ Bot">+ Bot</button>
+            <button id="remove-bot" data-es="− Bot">− Bot</button>
           </div>
-          <button id="start" class="primary">Deal the roles</button>
+          <button id="start" class="primary" data-es="Repartir los roles">Deal the roles</button>
         </div>
         <p id="pace-note" class="sub hidden"></p>
-        <p id="guest-note" class="sub hidden">Waiting for the host to deal…</p>
+        <p id="guest-note" class="sub hidden" data-es="Esperando a que el anfitrión reparta…">Waiting for the host to deal…</p>
         <div id="lobby-chat"></div>
-        <button id="lobby-leave" class="link">Leave table</button>
+        <button id="lobby-leave" class="link" data-es="Salir de la mesa">Leave table</button>
       </div>
       <div id="lobby-error" class="error hidden"></div>
     </div>
@@ -87,12 +88,12 @@
       <div id="status-bar" class="hidden">
         <div class="sb-head">
           <span id="sb-role" class="chip"></span>
-          <span class="sb-code">Table <b id="hud-code"></b></span>
+          <span class="sb-code"><span data-es="Mesa">Table</span> <b id="hud-code"></b></span>
         </div>
         <div class="sb-tracks">
-          <div class="track"><span class="tlabel">Liberal</span><span id="sb-lib" class="pips lib"></span></div>
-          <div class="track"><span class="tlabel">Fascist</span><span id="sb-fas" class="pips fas"></span></div>
-          <div class="track"><span class="tlabel">Election</span><span id="sb-tracker" class="pips dots"></span></div>
+          <div class="track"><span class="tlabel" data-es="Liberal">Liberal</span><span id="sb-lib" class="pips lib"></span></div>
+          <div class="track"><span class="tlabel" data-es="Fascista">Fascist</span><span id="sb-fas" class="pips fas"></span></div>
+          <div class="track"><span class="tlabel" data-es="Elección">Election</span><span id="sb-tracker" class="pips dots"></span></div>
         </div>
         <div class="sb-counts"><span id="sb-deck"></span><span id="sb-discard"></span></div>
       </div>
@@ -104,22 +105,23 @@
         <div id="mk-act" class="marker act hidden"><span class="mk-arrow">◀</span><span class="mk-text"></span></div>
       </div>
       <div id="top-right">
-        <span id="fs-hint" aria-hidden="true">Press <kbd>F</kbd> for fullscreen</span>
-        <button id="fullscreen-btn" class="icon" aria-label="Fullscreen (F)" title="Fullscreen (F)">⛶</button>
-        <button id="settings-btn" class="icon" aria-label="Settings" aria-expanded="false" aria-haspopup="menu">⚙</button>
+        <span id="fs-hint" aria-hidden="true" data-es="Pulsa <kbd>F</kbd> para pantalla completa">Press <kbd>F</kbd> for fullscreen</span>
+        <button id="fullscreen-btn" class="icon" aria-label="Fullscreen (F)" title="Fullscreen (F)" data-es-aria-label="Pantalla completa (F)" data-es-title="Pantalla completa (F)">⛶</button>
+        <button id="settings-btn" class="icon" aria-label="Settings" data-es-aria-label="Ajustes" aria-expanded="false" aria-haspopup="menu">⚙</button>
         <div id="settings" class="panel hidden" role="menu">
-          <button id="rules-btn" role="menuitem">Rules</button>
-          <button class="graphics-toggle" role="menuitem" title="Auto lowers resolution, then shadows, if the game runs slowly">Graphics: auto</button>
+          <button id="rules-btn" role="menuitem" data-es="Reglas">Rules</button>
+          <button class="graphics-toggle" role="menuitem" title="Auto lowers resolution, then shadows, if the game runs slowly" data-es-title="Auto baja la resolución y luego las sombras si el juego va lento">Graphics: auto</button>
           <button id="music" class="music-toggle" role="menuitem">Music: on</button>
           <button id="sound" role="menuitem">Sound: on</button>
-          <button id="credits-btn" role="menuitem">Credits</button>
+          <button class="lang-toggle" role="menuitem" aria-label="Language / Idioma" title="Language / Idioma">Español</button>
+          <button id="credits-btn" role="menuitem" data-es="Créditos">Credits</button>
         </div>
-        <button id="leave" class="mini">Leave</button>
+        <button id="leave" class="mini" data-es="Salir">Leave</button>
       </div>
       <div id="toasts" aria-live="polite"></div>
       <div id="prompt" class="hidden">
         <div class="pr-row">
-          <span id="pr-chip" class="chip hidden">Your move</span>
+          <span id="pr-chip" class="chip hidden" data-es="Tu turno">Your move</span>
           <span id="timer"></span>
         </div>
         <div id="pr-title"></div>
@@ -130,7 +132,7 @@
       </div>
       <div id="chat">
         <div id="chat-log" role="log"></div>
-        <input id="chat-input" maxlength="200" autocomplete="off" placeholder="Press Enter to talk…" />
+        <input id="chat-input" maxlength="200" autocomplete="off" placeholder="Press Enter to talk…" data-es-placeholder="Pulsa Intro para hablar…" />
       </div>
       <div id="gameover" role="dialog" aria-modal="true" aria-labelledby="gameover-title" class="panel hidden">
         <h2 id="gameover-title"></h2>
@@ -138,58 +140,58 @@
         <ul id="gameover-roles"></ul>
         <p id="gameover-series" class="sub"></p>
         <p id="gameover-record" class="sub hidden"></p>
-        <button id="play-again" class="primary">Play again</button>
+        <button id="play-again" class="primary" data-es="Jugar de nuevo">Play again</button>
         <p id="ready-note" class="sub"></p>
-        <button id="redeal">Deal now</button>
-        <button id="rematch" class="link">Back to the lobby</button>
-        <button id="gameover-leave" class="link">Leave table</button>
+        <button id="redeal" data-es="Repartir ya">Deal now</button>
+        <button id="rematch" class="link" data-es="Volver a la sala">Back to the lobby</button>
+        <button id="gameover-leave" class="link" data-es="Salir de la mesa">Leave table</button>
       </div>
-      <div id="confirm-leave" role="dialog" aria-modal="true" aria-label="Leave the game?" class="panel hidden">
-        <p>Leave the game? A bot will take your seat until you come back.</p>
-        <div class="row"><button id="confirm-yes">Leave</button><button id="confirm-no" class="primary">Stay</button></div>
+      <div id="confirm-leave" role="dialog" aria-modal="true" aria-label="Leave the game?" data-es-aria-label="¿Salir de la partida?" class="panel hidden">
+        <p data-es="¿Salir de la partida? Un bot ocupará tu asiento hasta que vuelvas.">Leave the game? A bot will take your seat until you come back.</p>
+        <div class="row"><button id="confirm-yes" data-es="Salir">Leave</button><button id="confirm-no" class="primary" data-es="Quedarme">Stay</button></div>
       </div>
       <div id="confirm-card" class="panel hidden">
-        <div class="kicker">CONFIRM YOUR CHOICE</div>
+        <div class="kicker" data-es="CONFIRMA TU ELECCIÓN">CONFIRM YOUR CHOICE</div>
         <div id="cc-verb" class="verb"></div>
         <div id="cc-policy-row" class="policy"><span class="pip"></span><span id="cc-policy"></span></div>
         <p id="cc-detail"></p>
-        <div class="row"><button id="cc-cancel">Cancel <kbd>Esc</kbd></button><button id="cc-confirm" class="primary"><span id="cc-confirm-label"></span><kbd>Enter</kbd></button></div>
+        <div class="row"><button id="cc-cancel"><span data-es="Cancelar">Cancel</span> <kbd>Esc</kbd></button><button id="cc-confirm" class="primary"><span id="cc-confirm-label"></span><kbd>Enter</kbd></button></div>
       </div>
     </div>
     <div id="tooltip"></div>
     <div id="crosshair" class="hidden"></div>
-    <div id="lock-hint" class="hidden">Click the table to take your seat · <b>Esc</b> frees the mouse</div>
+    <div id="lock-hint" class="hidden" data-es="Haz clic en la mesa para sentarte · <b>Esc</b> libera el ratón">Click the table to take your seat · <b>Esc</b> frees the mouse</div>
     <div id="status" class="hidden"></div>
 
-    <div id="rules" role="dialog" aria-modal="true" aria-label="How to play" class="overlay hidden">
+    <div id="rules" role="dialog" aria-modal="true" aria-label="How to play" data-es-aria-label="Cómo jugar" class="overlay hidden">
       <div class="panel wide">
-        <h2>How to play</h2>
-        <p>Liberals are the majority, but they do not know who anyone is. Fascists know each other and know Hitler. Hitler only knows the Fascists in 5–6 player games.</p>
-        <p><b>Each round</b> the President (rotating clockwise) points at a player to nominate them Chancellor. Everyone slams a <b>JA!</b> or <b>NEIN</b> ballot; they flip together. A strict majority elects the government.</p>
-        <p><b>Legislation:</b> the President draws three policies and <b>discards</b> one, then slides two to the Chancellor, who <b>enacts</b> one; the other is discarded.</p>
-        <p><b>Fascist powers</b> unlock as Fascist policies land: peek, investigate, special election, execution. After five Fascist policies the Chancellor may propose a veto.</p>
-        <p><b>Liberals win</b> with five Liberal policies or by executing Hitler. <b>Fascists win</b> with six Fascist policies, or by electing Hitler Chancellor after three Fascist policies.</p>
-        <p>Three failed elections in a row enact the top policy automatically.</p>
-        <button id="rules-close" class="primary">Got it</button>
+        <h2 data-es="Cómo jugar">How to play</h2>
+        <p data-es="Los Liberales son mayoría, pero no saben quién es quién. Los Fascistas se conocen entre sí y conocen a Hitler. Hitler solo conoce a los Fascistas en partidas de 5–6 jugadores.">Liberals are the majority, but they do not know who anyone is. Fascists know each other and know Hitler. Hitler only knows the Fascists in 5–6 player games.</p>
+        <p data-es="<b>En cada ronda</b> el Presidente (que rota en sentido horario) señala a un jugador para nominarlo Canciller. Todos estampan una papeleta de <b>JA!</b> o <b>NEIN</b>; se dan la vuelta a la vez. Una mayoría estricta elige al gobierno."><b>Each round</b> the President (rotating clockwise) points at a player to nominate them Chancellor. Everyone slams a <b>JA!</b> or <b>NEIN</b> ballot; they flip together. A strict majority elects the government.</p>
+        <p data-es="<b>Legislación:</b> el Presidente roba tres leyes y <b>descarta</b> una, luego pasa dos al Canciller, que <b>promulga</b> una; la otra se descarta."><b>Legislation:</b> the President draws three policies and <b>discards</b> one, then slides two to the Chancellor, who <b>enacts</b> one; the other is discarded.</p>
+        <p data-es="<b>Los poderes fascistas</b> se desbloquean a medida que se aprueban leyes fascistas: ver leyes, investigar lealtad, elección especial, ejecución. Tras cinco leyes fascistas el Canciller puede proponer un veto."><b>Fascist powers</b> unlock as Fascist policies land: peek, investigate, special election, execution. After five Fascist policies the Chancellor may propose a veto.</p>
+        <p data-es="<b>Los Liberales ganan</b> con cinco leyes liberales o ejecutando a Hitler. <b>Los Fascistas ganan</b> con seis leyes fascistas, o eligiendo a Hitler Canciller después de tres leyes fascistas."><b>Liberals win</b> with five Liberal policies or by executing Hitler. <b>Fascists win</b> with six Fascist policies, or by electing Hitler Chancellor after three Fascist policies.</p>
+        <p data-es="Tres elecciones fallidas seguidas promulgan automáticamente la ley de arriba del mazo.">Three failed elections in a row enact the top policy automatically.</p>
+        <button id="rules-close" class="primary" data-es="Entendido">Got it</button>
       </div>
     </div>
 
-    <div id="credits" role="dialog" aria-modal="true" aria-label="Credits and license" class="overlay hidden">
+    <div id="credits" role="dialog" aria-modal="true" aria-label="Credits and license" data-es-aria-label="Créditos y licencia" class="overlay hidden">
       <div class="panel wide">
-        <h2>Credits &amp; license</h2>
-        <p><b>Secret Hitler</b> was created by <b>Mike Boxleiter</b>, <b>Tommy Maranges</b> and <b>Max Temkin</b>, with illustrations by <b>Mac Schubert</b>, and is published by Goat, Wolf, &amp; Cabbage.</p>
-        <p>The original game is licensed under <b>Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)</b>.</p>
-        <p><b>POV Secret Hitler</b> (povsecrethitler.app) is an unofficial, non-commercial fan adaptation. It is not affiliated with or endorsed by the original creators. It uses no art from the original game: the 3D models, textures and lighting are public-domain (CC0) assets credited below or are generated by code; sounds are synthesized or come from the openly licensed recordings credited below. This adaptation is shared under the same license, CC BY-NC-SA 4.0.</p>
-        <p>License text: creativecommons.org/licenses/by-nc-sa/4.0</p>
-        <h3>Models</h3>
-        <p>Characters by <b>Quaternius</b>; bottles and glasses by <b>Quaternius</b>, <b>Kenney</b>, <b>MiniPoly</b> and <b>MilkAndBanana</b>, via Poly Pizza. Chair, stool, pendant lamp, wood and plaster textures and the "Warm Bar" HDRI from <b>Poly Haven</b>. All CC0 (public domain); optimised for the web.</p>
-        <h3>Sounds</h3>
-        <p>Revolver shot: <b>The Free Firearm Sound Library</b> by Ben Jaszczak, Brian Nelson, Kevin Heras and Matthew Nanney (CC0). Death groans: <b>grunts of male death and pain</b> by thebardofblasphemy (CC0), via OpenGameArt.org.</p>
-        <p>"Ja" by <b>MiER</b> and "Nein" by <b>Lars Engelmann</b>, from Wikimedia Commons, licensed <b>CC BY-SA 3.0</b>; trimmed, normalised and given a light echo. The adapted clips are shared under CC BY-SA 3.0.</p>
-        <p>All other sounds are synthesized in code.</p>
-        <h3>Music</h3>
-        <p>"Bass Walker" by <b>Kevin MacLeod</b> (incompetech.com), licensed under Creative Commons: By Attribution 3.0 (creativecommons.org/licenses/by/3.0). Re-encoded and loudness-normalised.</p>
-        <button id="credits-close" class="primary">Close</button>
+        <h2 data-es="Créditos y licencia">Credits &amp; license</h2>
+        <p data-es="<b>Secret Hitler</b> fue creado por <b>Mike Boxleiter</b>, <b>Tommy Maranges</b> y <b>Max Temkin</b>, con ilustraciones de <b>Mac Schubert</b>, y lo publica Goat, Wolf, &amp; Cabbage."><b>Secret Hitler</b> was created by <b>Mike Boxleiter</b>, <b>Tommy Maranges</b> and <b>Max Temkin</b>, with illustrations by <b>Mac Schubert</b>, and is published by Goat, Wolf, &amp; Cabbage.</p>
+        <p data-es="El juego original tiene licencia <b>Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)</b>.">The original game is licensed under <b>Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)</b>.</p>
+        <p data-es="<b>POV Secret Hitler</b> (povsecrethitler.app) es una adaptación no oficial y sin fines comerciales hecha por un fan. No está afiliada ni respaldada por los creadores originales. No usa ningún arte del juego original: los modelos 3D, las texturas y la iluminación son recursos de dominio público (CC0) acreditados abajo o generados por código; los sonidos son sintetizados o provienen de las grabaciones con licencia abierta acreditadas abajo. Esta adaptación se comparte bajo la misma licencia, CC BY-NC-SA 4.0."><b>POV Secret Hitler</b> (povsecrethitler.app) is an unofficial, non-commercial fan adaptation. It is not affiliated with or endorsed by the original creators. It uses no art from the original game: the 3D models, textures and lighting are public-domain (CC0) assets credited below or are generated by code; sounds are synthesized or come from the openly licensed recordings credited below. This adaptation is shared under the same license, CC BY-NC-SA 4.0.</p>
+        <p data-es="Texto de la licencia: creativecommons.org/licenses/by-nc-sa/4.0">License text: creativecommons.org/licenses/by-nc-sa/4.0</p>
+        <h3 data-es="Modelos">Models</h3>
+        <p data-es="Personajes de <b>Quaternius</b>; botellas y vasos de <b>Quaternius</b>, <b>Kenney</b>, <b>MiniPoly</b> y <b>MilkAndBanana</b>, vía Poly Pizza. Silla, taburete, lámpara colgante, texturas de madera y yeso y el HDRI &quot;Warm Bar&quot; de <b>Poly Haven</b>. Todo CC0 (dominio público); optimizado para la web.">Characters by <b>Quaternius</b>; bottles and glasses by <b>Quaternius</b>, <b>Kenney</b>, <b>MiniPoly</b> and <b>MilkAndBanana</b>, via Poly Pizza. Chair, stool, pendant lamp, wood and plaster textures and the "Warm Bar" HDRI from <b>Poly Haven</b>. All CC0 (public domain); optimised for the web.</p>
+        <h3 data-es="Sonidos">Sounds</h3>
+        <p data-es="Disparo de revólver: <b>The Free Firearm Sound Library</b> de Ben Jaszczak, Brian Nelson, Kevin Heras y Matthew Nanney (CC0). Gemidos de muerte: <b>grunts of male death and pain</b> de thebardofblasphemy (CC0), vía OpenGameArt.org.">Revolver shot: <b>The Free Firearm Sound Library</b> by Ben Jaszczak, Brian Nelson, Kevin Heras and Matthew Nanney (CC0). Death groans: <b>grunts of male death and pain</b> by thebardofblasphemy (CC0), via OpenGameArt.org.</p>
+        <p data-es="&quot;Ja&quot; de <b>MiER</b> y &quot;Nein&quot; de <b>Lars Engelmann</b>, de Wikimedia Commons, con licencia <b>CC BY-SA 3.0</b>; recortados, normalizados y con un ligero eco. Los clips adaptados se comparten bajo CC BY-SA 3.0.">"Ja" by <b>MiER</b> and "Nein" by <b>Lars Engelmann</b>, from Wikimedia Commons, licensed <b>CC BY-SA 3.0</b>; trimmed, normalised and given a light echo. The adapted clips are shared under CC BY-SA 3.0.</p>
+        <p data-es="Todos los demás sonidos se sintetizan por código.">All other sounds are synthesized in code.</p>
+        <h3 data-es="Música">Music</h3>
+        <p data-es="&quot;Bass Walker&quot; de <b>Kevin MacLeod</b> (incompetech.com), con licencia Creative Commons: By Attribution 3.0 (creativecommons.org/licenses/by/3.0). Recodificada y con el volumen normalizado.">"Bass Walker" by <b>Kevin MacLeod</b> (incompetech.com), licensed under Creative Commons: By Attribution 3.0 (creativecommons.org/licenses/by/3.0). Re-encoded and loudness-normalised.</p>
+        <button id="credits-close" class="primary" data-es="Cerrar">Close</button>
       </div>
     </div>
 

@@ -2,6 +2,7 @@ import './style.css';
 import type { RoomView, ServerMsg } from '../shared/protocol';
 import { initAudio, isMusicOn, setMusicOn, startMusic } from './audio';
 import { Game } from './game';
+import { applyStatic, lang, onLangChange, setLang } from './i18n';
 import { Interactor } from './interact';
 import { Net } from './net';
 import { createPerfHud } from './perf';
@@ -250,3 +251,14 @@ musicButtons.forEach((b) =>
     showMusic();
   }),
 );
+
+// Language toggle (lobby and in-game buttons): the label names the other language; static markup is swapped live.
+const langButtons = [...document.querySelectorAll<HTMLButtonElement>('.lang-toggle')];
+const showLang = () => langButtons.forEach((b) => (b.textContent = lang() === 'en' ? 'Español' : 'English'));
+applyStatic(document);
+showLang();
+langButtons.forEach((b) => b.addEventListener('click', () => setLang(lang() === 'en' ? 'es' : 'en')));
+onLangChange(() => {
+  applyStatic(document);
+  showLang();
+});

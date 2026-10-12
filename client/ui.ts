@@ -177,7 +177,7 @@ export class UI {
     settingsBtn.onclick = () => setSettings(settings.classList.contains('hidden'));
     settings.addEventListener('click', (e) => {
       const row = (e.target as HTMLElement).closest('button');
-      if (row && !row.matches('.graphics-toggle, .music-toggle, #sound')) setSettings(false);
+      if (row && !row.matches('.graphics-toggle, .music-toggle, .lang-toggle, #sound')) setSettings(false);
     });
     window.addEventListener('click', (e) => {
       const t = e.target as Node;
