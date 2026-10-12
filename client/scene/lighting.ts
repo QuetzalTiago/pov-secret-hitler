@@ -16,6 +16,12 @@ export const LIGHTING = {
   waiterSpot: 5,
   /** Post-process vignette darkness. */
   vignette: 0.7,
+  /**
+   * Patrons only: a warm Fresnel rim on their silhouettes and a small self-lift of their own colours, so the
+   * figures read against the dark room without brightening the room itself.
+   */
+  patronRim: { color: 0xffb47a, strength: 0.22, power: 2.6 },
+  patronLift: 0.05,
 } as const;
 
 /** Material colour multiplied over printed art (cards, placards, board) so bright official paper reads as aged stock under the lamp, not glowing white. */

@@ -8,6 +8,7 @@ import { paintBlood, type BloodPart } from './blood';
 import { COATS, SKINS, type Patron } from './characters';
 import { disposeObject } from './dispose';
 import { DEATH_DUR, REACTION_DUR, SMOKE_DUR, deathPose, isSmoker, mouthOpen, nextDragDelay, reactionPose, smokePose, type DeathPose, type Reaction, type ReactionPose, type SmokePose } from './life';
+import { LIGHTING } from './lighting';
 import { CIGARETTE_TIP, cigaretteGeometry, mergeParts, paintGeometry } from './patron';
 
 const HEIGHT = 1.75;
@@ -48,6 +49,30 @@ const THUMB_BEND = 1;
 const ELBOW_HINT = new THREE.Vector3(0.6, -1, -0.2).normalize();
 /** Cigarette in the left hand (MiddleHandL space): the filter end between the fingers, the lit end along CIG_AXIS. */
 const CIG_AXIS = new THREE.Vector3(-0.77, -0.2, 0.6).normalize();
+
+const RIM = new THREE.Color(LIGHTING.patronRim.color).multiplyScalar(LIGHTING.patronRim.strength);
+const glslVec3 = (c: THREE.Color) => `vec3(${c.r.toFixed(4)}, ${c.g.toFixed(4)}, ${c.b.toFixed(4)})`;
+
+/**
+ * Keeps a patron readable in the dark bar: a warm Fresnel rim on the silhouette (strongest where the surface
+ * turns away from the camera) plus a small self-lift of the patron's own colour. Emissive-only, so it adds
+ * no lights (no scene-wide recompiles) and the highlight/glow emissive set per frame still stacks on top.
+ */
+function patronShine<T extends THREE.MeshStandardMaterial>(mat: T): T {
+  mat.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <emissivemap_fragment>',
+      `#include <emissivemap_fragment>
+      {
+        float facing = clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);
+        float rim = pow(1.0 - facing, ${LIGHTING.patronRim.power.toFixed(2)});
+        totalEmissiveRadiance += ${glslVec3(RIM)} * rim + diffuseColor.rgb * ${LIGHTING.patronLift.toFixed(3)};
+      }`,
+    );
+  };
+  mat.customProgramCacheKey = () => 'patron-shine';
+  return mat;
+}
 const CIG_FILTER = CIG_AXIS.clone().multiplyScalar(-0.03).add(new THREE.Vector3(0, 0.02, 0));
 /** Finger curl about the hand's local X (negative closes the fingers into the palm), radians at full aim. */
 const CURL = { gun: -1.3, point: -0.4 };
@@ -282,7 +307,7 @@ export class RiggedCharacter implements Patron {
     // Own geometry (the colours are rewritten per patron) and own material (tint and highlight).
     const mesh = skinnedMeshOf(root);
     mesh.geometry = mesh.geometry.clone();
-    const body = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 });
+    const body = patronShine(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 }));
     mesh.material = body;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -453,7 +478,7 @@ export class RiggedCharacter implements Patron {
   /** `world` is in rest-pose world space; it is moved into the bone's space and parented to the bone. */
   private attach(bone: THREE.Bone, world: THREE.BufferGeometry) {
     world.applyMatrix4(bone.matrixWorld.clone().invert());
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+    const mat = patronShine(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }));
     this.mats.push(mat);
     const mesh = new THREE.Mesh(world, mat);
     mesh.castShadow = true;
@@ -636,7 +661,7 @@ export class RiggedCharacter implements Patron {
       .applyQuaternion(new THREE.Quaternion().setFromUnitVectors(this.zAxis, CIG_AXIS))
       .translate(this.armL.eff.x, this.armL.eff.y, this.armL.eff.z);
     this.ember.copy(CIG_AXIS).multiplyScalar(CIGARETTE_TIP * u).add(this.armL.eff);
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+    const mat = patronShine(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }));
     this.mats.push(mat);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
