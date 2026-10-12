@@ -515,18 +515,18 @@ export class UI {
       chip.replaceChildren(...nodes);
       chip.className = className;
     }
-    const pips = (id: string, total: number, filled: number, powers?: (Power | null)[]) => {
+    const pips = (id: string, total: number, filled: number, powers?: (Power | null)[], disabledFrom = total) => {
       $(id).replaceChildren(
         ...Array.from({ length: total }, (_, i) => {
           const pip = document.createElement('i');
-          pip.className = i < filled ? 'pip on' : 'pip';
+          pip.className = i >= disabledFrom ? 'pip off' : i < filled ? 'pip on' : 'pip';
           const power = powers?.[i];
           if (power && i >= filled) pip.textContent = POWER_GLYPHS[power];
           return pip;
         }),
       );
     };
-    pips('sb-lib', 5, st.liberal);
+    pips('sb-lib', 6, st.liberal, undefined, 5); // 6th square is shown disabled: liberals win at 5
     pips('sb-fas', 6, st.fascist, st.powers);
     pips('sb-tracker', 3, st.tracker);
     $('sb-deck').textContent = `Deck ${st.deck}`;
