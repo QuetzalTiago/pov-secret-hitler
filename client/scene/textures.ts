@@ -814,26 +814,71 @@ function powerIcon(g: CanvasRenderingContext2D, kind: string, cx: number, cy: nu
   g.restore();
 }
 
-/** A recessed slot: dark fill, inner shadow from the top and left, brass-ruled edge. */
+/** A recessed slot: dark fill, flat inset shadow along the top and left, brass-ruled edge. */
 function recess(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill: string) {
   g.fillStyle = fill;
   g.fillRect(x, y, w, h);
-  const top = g.createLinearGradient(0, y, 0, y + 26);
-  top.addColorStop(0, 'rgba(0,0,0,0.6)');
-  top.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = top;
-  g.fillRect(x, y, w, 26);
-  const left = g.createLinearGradient(x, 0, x + 18, 0);
-  left.addColorStop(0, 'rgba(0,0,0,0.45)');
-  left.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = left;
-  g.fillRect(x, y, 18, h);
+  g.fillStyle = 'rgba(0,0,0,0.45)';
+  g.fillRect(x, y, w, 10);
+  g.fillRect(x, y + 10, 8, h - 10);
   g.strokeStyle = COLORS.brass;
   g.lineWidth = 2;
   g.strokeRect(x, y, w, h);
-  g.strokeStyle = 'rgba(184,145,63,0.35)';
+  g.save();
+  g.globalAlpha = 0.35;
   g.lineWidth = 1;
   g.strokeRect(x + 4, y + 4, w - 8, h - 8);
+  g.restore();
+}
+
+/** Deco wave band: a row of scallop arcs across x..x+w within height h, broken over `gap` (x range). */
+function waveBand(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, gap?: [number, number]) {
+  const r = h / 2;
+  g.save();
+  g.globalAlpha = 0.55;
+  g.strokeStyle = color;
+  g.lineWidth = 3;
+  g.lineCap = 'round';
+  g.beginPath();
+  for (let cx = x + r; cx + r <= x + w; cx += h) {
+    if (gap && cx + r > gap[0] && cx - r < gap[1]) continue;
+    g.moveTo(cx - r, y + h);
+    g.arc(cx, y + h, r, Math.PI, 0);
+  }
+  g.stroke();
+  g.restore();
+}
+
+/** Deco key band: a stepped Greek-key meander across x..x+w within height h, broken over `gap` (x range). */
+function keyBand(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, gap?: [number, number]) {
+  const cell = h * 1.5;
+  g.save();
+  g.globalAlpha = 0.55;
+  g.strokeStyle = color;
+  g.lineWidth = 3;
+  g.lineJoin = 'miter';
+  g.beginPath();
+  for (let cx = x; cx + cell <= x + w; cx += cell) {
+    if (gap && cx + cell > gap[0] && cx < gap[1]) continue;
+    g.moveTo(cx, y + h);
+    g.lineTo(cx, y);
+    g.lineTo(cx + h, y);
+    g.lineTo(cx + h, y + h * 0.6);
+    g.lineTo(cx + h * 0.4, y + h * 0.6);
+    g.moveTo(cx + h, y + h);
+    g.lineTo(cx + cell, y + h);
+  }
+  g.stroke();
+  g.restore();
+}
+
+/** A small dark plaque with a brass outline that the panel title sits on. */
+function titlePlaque(g: CanvasRenderingContext2D, cx: number, y: number, w: number, h: number, fill: string) {
+  g.fillStyle = fill;
+  g.fillRect(cx - w / 2, y, w, h);
+  g.strokeStyle = COLORS.brass;
+  g.lineWidth = 2;
+  g.strokeRect(cx - w / 2, y, w, h);
 }
 
 /** The central board: liberal track, fascist track with powers, election tracker, inlaid in dark leather. */
@@ -862,13 +907,17 @@ export function boardTexture(powers: (string | null)[]) {
     g.strokeStyle = COLORS.brass;
     g.lineWidth = 2;
     g.strokeRect(40, 40, w - 80, 230);
-    centerText(g, 'LIBERAL', w / 2, 66, `800 30px ${DISPLAY}`, COLORS.brass);
+    const plaque: [number, number] = [w / 2 - 130, w / 2 + 130];
+    waveBand(g, 48, 44, w - 96, 12, COLORS.line, plaque);
+    waveBand(g, 48, 256, w - 96, 11, COLORS.line);
+    titlePlaque(g, w / 2, 46, 240, 42, COLORS.liberalDeep);
+    centerText(g, 'LIBERAL', w / 2, 68, `800 34px ${BLOCK}`, COLORS.brass);
     const lx = (i: number) => 140 + i * 186;
     for (let i = 0; i < 5; i++) {
       recess(g, lx(i) - 60, 92, 120, 160, '#10202f');
       if (i === 4) {
-        emblem(g, 'L', lx(i), 165, 34, 'rgba(127,151,171,0.3)', 'rgba(127,151,171,0.5)');
-        centerText(g, 'WIN', lx(i), 232, `bold 18px ${MONO}`, COLORS.brass);
+        drawSeal(g, 'L', lx(i), 165, 40, COLORS.liberalDeep);
+        centerText(g, 'WIN', lx(i), 232, `800 20px ${BLOCK}`, COLORS.brass);
       }
     }
     // Fascist track: a recessed oxblood panel.
@@ -877,7 +926,9 @@ export function boardTexture(powers: (string | null)[]) {
     g.strokeStyle = COLORS.brass;
     g.lineWidth = 2;
     g.strokeRect(40, 290, w - 80, 230);
-    centerText(g, 'FASCIST', w / 2, 316, `800 30px ${DISPLAY}`, COLORS.brass);
+    keyBand(g, 48, 294, w - 96, 12, COLORS.line, plaque);
+    titlePlaque(g, w / 2, 296, 240, 42, COLORS.fascistDeep);
+    centerText(g, 'FASCIST', w / 2, 318, `800 34px ${BLOCK}`, COLORS.brass);
     const fx = (i: number) => 125 + i * 155;
     for (let i = 0; i < 6; i++) {
       const x = fx(i);
@@ -888,7 +939,8 @@ export function boardTexture(powers: (string | null)[]) {
         g.beginPath();
         g.rect(x - 60, 342, 120, 160);
         g.clip();
-        g.strokeStyle = 'rgba(138,42,30,0.35)';
+        g.strokeStyle = COLORS.fascist;
+        g.globalAlpha = 0.35;
         g.lineWidth = 3;
         g.beginPath();
         for (let k = -160; k < 120; k += 16) {
@@ -900,11 +952,11 @@ export function boardTexture(powers: (string | null)[]) {
       }
       const p = powers[i];
       if (i === 5) {
-        emblem(g, 'F', x, 410, 32, 'rgba(176,128,111,0.3)', 'rgba(176,128,111,0.5)');
-        centerText(g, 'WIN', x, 480, `bold 18px ${MONO}`, COLORS.brass);
+        drawSeal(g, 'F', x, 410, 40, COLORS.fascistDeep);
+        centerText(g, 'WIN', x, 480, `800 20px ${BLOCK}`, COLORS.brass);
       } else if (p && POWER_LABEL[p]) {
         powerIcon(g, p, x, 395, 20, COLORS.brass);
-        POWER_LABEL[p].split(' ').forEach((wd, j) => centerText(g, wd, x, 440 + j * 18, `bold 15px ${MONO}`, COLORS.stock));
+        POWER_LABEL[p].split(' ').forEach((wd, j) => centerText(g, wd, x, 440 + j * 18, `800 17px ${BLOCK}`, COLORS.line));
       }
     }
     centerText(g, 'Hitler as chancellor wins from the 4th slot on  •  Veto unlocks at 5', w / 2, 512, `bold 13px ${MONO}`, COLORS.stock);
@@ -914,7 +966,7 @@ export function boardTexture(powers: (string | null)[]) {
     g.strokeStyle = COLORS.brass;
     g.lineWidth = 2;
     g.strokeRect(40, 540, w - 80, 80);
-    centerText(g, 'ELECTION TRACKER', 250, 580, `800 20px ${DISPLAY}`, COLORS.brass);
+    centerText(g, 'ELECTION TRACKER', 250, 580, `800 24px ${BLOCK}`, COLORS.brass);
     for (let i = 0; i < 4; i++) {
       g.fillStyle = '#0c0704';
       g.strokeStyle = COLORS.brass;
@@ -923,7 +975,7 @@ export function boardTexture(powers: (string | null)[]) {
       g.arc(430 + i * 90, 580, 22, 0, Math.PI * 2);
       g.fill();
       g.stroke();
-      if (i === 3) centerText(g, '!', 430 + i * 90, 581, `800 22px ${DISPLAY}`, COLORS.fascist);
+      if (i === 3) centerText(g, '!', 430 + i * 90, 581, `800 22px ${BLOCK}`, COLORS.fascist);
     }
     centerText(g, '3 failed = top policy enacted', 860, 580, `bold 13px ${MONO}`, COLORS.stock);
     age(g, w, h, 21);
