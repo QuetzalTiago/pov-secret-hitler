@@ -23,6 +23,7 @@ import { COLORS, ballotFace, bloodAtlas, cardBack, labelTexture, membershipCard,
 import { slowmoScale, tweens } from './scene/tween';
 import { fanLayer } from './scene/handfan';
 import { Mover, TABLE_Y, type World } from './scene/world';
+import { tr } from './i18n';
 import { flagTab, unflagTab } from './tabflag';
 import { TurnCue, myTurnKey } from './turncue';
 import type { UI } from './ui';
@@ -113,6 +114,8 @@ export class Game {
   private cardsDone = false;
   /** Index of the held card picked for discard/enact, awaiting the confirm panel. */
   private selectedCard: number | null = null;
+  /** Redraws the confirm panel for the current pick (new language). */
+  private reshowCard: (() => void) | null = null;
   /** Set when you pick a player, so your pointing arm drops immediately instead of waiting for the server. */
   private pickedPlayer = false;
   /** The action we sent and are waiting on; blocks re-sends until the view moves on, the server rejects it, or it times out. */
@@ -370,8 +373,7 @@ export class Game {
     this.refreshHud();
     if (v?.phase !== 'gameOver' && this.ceremony) this.cancelVictory();
     this.syncGameOverPanel();
-    const me = v?.players[room.you];
-    this.ui.setChatEnabled(!v || v.phase === 'gameOver' || !!me?.alive);
+    this.ui.setChatEnabled(this.chatEnabled());
     if (this.turnCue.update(v)) {
       sfx.turn();
       if (document.hidden) flagTab();
@@ -698,15 +700,15 @@ export class Game {
       let color = '#f0e6d2';
       const role = roleShown(p?.role ?? null, this.rolesHeld ? this.heldRoles : null, seat);
       if (role && role !== 'liberal') {
-        label += role === 'hitler' ? ' · HITLER' : ' · FASCIST';
+        label += role === 'hitler' ? ' · HITLER' : tr({ en: ' · FASCIST', es: ' · FASCISTA' });
         color = '#ff8f7a';
       } else if (role === 'liberal' && v?.phase === 'gameOver' && !this.rolesHeld) {
-        label += ' · LIBERAL';
+        label += tr({ en: ' · LIBERAL', es: ' · LIBERAL' });
         color = '#9fd0ef';
       }
       if (info?.bot) label += ' (bot)';
-      else if (info && !info.connected) label += ' (away)';
-      else if (info?.botControlled) label += ' (auto)';
+      else if (info && !info.connected) label += tr({ en: ' (away)', es: ' (ausente)' });
+      else if (info?.botControlled) label += tr({ en: ' (auto)', es: ' (auto)' });
       if (p && !p.alive) label = `✝ ${label}`;
       c.setLabel(label, color);
     }
@@ -714,8 +716,8 @@ export class Game {
 
   private name(seat: number | null | undefined): string {
     if (seat === null || seat === undefined) return '?';
-    if (seat === this.room?.you) return `${this.room.seats[seat]?.name ?? 'You'} (you)`;
-    return this.room?.seats[seat]?.name ?? this.view?.players[seat]?.name ?? `Seat ${seat + 1}`;
+    if (seat === this.room?.you) return `${this.room.seats[seat]?.name ?? tr({ en: 'You', es: 'Tú' })} ${tr({ en: '(you)', es: '(tú)' })}`;
+    return this.room?.seats[seat]?.name ?? this.view?.players[seat]?.name ?? `${tr({ en: 'Seat', es: 'Asiento' })} ${seat + 1}`;
   }
 
   private say(e: Beat) {
@@ -1063,6 +1065,7 @@ export class Game {
 
   private clearCardSelection() {
     this.selectedCard = null;
+    this.reshowCard = null;
     this.ui.hideCardConfirm();
   }
 
@@ -1071,23 +1074,21 @@ export class Game {
     if (this.selectedCard === a.index) this.clearCardSelection();
     else {
       this.selectedCard = a.index;
-      const copy = cardConfirmCopy(a.type === 'presDiscard' ? 'discard' : 'enact', face, handSize);
-      this.ui.showCardConfirm(
-        copy,
-        () => {
-          // Re-check the live legal actions: the pick may be stale.
-          const index = this.selectedCard;
-          const cur = this.view && !this.inFlight ? legalFromView(this.view).find((l) => l.type === a.type && l.index === index) : undefined;
-          if (cur && index !== null) {
-            this.act(cur, index);
-            this.interactor.relockAfterCards();
-          } else this.clearCardSelection();
-        },
-        () => {
-          this.clearCardSelection();
-          this.refreshInteractables();
-        },
-      );
+      const confirm = () => {
+        // Re-check the live legal actions: the pick may be stale.
+        const index = this.selectedCard;
+        const cur = this.view && !this.inFlight ? legalFromView(this.view).find((l) => l.type === a.type && l.index === index) : undefined;
+        if (cur && index !== null) {
+          this.act(cur, index);
+          this.interactor.relockAfterCards();
+        } else this.clearCardSelection();
+      };
+      const cancel = () => {
+        this.clearCardSelection();
+        this.refreshInteractables();
+      };
+      this.reshowCard = () => this.ui.showCardConfirm(cardConfirmCopy(a.type === 'presDiscard' ? 'discard' : 'enact', face, handSize), confirm, cancel);
+      this.reshowCard();
     }
     this.refreshInteractables();
   }
@@ -1107,9 +1108,9 @@ export class Game {
       objects: [this.envelopeOpen ? this.roleCard.mesh : this.envelope.mesh],
       label: this.envelopeOpen
         ? v.phase === 'night' && !v.players[me].acked
-          ? 'Close your eyes'
-          : 'Put the role card away'
-        : 'Open your role envelope',
+          ? tr({ en: 'Close your eyes', es: 'Cierra los ojos' })
+          : tr({ en: 'Put the role card away', es: 'Guarda la carta de rol' })
+        : tr({ en: 'Open your role envelope', es: 'Abre el sobre de tu rol' }),
       action: v.phase === 'night' && !v.players[me].acked && this.envelopeOpen,
       onClick: () => {
         if (!this.envelopeOpen) {
@@ -1128,7 +1129,7 @@ export class Game {
       list.push({
         id: 'inv-card',
         objects: [this.invCard.mesh],
-        label: 'Put the membership card away',
+        label: tr({ en: 'Put the membership card away', es: 'Guarda el carné de partido' }),
         action: false,
         onClick: () => {
           this.invShown = null;
@@ -1144,9 +1145,18 @@ export class Game {
       list.push({
         id: `limited-${seat}`,
         objects: c.hitMeshes,
-        label: `${this.name(seat)} can't be Chancellor: ${this.limitReason(seat)} (term limit)`,
+        label: tr({
+          en: `${this.name(seat)} can't be Chancellor: ${this.limitReason(seat)} (term limit)`,
+          es: `${this.name(seat)} no puede ser Canciller: ${this.limitReason(seat)} (mandato limitado)`,
+        }),
         action: false,
-        onClick: () => this.ui.toast(`${this.name(seat)} is term-limited: ${this.limitReason(seat)}.`, 'bad'),
+        onClick: () => this.ui.toast(
+            tr({
+              en: `${this.name(seat)} is term-limited: ${this.limitReason(seat)}.`,
+              es: `${this.name(seat)} tiene el mandato limitado: ${this.limitReason(seat)}.`,
+            }),
+            'bad',
+          ),
       });
     }
     const legal = this.inFlight ? [] : legalFromView(v);
@@ -1160,10 +1170,10 @@ export class Game {
           const c = this.chars.get(a.target);
           if (!c) break;
           const verb = {
-            nominate: `Nominate ${this.name(a.target)} as Chancellor`,
-            investigate: `Investigate ${this.name(a.target)}`,
-            specialElect: `Make ${this.name(a.target)} the next President`,
-            execute: `Shoot ${this.name(a.target)}`,
+            nominate: tr({ en: `Nominate ${this.name(a.target)} as Chancellor`, es: `Nominar a ${this.name(a.target)} como Canciller` }),
+            investigate: tr({ en: `Investigate ${this.name(a.target)}`, es: `Investigar a ${this.name(a.target)}` }),
+            specialElect: tr({ en: `Make ${this.name(a.target)} the next President`, es: `Hacer a ${this.name(a.target)} el próximo Presidente` }),
+            execute: tr({ en: `Shoot ${this.name(a.target)}`, es: `Disparar a ${this.name(a.target)}` }),
           }[a.type];
           list.push({ id: `seat-${a.target}`, objects: c.hitMeshes, label: verb, action: true, onClick: () => this.act(a) });
           break;
@@ -1173,7 +1183,7 @@ export class Game {
           list.push({
             id: a.ja ? 'vote-ja' : 'vote-nein',
             objects: [a.ja ? this.ja.mesh : this.nein.mesh],
-            label: a.ja ? 'Slam JA!' : 'Slam NEIN',
+            label: a.ja ? tr({ en: 'Slam JA!', es: '¡Estampa JA!' }) : tr({ en: 'Slam NEIN', es: 'Estampa NEIN' }),
             action: true,
             onClick: () => this.act(a),
           });
@@ -1182,7 +1192,7 @@ export class Game {
           list.push({
             id: a.accept ? 'vote-ja' : 'vote-nein',
             objects: [a.accept ? this.ja.mesh : this.nein.mesh],
-            label: a.accept ? 'JA: agree to the veto' : 'NEIN: refuse the veto',
+            label: a.accept ? tr({ en: 'JA: agree to the veto', es: 'JA: aceptar el veto' }) : tr({ en: 'NEIN: refuse the veto', es: 'NEIN: rechazar el veto' }),
             action: true,
             onClick: () => this.act(a),
           });
@@ -1196,7 +1206,10 @@ export class Game {
             list.push({
               id: `hand-${a.index}`,
               objects: [p.card.mesh],
-              label: `Select this ${p.face === 'L' ? 'Liberal' : 'Fascist'} policy to discard`,
+              label: tr({
+                en: `Select this ${p.face === 'L' ? 'Liberal' : 'Fascist'} policy to discard`,
+                es: `Elige esta ley ${p.face === 'L' ? 'liberal' : 'fascista'} para descartarla`,
+              }),
               action: true,
               onClick: () => p.face && this.pickCard(a, p.face, held.length),
             });
@@ -1207,7 +1220,10 @@ export class Game {
             list.push({
               id: `hand-${a.index}`,
               objects: [p.card.mesh],
-              label: `Select this ${p.face === 'L' ? 'Liberal' : 'Fascist'} policy to enact`,
+              label: tr({
+                en: `Select this ${p.face === 'L' ? 'Liberal' : 'Fascist'} policy to enact`,
+                es: `Elige esta ley ${p.face === 'L' ? 'liberal' : 'fascista'} para promulgarla`,
+              }),
               action: true,
               onClick: () => p.face && this.pickCard(a, p.face, held.length),
             });
@@ -1215,14 +1231,14 @@ export class Game {
           break;
         }
         case 'proposeVeto':
-          list.push({ id: 'veto', objects: [this.vetoToken], label: 'Propose a veto', action: true, onClick: () => this.act(a) });
+          list.push({ id: 'veto', objects: [this.vetoToken], label: tr({ en: 'Propose a veto', es: 'Proponer un veto' }), action: true, onClick: () => this.act(a) });
           break;
         case 'peekDone':
           if (this.deferredPower?.power === 'peek') break;
           this.pool
             .filter((p) => p.where === 'held')
             .forEach((p, i) =>
-              list.push({ id: `peek-${i}`, objects: [p.card.mesh], label: 'Put the policies back', action: true, onClick: () => this.act(a) }),
+              list.push({ id: `peek-${i}`, objects: [p.card.mesh], label: tr({ en: 'Put the policies back', es: 'Devolver las leyes' }), action: true, onClick: () => this.act(a) }),
             );
           break;
         case 'ack':
@@ -1243,12 +1259,27 @@ export class Game {
 
   private limitReason(seat: number): string {
     const v = this.view!;
-    if (seat === v.lastChancellor) return 'they were the last elected Chancellor';
-    if (seat === v.lastPresident) return 'they were the last elected President';
-    return 'not eligible this round';
+    if (seat === v.lastChancellor) return tr({ en: 'they were the last elected Chancellor', es: 'fue el último Canciller elegido' });
+    if (seat === v.lastPresident) return tr({ en: 'they were the last elected President', es: 'fue el último Presidente elegido' });
+    return tr({ en: 'not eligible this round', es: 'no es elegible esta ronda' });
   }
 
   // ---------- HUD ----------
+
+  /** The language changed: rebuild every string derived from the last view. */
+  relang() {
+    if (this.room) this.syncCharacters();
+    this.refreshInteractables();
+    this.reshowCard?.();
+    this.refreshHud();
+    this.syncGameOverPanel();
+    this.ui.setChatEnabled(this.chatEnabled());
+  }
+
+  private chatEnabled(): boolean {
+    const v = this.view;
+    return !v || v.phase === 'gameOver' || !!v.players[this.room?.you ?? -1]?.alive;
+  }
 
   private refreshHud() {
     const { room, view } = this;
@@ -1263,7 +1294,10 @@ export class Game {
       };
       this.ui.renderHud(hudModel(view, room, opts), this.promptActive());
     } else if (room) {
-      const text = room.seats.length < 5 ? 'Waiting for players… (5 to 10 seats, the host can add bots)' : 'Waiting for the host to start.';
+      const text =
+        room.seats.length < 5
+          ? tr({ en: 'Waiting for players… (5 to 10 seats, the host can add bots)', es: 'Esperando jugadores… (de 5 a 10 asientos, el anfitrión puede añadir bots)' })
+          : tr({ en: 'Waiting for the host to start.', es: 'Esperando a que el anfitrión empiece.' });
       this.ui.renderHud(null, false, text);
     } else this.ui.renderHud(null, false);
   }
@@ -1635,8 +1669,8 @@ export class Game {
     const v = this.view;
     const me = this.room?.you;
     const live = !!v && v.phase !== 'night' && v.phase !== 'gameOver';
-    this.marker('pres', live && v!.president !== me ? v!.president : null, 'PRESIDENT');
-    this.marker('nom', live && v!.phase === 'vote' && v!.nominee !== me ? v!.nominee : null, 'NOMINEE');
+    this.marker('pres', live && v!.president !== me ? v!.president : null, tr({ en: 'PRESIDENT', es: 'PRESIDENTE' }));
+    this.marker('nom', live && v!.phase === 'vote' && v!.nominee !== me ? v!.nominee : null, tr({ en: 'NOMINEE', es: 'NOMINADO' }));
     this.actionMarker();
   }
 

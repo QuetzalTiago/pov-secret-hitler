@@ -1,5 +1,6 @@
 // WebSocket connection with automatic reconnect.
 import type { ClientMsg, ServerMsg } from '../shared/protocol';
+import { tr } from './i18n';
 
 export class Net {
   private ws: WebSocket | null = null;
@@ -30,7 +31,7 @@ export class Net {
     };
     ws.onclose = () => {
       this.ws = null;
-      this.onStatus('Connection lost. Reconnecting…');
+      this.onStatus(tr({ en: 'Connection lost. Reconnecting…', es: 'Conexión perdida. Reconectando…' }));
       setTimeout(() => this.connect(), this.backoff);
       this.backoff = Math.min(8000, this.backoff * 1.7);
     };

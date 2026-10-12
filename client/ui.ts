@@ -9,6 +9,7 @@ import { isMuted, setMuted } from './audio';
 import { nearBottom } from './chatscroll';
 import { ENACT_BANNER_MS, enactBanner } from './enact';
 import { fullscreenSupported, isFullscreen, isFullscreenKey, toggleFullscreen } from './fullscreen';
+import { lang, tr } from './i18n';
 import { loadRecord, recordGame, recordLine, saveRecord } from './record';
 import { REASONS, VICTORY_MS, victoryParticles, type VictoryBanner } from './victory';
 
@@ -38,8 +39,30 @@ export function seriesLine(series: Series, names: string[]): string {
     .filter(([, w]) => w >= 1)
     .sort((a, b) => b[1] - a[1])
     .map(([n, w]) => `${n} ${w}`);
-  return ['Series', `Liberals ${series.liberal} – Fascists ${series.fascist}`, ...(wins.length ? [wins.join(', ')] : [])].join(' · ');
+  const score = tr({
+    en: `Liberals ${series.liberal} – Fascists ${series.fascist}`,
+    es: `Liberales ${series.liberal} – Fascistas ${series.fascist}`,
+  });
+  return [tr({ en: 'Series', es: 'Serie' }), score, ...(wins.length ? [wins.join(', ')] : [])].join(' · ');
 }
+
+const pick = (en: string, es: string) => tr({ en, es });
+// Display text for the keyed English codes the HUD model hands over.
+const VERB_LABELS: Record<string, [string, string]> = {
+  role: ['ROLE', 'ROL'],
+  nominate: ['NOMINATE', 'NOMINA'],
+  vote: ['VOTE', 'VOTA'],
+  discard: ['DISCARD', 'DESCARTA'],
+  enact: ['ENACT', 'PROMULGA'],
+  veto: ['VETO', 'VETO'],
+  peek: ['PEEK', 'MIRA'],
+  investigate: ['INVESTIGATE', 'INVESTIGA'],
+  elect: ['ELECT', 'ELIGE'],
+  shoot: ['SHOOT', 'DISPARA'],
+};
+const PACE_ES = { relaxed: 'Tranquilo', normal: 'Normal', fast: 'Rápido' };
+const BOTS_ES = { casual: 'Casuales', normal: 'Normales', sharp: 'Agudos' };
+const TAGS_ES: Record<string, string> = { host: 'anfitrión', you: 'tú', bot: 'bot', away: 'ausente' };
 
 const POWER_GLYPHS: Record<Power, string> = { peek: '👁', investigate: '🔍', special: '★', execute: '✕' };
 
@@ -53,10 +76,10 @@ export function gameOverRow(p: PlayerView, you: number): HTMLLIElement {
   img.height = 68;
   img.src = portraitUrl(p.role === 'hitler' ? 'hitler' : p.role === 'fascist' ? 'fascist' : 'liberal');
   li.appendChild(img);
-  li.appendChild(document.createTextNode(`${p.name}${p.seat === you ? ' (you)' : ''}`));
+  li.appendChild(document.createTextNode(`${p.name}${p.seat === you ? ` ${tr({ en: '(you)', es: '(tú)' })}` : ''}`));
   const span = document.createElement('span');
   span.className = `tag ${p.role === 'liberal' ? 'liberal' : 'fascist'}`;
-  span.textContent = `${p.role === 'hitler' ? 'Hitler' : p.role === 'fascist' ? 'Fascist' : 'Liberal'}${p.alive ? '' : ' ✝'}`;
+  span.textContent = `${p.role === 'hitler' ? 'Hitler' : p.role === 'fascist' ? tr({ en: 'Fascist', es: 'Fascista' }) : 'Liberal'}${p.alive ? '' : ' ✝'}`;
   li.appendChild(span);
   return li;
 }
@@ -101,7 +124,7 @@ export class UI {
     const name = () => {
       const n = nameInput.value.trim();
       if (!n) {
-        this.error('Pick a name first.');
+        this.error(tr({ en: 'Pick a name first.', es: 'Primero elige un nombre.' }));
         nameInput.focus();
         return null;
       }
@@ -124,7 +147,7 @@ export class UI {
       const n = name();
       const code = $<HTMLInputElement>('code').value.trim().toUpperCase();
       if (!n) return;
-      if (code.length !== 4) return this.error('Room codes have four letters.');
+      if (code.length !== 4) return this.error(tr({ en: 'Room codes have four letters.', es: 'Los códigos de mesa tienen cuatro letras.' }));
       h.join(code, n);
     };
     $<HTMLInputElement>('code').addEventListener('keydown', (e) => e.key === 'Enter' && $('join').click());
@@ -186,8 +209,9 @@ export class UI {
     $('rules-close').onclick = () => $('rules').classList.add('hidden');
     $('sound').onclick = () => {
       setMuted(!isMuted());
-      $('sound').textContent = isMuted() ? 'Sound: off' : 'Sound: on';
+      this.showSound();
     };
+    this.showSound();
     const fsBtn = $('fullscreen-btn');
     const fsHint = $('fs-hint');
     if (!fullscreenSupported()) {
@@ -204,15 +228,15 @@ export class UI {
       });
       document.addEventListener('fullscreenchange', () => {
         const on = isFullscreen();
-        const label = on ? 'Exit fullscreen (F)' : 'Fullscreen (F)';
+        const label = on ? tr({ en: 'Exit fullscreen (F)', es: 'Salir de pantalla completa (F)' }) : tr({ en: 'Fullscreen (F)', es: 'Pantalla completa (F)' });
         fsBtn.setAttribute('aria-label', label);
         fsBtn.title = label;
         fsBtn.setAttribute('aria-pressed', String(on));
         fsHint.classList.toggle('hidden', on);
       });
     }
-    $('copy-code').onclick = () => this.copy(this.room?.code ?? '', 'copy-code', 'copied');
-    $('copy-invite').onclick = () => this.copy(UI.inviteLink(this.room?.code ?? ''), 'copy-invite', 'Link copied!');
+    $('copy-code').onclick = () => this.copy(this.room?.code ?? '', 'copy-code', () => tr({ en: 'copied', es: 'copiado' }));
+    $('copy-invite').onclick = () => this.copy(UI.inviteLink(this.room?.code ?? ''), 'copy-invite', () => tr({ en: 'Link copied!', es: '¡Enlace copiado!' }));
     $('invite-link').onclick = () => $<HTMLInputElement>('invite-link').select();
 
     // Capture phase: a click or Space that skips the banner must not also act on the table.
@@ -295,7 +319,7 @@ export class UI {
   }
 
   /** Copies text, confirming on the button itself (toasts are hidden in the lobby). */
-  private copy(text: string, buttonId: string, done: string) {
+  private copy(text: string, buttonId: string, done: () => string) {
     const btn = $(buttonId);
     // Remember the original label once so repeat clicks don't capture the confirmation text.
     if (!this.copyLabels.has(buttonId)) this.copyLabels.set(buttonId, btn.textContent ?? '');
@@ -306,26 +330,25 @@ export class UI {
       this.copyTimers.set(buttonId, setTimeout(() => (btn.textContent = label), 1800));
     };
     if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(() => confirm(done), () => this.selectInvite(confirm));
+      navigator.clipboard.writeText(text).then(() => confirm(done()), () => this.selectInvite(confirm));
     } else this.selectInvite(confirm);
   }
 
   private selectInvite(confirm: (msg: string) => void) {
     $<HTMLInputElement>('invite-link').select();
-    confirm('Press Ctrl+C');
+    confirm(tr({ en: 'Press Ctrl+C', es: 'Pulsa Ctrl+C' }));
   }
 
   /** Arrived through an invite link: pre-fill the table code and make Join the main action. */
   setInvite(code: string) {
     this.invite = code;
+    this.inviteLabels();
     $<HTMLInputElement>('code').value = code;
     $('invite-code').textContent = code;
     $('invite-banner').classList.remove('hidden');
     $('join').classList.add('primary');
-    $('join').textContent = `Join table ${code}`;
     $('create').classList.remove('primary');
     $('create').classList.add('link');
-    $('create').textContent = 'or open your own table';
     $('quick-start').classList.add('link');
     // Invited layout: name, one big Join button, then the option to start your own table.
     const join = $('join');
@@ -337,12 +360,34 @@ export class UI {
     $<HTMLInputElement>('name').focus();
   }
 
+  /** Join/create captions for the invited layout (static markup resets them on a language change). */
+  private inviteLabels() {
+    if (!this.invite) return;
+    $('join').textContent = tr({ en: `Join table ${this.invite}`, es: `Unirse a la mesa ${this.invite}` });
+    $('create').textContent = tr({ en: 'or open your own table', es: 'o abre tu propia mesa' });
+  }
+
+  private showSound() {
+    $('sound').textContent = isMuted() ? tr({ en: 'Sound: off', es: 'Sonido: no' }) : tr({ en: 'Sound: on', es: 'Sonido: sí' });
+  }
+
+  /** The language changed (after applyStatic): redo the text JS had set itself. */
+  relang() {
+    this.showSound();
+    this.inviteLabels();
+    // Copy buttons were reset by applyStatic: forget the cached label and any pending restore.
+    this.copyLabels.clear();
+    this.copyTimers.forEach(clearTimeout);
+    this.copyTimers.clear();
+    if (this.room?.stage === 'lobby') this.showRoom(this.room);
+  }
+
   private cardConfirm: { confirm: () => void; cancel: () => void } | null = null;
 
   showCardConfirm(copy: CardConfirmCopy, onConfirm: () => void, onCancel: () => void) {
     this.cardConfirm = { confirm: onConfirm, cancel: onCancel };
     const verb = $('cc-verb');
-    verb.textContent = copy.verb;
+    verb.textContent = copy.verbLabel;
     verb.className = `verb ${copy.verb === 'DISCARD' ? 'discard' : 'enact'}`;
     $('cc-policy-row').className = `policy ${copy.face}`;
     $('cc-policy').textContent = copy.policy;
@@ -420,7 +465,7 @@ export class UI {
           for (const t of tags) {
             const pill = document.createElement('span');
             pill.className = `pill ${t}`;
-            pill.textContent = t;
+            pill.textContent = pick(t, TAGS_ES[t]);
             box.appendChild(pill);
           }
           li.appendChild(box);
@@ -441,13 +486,19 @@ export class UI {
         $(`bot-level-${l}`).setAttribute('aria-pressed', String(on));
       }
       const cap = (s: string) => `${s[0].toUpperCase()}${s.slice(1)}`;
-      $('pace-note').textContent = `Pace: ${cap(room.options.pace)} · Bots: ${cap(room.options.botLevel)}`;
+      $('pace-note').textContent = tr({
+        en: `Pace: ${cap(room.options.pace)} · Bots: ${cap(room.options.botLevel)}`,
+        es: `Ritmo: ${PACE_ES[room.options.pace]} · Bots: ${BOTS_ES[room.options.botLevel]}`,
+      });
       $('pace-note').classList.toggle('hidden', isHost);
       const n = room.seats.length;
       $<HTMLButtonElement>('start').disabled = n < 5;
       $<HTMLButtonElement>('add-bot').disabled = n >= 10;
       $<HTMLButtonElement>('remove-bot').disabled = !room.seats.some((s) => s.bot);
-      $('seat-count').textContent = `${n} / 10 seated${n < 5 ? ` · need ${5 - n} more to start` : ''}`;
+      $('seat-count').textContent = tr({
+        en: `${n} / 10 seated${n < 5 ? ` · need ${5 - n} more to start` : ''}`,
+        es: `${n} / 10 sentados${n < 5 ? ` · faltan ${5 - n} para empezar` : ''}`,
+      });
       const line = seriesLine(room.series, room.seats.map((s) => s.name));
       $('lobby-series').textContent = line;
       $('lobby-series').classList.toggle('hidden', !line);
@@ -478,7 +529,7 @@ export class UI {
     wait.classList.toggle('hidden', !waiting);
     wait.replaceChildren();
     if (waiting) {
-      wait.append(document.createTextNode(`Waiting on ${action.waitingOn.join(', ')}`));
+      wait.append(document.createTextNode(tr({ en: `Waiting on ${action.waitingOn.join(', ')}`, es: `Esperando a ${action.waitingOn.join(', ')}` })));
       const ell = document.createElement('span');
       ell.className = 'ell';
       wait.appendChild(ell);
@@ -486,7 +537,7 @@ export class UI {
     const verb = $('pr-verb');
     const v = mine && action?.verb ? action.verb : null;
     verb.classList.toggle('hidden', !v);
-    verb.textContent = v ? v.toUpperCase() : '';
+    verb.textContent = v ? pick(...(VERB_LABELS[v] ?? [v.toUpperCase(), v.toUpperCase()])) : '';
     verb.className = v ? `verb ${v}` : 'verb hidden';
   }
 
@@ -529,8 +580,8 @@ export class UI {
     pips('sb-lib', 6, st.liberal, undefined, 5); // 6th square is shown disabled: liberals win at 5
     pips('sb-fas', 6, st.fascist, st.powers);
     pips('sb-tracker', 3, st.tracker);
-    $('sb-deck').textContent = `Deck ${st.deck}`;
-    $('sb-discard').textContent = `Discard ${st.discard}`;
+    $('sb-deck').textContent = tr({ en: `Deck ${st.deck}`, es: `Mazo ${st.deck}` });
+    $('sb-discard').textContent = tr({ en: `Discard ${st.discard}`, es: `Descarte ${st.discard}` });
   }
 
   private renderStepper(model: HudModel | null) {
@@ -556,13 +607,13 @@ export class UI {
       return;
     }
     // Rebuilding mid-click would swallow it, so only touch the DOM when something changed.
-    const key = JSON.stringify(model.roster);
+    const key = `${lang()}${JSON.stringify(model.roster)}`;
     if (key === this.rosterKey) return;
     this.rosterKey = key;
     const BADGES: Partial<Record<Badge, [string, string]>> = {
       president: ['b-pres', 'PRES'],
-      chancellor: ['b-chanc', 'CHANC'],
-      nominee: ['b-nom', 'NOMINEE'],
+      chancellor: ['b-chanc', tr({ en: 'CHANC', es: 'CANC' })],
+      nominee: ['b-nom', tr({ en: 'NOMINEE', es: 'NOMINADO' })],
       voted: ['b-voted', '✓'],
       acting: ['b-acting', ''],
     };
@@ -587,7 +638,7 @@ export class UI {
         if (r.you) {
           const you = document.createElement('span');
           you.className = 'r-you';
-          you.textContent = '(you)';
+          you.textContent = tr({ en: '(you)', es: '(tú)' });
           row.appendChild(you);
         }
         const badges = document.createElement('span');
@@ -601,7 +652,7 @@ export class UI {
         };
         if (!r.alive) add('b-dead', '✝');
         if (r.intel) {
-          add(`b-intel ${r.intel === 'liberal' ? 'lib' : 'fas'}`, `🔍 ${r.intel === 'liberal' ? 'L' : 'F'}`, 'You investigated this player');
+          add(`b-intel ${r.intel === 'liberal' ? 'lib' : 'fas'}`, `🔍 ${r.intel === 'liberal' ? 'L' : 'F'}`, tr({ en: 'You investigated this player', es: 'Investigaste a este jugador' }));
         }
         for (const b of r.badges) {
           const def = BADGES[b];
@@ -613,7 +664,7 @@ export class UI {
           const mark = document.createElement('span');
           mark.className = `r-mark${r.mark ? ` m-${r.mark === '?' ? 'q' : r.mark.toLowerCase()}` : ''}`;
           mark.setAttribute('role', 'button');
-          mark.title = 'Your private mark (click to change)';
+          mark.title = tr({ en: 'Your private mark (click to change)', es: 'Tu marca privada (clic para cambiar)' });
           mark.textContent = r.mark ?? '·';
           mark.onclick = (ev) => {
             ev.stopPropagation();
@@ -817,7 +868,7 @@ export class UI {
     $('victory-title').textContent = b.headline;
     $('victory-reason').textContent = b.reason;
     const stamp = $('victory-stamp');
-    stamp.textContent = b.stamp;
+    stamp.textContent = b.stampLabel;
     stamp.className = b.stamp === 'VICTORY' ? 'victory' : b.stamp === 'DEFEAT' ? 'defeat' : '';
     $('victory-particles').replaceChildren(
       ...victoryParticles(b.cls, 48, Date.now() & 0xffff).map((p) => {
@@ -880,7 +931,7 @@ export class UI {
   setChatEnabled(on: boolean) {
     const input = $<HTMLInputElement>('chat-input');
     input.disabled = !on;
-    input.placeholder = on ? 'Press Enter to talk…' : 'The dead are silent.';
+    input.placeholder = on ? tr({ en: 'Press Enter to talk…', es: 'Pulsa Intro para hablar…' }) : tr({ en: 'The dead are silent.', es: 'Los muertos callan.' });
   }
 
   showGameOver(v: GameView, room: RoomView) {
@@ -889,7 +940,8 @@ export class UI {
     const wasHidden = el.classList.contains('hidden');
     el.classList.remove('hidden');
     const title = $('gameover-title');
-    title.textContent = v.winner === 'liberal' ? 'The Liberals win' : 'The Fascists win';
+    title.textContent =
+      v.winner === 'liberal' ? tr({ en: 'The Liberals win', es: 'Ganan los Liberales' }) : tr({ en: 'The Fascists win', es: 'Ganan los Fascistas' });
     title.className = v.winner ?? '';
     $('gameover-reason').textContent = REASONS[v.winReason ?? ''] ?? '';
     const list = $('gameover-roles');
@@ -904,9 +956,12 @@ export class UI {
     const recLine = recordLine(rec);
     $('gameover-record').textContent = recLine;
     $('gameover-record').classList.toggle('hidden', !recLine);
-    $('play-again').textContent = room.seats[room.you]?.ready ? 'Ready ✓ (click to cancel)' : 'Play again';
+    $('play-again').textContent = room.seats[room.you]?.ready ? tr({ en: 'Ready ✓ (click to cancel)', es: 'Listo ✓ (clic para cancelar)' }) : tr({ en: 'Play again', es: 'Jugar de nuevo' });
     const humans = room.seats.filter((s) => !s.bot && s.connected);
-    $('ready-note').textContent = `${humans.filter((s) => s.ready).length} of ${humans.length} ready`;
+    $('ready-note').textContent = tr({
+      en: `${humans.filter((s) => s.ready).length} of ${humans.length} ready`,
+      es: `${humans.filter((s) => s.ready).length} de ${humans.length} listos`,
+    });
     // Runs every view update: only pull focus in when the panel first opens, and never from chat.
     if (wasHidden && document.activeElement?.id !== 'chat-input') $('play-again').focus();
     const isHost = room.you === room.host;

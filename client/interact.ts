@@ -79,6 +79,7 @@ export class Interactor {
   set(list: Interactable[]) {
     this.items = new Map(list.map((i) => [i.id, i]));
     if (this.hovered && !this.items.has(this.hovered)) this.setHovered(null);
+    else if (this.hovered) this.tooltip.textContent = this.items.get(this.hovered)!.label; // label may have changed language
   }
 
   activate(id: string): boolean {

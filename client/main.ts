@@ -2,9 +2,10 @@ import './style.css';
 import type { RoomView, ServerMsg } from '../shared/protocol';
 import { initAudio, isMusicOn, setMusicOn, startMusic } from './audio';
 import { Game } from './game';
-import { applyStatic, lang, onLangChange, setLang } from './i18n';
+import { applyStatic, lang, onLangChange, setLang, tr } from './i18n';
 import { Interactor } from './interact';
 import { Net } from './net';
+import { translateServerError } from './servererrors';
 import { createPerfHud } from './perf';
 import { loadAssets } from './scene/assets';
 import { loadOfficialArt } from './scene/officialart';
@@ -130,7 +131,7 @@ net.onMessage = (m: ServerMsg) => {
         leaving = false;
         resetClient();
       } else if (m.for === 'act') game.actionRejected();
-      ui.error(m.msg);
+      ui.error(translateServerError(m.msg));
       break;
     case 'left':
       leaving = false;
@@ -230,7 +231,7 @@ window.__sh = {
 
 // Graphics toggle cycles auto / high / low (lobby and in-game buttons share one setting, remembered between visits).
 const graphicsButtons = [...document.querySelectorAll<HTMLButtonElement>('.graphics-toggle')];
-const showGraphics = () => graphicsButtons.forEach((b) => (b.textContent = `Graphics: ${world.graphicsMode}`));
+const showGraphics = () => graphicsButtons.forEach((b) => (b.textContent = `${tr({ en: 'Graphics', es: 'Gráficos' })}: ${tr({ en: world.graphicsMode, es: { auto: 'auto', high: 'alto', low: 'bajo' }[world.graphicsMode] })}`));
 showGraphics();
 graphicsButtons.forEach((b) =>
   b.addEventListener('click', () => {
@@ -243,7 +244,7 @@ graphicsButtons.forEach((b) =>
 
 // Music toggle (lobby and in-game buttons share one setting, remembered between visits).
 const musicButtons = [...document.querySelectorAll<HTMLButtonElement>('.music-toggle')];
-const showMusic = () => musicButtons.forEach((b) => (b.textContent = `Music: ${isMusicOn() ? 'on' : 'off'}`));
+const showMusic = () => musicButtons.forEach((b) => (b.textContent = `${tr({ en: 'Music', es: 'Música' })}: ${isMusicOn() ? tr({ en: 'on', es: 'sí' }) : tr({ en: 'off', es: 'no' })}`));
 showMusic();
 musicButtons.forEach((b) =>
   b.addEventListener('click', () => {
@@ -261,4 +262,9 @@ langButtons.forEach((b) => b.addEventListener('click', () => setLang(lang() === 
 onLangChange(() => {
   applyStatic(document);
   showLang();
+  // applyStatic reset every data-es element: redo the text that JS sets itself.
+  showGraphics();
+  showMusic();
+  ui.relang();
+  game.relang();
 });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlayerView } from '../shared/view';
-import { gameOverOrder, gameOverRow } from '../client/ui';
+import { setLang } from '../client/i18n';
+import { gameOverOrder, gameOverRow, seriesLine } from '../client/ui';
 
 interface Node {
   tag: string;
@@ -67,5 +68,30 @@ describe('gameOverOrder', () => {
     const out = gameOverOrder(players);
     expect(out.map((p) => p.seat)).toEqual([3, 1, 4, 0, 2]);
     expect(players.map((p) => p.seat)).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+describe('Spanish copy', () => {
+  beforeEach(() => {
+    setLang('es');
+    vi.stubGlobal('document', {
+      createElement: node,
+      createTextNode: (text: string) => ({ tag: '#text', className: '', children: [], text }),
+    });
+  });
+  afterEach(() => {
+    setLang('en');
+    vi.unstubAllGlobals();
+  });
+
+  it('gameOverRow says (tú) and Fascista', () => {
+    const p = { seat: 0, name: 'Ann', alive: false, role: 'fascist' } as PlayerView;
+    const li = gameOverRow(p, 0) as unknown as Node;
+    expect(li.children[1].text).toBe('Ann (tú)');
+    expect(li.children[2].textContent).toBe('Fascista ✝');
+  });
+
+  it('seriesLine is in Spanish', () => {
+    expect(seriesLine({ liberal: 2, fascist: 1, wins: { Ana: 2 } }, ['Ana'])).toBe('Serie · Liberales 2 – Fascistas 1 · Ana 2');
   });
 });
