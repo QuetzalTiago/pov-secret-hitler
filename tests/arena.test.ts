@@ -14,6 +14,12 @@ describe('bot arena', () => {
     expect(nu.libPct).toBeGreaterThanOrEqual(old.libPct - 5);
   });
 
+  it('new Fascists hold Liberals to a lower win rate than old Fascists at 7p', () => {
+    const vsOld = runArena('new', 'old', 50, [7])[0];
+    const vsNew = runArena('new', 'new', 50, [7])[0];
+    expect(vsNew.libPct).toBeLessThan(vsOld.libPct);
+  });
+
   it('playMatch is deterministic', () => {
     const a = playMatch(7, 700021, 'old', 'random');
     const b = playMatch(7, 700021, 'old', 'random');

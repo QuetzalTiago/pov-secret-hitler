@@ -2,7 +2,7 @@
 import { aliveCount, cardCounts, legalActions, pendingActors } from '../shared/engine';
 import { FASCIST_WIN, HITLER_ZONE, LIBERAL_WIN } from '../shared/rules';
 import { PHASES, type GameEvent, type GameState } from '../shared/types';
-import { heuristicChooser, oldSmartChooser, randomChooser, runGame, type GameResult } from './gameloop';
+import { heuristicChooser, newSmartChooser, randomChooser, runGame, type GameResult } from './gameloop';
 
 export type { GameResult };
 
@@ -50,7 +50,7 @@ export function playGame(
   mode: 'random' | 'heuristic' | 'smart',
   onStep?: (s: GameState, events: GameEvent[]) => void,
 ): GameResult {
-  const chooser = mode === 'random' ? randomChooser : mode === 'heuristic' ? heuristicChooser : oldSmartChooser;
+  const chooser = mode === 'random' ? randomChooser : mode === 'heuristic' ? heuristicChooser : newSmartChooser;
   return runGame(n, seed, () => chooser, {
     trackMemory: mode === 'smart',
     onStart: checkInvariants,

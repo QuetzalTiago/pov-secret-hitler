@@ -2,6 +2,7 @@
 // Everything here is derived from the bot's own GameView + Memory only.
 import { beliefs } from './belief';
 import { describeHistory, policyRecord, profiles, type Memory, type PlayerProfile } from './tracker';
+import { ROLE_COUNTS } from './rules';
 import type { ActionBody } from './types';
 import type { GameView } from './view';
 
@@ -73,6 +74,95 @@ function scoreLiberal(d: Decision, v: GameView, m: Memory): void {
     }
     case 'vetoResponse':
       d.options.agree.score = m.passed.some((x) => x.round === v.round && x.gave.includes('L')) ? LIB.vetoLiberal : 1 - LIB.vetoFas * pF[v.chancellor!];
+      break;
+  }
+}
+
+/** Tunable weights for the belief-based Fascist / Hitler strategy. */
+export const FAS = {
+  coverP: 0.5, // play cover cards once the table's P(Fascist) of me is above this
+  proofP: 0.24, // Chancellor holding an L (provable F): cover once the table's P(Fascist) of me is above this
+  loneAdd: 0.26, // both thresholds rise by this when the Fascist is alone with Hitler (5-6p): exposure is cheap
+  playGap: 3, // card play: preferred option over the other
+  vetoScore: 1, // cover (b) veto: between enact F (0) and enact L (playGap)
+  voteTeam: 4, // ja when a teammate is in the government
+  voteHitler: 20, // ja for Hitler as nominee in the zone
+  voteJa: 2, // ja for a Liberal government that is not safe to block
+  voteNein: 1.5, // nein margin for a Liberal government that is safe to block
+  nomBig: 8, // zone: nominate a clean-looking Hitler
+  nomHitler: 12, // zone: penalty per table P(Hitler) of Hitler
+  nomTeam: -3, // teammate base: below believable Liberals, so Fascists nominate cover
+  nomTeamP: 3, // teammate penalty per table P(Fascist)
+  nomLib: 3, // believable Liberal base
+  nomLibP: 2, // Liberal penalty per table P(Fascist)
+  vetoMate: 3, // agree a teammate's veto
+};
+
+/** Overwrites the Fascist / Hitler option scores: cover plays, team votes, clean-looking nominations. */
+function scoreFascist(d: Decision, v: GameView, m: Memory): void {
+  const me = v.you!;
+  const zone = v.fascist >= 3;
+  const mate = (s: number) => s !== me && (v.players[s].role === 'fascist' || v.players[s].role === 'hitler');
+  const team = (s: number) => s === me || mate(s);
+  const set = (key: string, score: number) => {
+    if (d.options[key]) d.options[key].score = score;
+  };
+  const clean = v.yourRole === 'hitler' && !zone; // Hitler stays clean until the zone
+  if (clean && d.kind === 'presDiscard') {
+    set('discard_F', FAS.playGap);
+    set('discard_L', 0);
+    return;
+  }
+  if (clean && (d.kind === 'chancEnact' || d.kind === 'proposeVeto')) {
+    set('enact_L', FAS.playGap);
+    set('enact_F', 0);
+    set('veto', -10);
+    return;
+  }
+  const { pFascist: pF, pHitler: pH } = beliefs(m, v, { observer: 'liberal' });
+  const hitler = v.yourRole === 'hitler' ? me : v.players.findIndex((p) => p.role === 'hitler');
+  const target = (score: (s: number) => number) => {
+    for (const o of Object.values(d.options)) if ('target' in o.action) o.score = score(o.action.target);
+  };
+  const hasL = (v.hand ?? []).includes('L');
+  const add = ROLE_COUNTS[v.players.length][1] < 2 ? FAS.loneAdd : 0;
+  const exposed = pF[me] > FAS.coverP + add;
+  const pick = (s: number) => (team(s) ? FAS.nomTeam - FAS.nomTeamP * pF[s] : FAS.nomLib - FAS.nomLibP * pF[s]);
+  switch (d.kind) {
+    case 'nominate':
+      target((s) => (zone && s === hitler ? FAS.nomBig - FAS.nomHitler * pH[s] : pick(s)));
+      break;
+    case 'specialElect':
+      target(pick);
+      break;
+    case 'investigate':
+    case 'execute':
+      target((s) => (team(s) ? -100 : -pF[s]));
+      break;
+    case 'vote': {
+      const p = v.president;
+      const c = v.nominee!;
+      const safe = v.tracker < 2;
+      d.options.ja.score = zone && c === hitler ? FAS.voteHitler : team(p) || team(c) ? FAS.voteTeam : safe ? -FAS.voteNein : FAS.voteJa;
+      break;
+    }
+    case 'presDiscard': {
+      const cover = (exposed || (v.players[v.chancellor!].role === 'hitler' && !zone && hasL)) && v.fascist < 5;
+      set('discard_F', cover ? FAS.playGap : 0);
+      set('discard_L', cover ? 0 : FAS.playGap);
+      break;
+    }
+    case 'chancEnact':
+    case 'proposeVeto': {
+      const proof = !team(v.president) && hasL && pF[me] > FAS.proofP + add;
+      const cover = (exposed || proof) && v.fascist < 5;
+      set('enact_L', cover ? FAS.playGap : 0);
+      set('enact_F', cover ? 0 : FAS.playGap);
+      set('veto', cover && proof ? FAS.vetoScore : -10);
+      break;
+    }
+    case 'vetoResponse':
+      set('agree', mate(v.chancellor!) ? FAS.vetoMate : -3);
       break;
   }
 }
@@ -262,7 +352,10 @@ export function buildDecision(v: GameView, legal: ActionBody[], m: Memory, name:
       for (const [i, a] of legal.entries()) options[`o${i}`] = { action: a, description: a.type, score: 0 };
   }
   const d: Decision = { kind, instructions, options, state };
-  if ((opts.strategy ?? 'new') === 'new' && v.yourRole === 'liberal') scoreLiberal(d, v, m);
+  if ((opts.strategy ?? 'new') === 'new') {
+    if (v.yourRole === 'liberal') scoreLiberal(d, v, m);
+    else if (fasc) scoreFascist(d, v, m);
+  }
   return d;
 }
 
