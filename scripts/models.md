@@ -40,7 +40,7 @@ opt_char() {
 opt_char ManInSuit    man_suit
 opt_char Man          man_casual
 opt_char WomanInDress woman_dress
-opt_char WomanCasual  woman_casual
+opt_char WomanCasual  woman_casual   # outfit 'blouse'; needs dedup --materials false (Eyes and Shoes share a colour and would merge)
 opt_char WomanTankTop woman_tank
 ```
 

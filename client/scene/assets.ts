@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import manSuitUrl from '../models/chars/man_suit.glb?url';
 import manCasualUrl from '../models/chars/man_casual.glb?url';
 import womanDressUrl from '../models/chars/woman_dress.glb?url';
+import womanCasualUrl from '../models/chars/woman_casual.glb?url';
 import chairWoodUrl from '../models/props/chair_wood.glb?url';
 import stoolWoodUrl from '../models/props/stool_wood.glb?url';
 import lampPendantUrl from '../models/props/lamp_pendant.glb?url';
@@ -28,7 +29,7 @@ import envUrl from '../models/env/warm_bar_1k.hdr?url';
 
 // CC0 glTF assets (credits in client/models/CREDITS.md). Loading never rejects: null means "use the procedural scene".
 
-export type Outfit = 'suit' | 'shirt' | 'dress';
+export type Outfit = 'suit' | 'shirt' | 'dress' | 'blouse';
 
 export interface CharacterTemplate {
   outfit: Outfit;
@@ -146,7 +147,7 @@ export function loadAssets(): Promise<Assets | null> {
         const [map, normalMap, roughnessMap] = await Promise.all([loadTex(d, true), loadTex(n, false), loadTex(r, false)]);
         return { map, normalMap, roughnessMap };
       };
-      const outfits: [Outfit, string][] = [['suit', manSuitUrl], ['shirt', manCasualUrl], ['dress', womanDressUrl]];
+      const outfits: [Outfit, string][] = [['suit', manSuitUrl], ['shirt', manCasualUrl], ['dress', womanDressUrl], ['blouse', womanCasualUrl]];
       const propUrls: Record<string, string> = {
         chair_wood: chairWoodUrl, stool_wood: stoolWoodUrl, lamp_pendant: lampPendantUrl, bottle_old: bottleOldUrl,
         bottle_a: bottleAUrl, bottle_b: bottleBUrl, bottle_wine: bottleWineUrl,

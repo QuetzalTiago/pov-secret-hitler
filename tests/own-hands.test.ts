@@ -8,7 +8,7 @@ import { handGeometry } from '../client/scene/hands';
 import { riggedHandGeometry } from '../client/scene/ownhands';
 
 const MODELS = path.resolve(__dirname, '../client/models');
-const FILES: Record<Outfit, string> = { suit: 'man_suit', shirt: 'man_casual', dress: 'woman_dress' };
+const FILES: Record<Outfit, string> = { suit: 'man_suit', shirt: 'man_casual', dress: 'woman_dress', blouse: 'woman_casual' };
 const templates = {} as Record<Outfit, CharacterTemplate>;
 
 beforeAll(async () => {

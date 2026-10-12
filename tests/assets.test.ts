@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { prepareCharacter, type CharacterTemplate, type Outfit } from '../client/scene/assets';
 
 const MODELS = path.resolve(__dirname, '../client/models');
-const FILES: Record<Outfit, string> = { suit: 'man_suit', shirt: 'man_casual', dress: 'woman_dress' };
+const FILES: Record<Outfit, string> = { suit: 'man_suit', shirt: 'man_casual', dress: 'woman_dress', blouse: 'woman_casual' };
 
 function walk(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));

@@ -7,7 +7,7 @@ import { chairModel, chairSeat } from '../client/scene/roomprops';
 import { prepareCharacter, type CharacterTemplate, type Outfit } from '../client/scene/assets';
 
 const MODELS = path.resolve(__dirname, '../client/models');
-const FILES: Record<Outfit, string> = { suit: 'man_suit', shirt: 'man_casual', dress: 'woman_dress' };
+const FILES: Record<Outfit, string> = { suit: 'man_suit', shirt: 'man_casual', dress: 'woman_dress', blouse: 'woman_casual' };
 
 // Minimal fake canvas so textures.ts can run in node.
 function fakeCtx() {
@@ -50,7 +50,7 @@ beforeAll(async () => {
   }
 });
 
-const build = (i: number, variant: 'normal' | 'hitler' = 'normal') => new RiggedCharacter(i, i, variant, templates[OUTFIT(i, variant)]);
+const build = (i: number, variant: 'normal' | 'hitler' = 'normal', outfit: Outfit = OUTFIT(i, variant)) => new RiggedCharacter(i, i, variant, templates[outfit]);
 
 function measure(c: InstanceType<Rigged['RiggedCharacter']>) {
   let visible = 0;
@@ -133,20 +133,21 @@ function skinnedBox(c: Rig, names: string[], keep?: (p: THREE.Vector3) => boolea
   return box;
 }
 
-const cases: [string, number, 'normal' | 'hitler'][] = [
+const cases: [string, number, 'normal' | 'hitler', Outfit?][] = [
   ...[...Array(10).keys()].map((i) => [`normal ${i}`, i, 'normal'] as [string, number, 'normal']),
   ['hitler 0', 0, 'hitler'],
+  ['blouse 0', 0, 'normal', 'blouse'],
 ];
 
-describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
+describe.each(cases)('RiggedCharacter %s', (_key, style, variant, outfit) => {
   it('stays within the draw-call and triangle budget', () => {
-    const { visible, tris } = measure(build(style, variant));
+    const { visible, tris } = measure(build(style, variant, outfit));
     expect(visible).toBeLessThanOrEqual(3);
     expect(tris).toBeLessThanOrEqual(6000);
   });
 
   it('sits with the head above the hips', () => {
-    const c = build(style, variant);
+    const c = build(style, variant, outfit);
     c.update(0.016, 0);
     c.group.updateMatrixWorld(true);
     const head = boneY(c, 'Head');
@@ -159,7 +160,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
   });
 
   it('rests on the seat', () => {
-    const c = build(style, variant);
+    const c = build(style, variant, outfit);
     c.update(0.016, 0);
     const pelvisAndThighs = ['Body', 'Hips', 'UpperLegL', 'UpperLegR'];
     const all = skinnedBox(c, pelvisAndThighs);
@@ -174,7 +175,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
   });
 
   it('puts its feet on the floor', () => {
-    const c = build(style, variant);
+    const c = build(style, variant, outfit);
     c.update(0.016, 0);
     const feet = skinnedBox(c, ['FootL', 'FootR']);
     expect(feet.min.y).toBeGreaterThan(-0.01);
@@ -182,7 +183,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
   });
 
   it('has no hats or face details, only the cigarette and the armband besides the body', () => {
-    const c = build(style, variant);
+    const c = build(style, variant, outfit);
     let extra = 0;
     c.group.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -192,7 +193,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
   });
 
   it('has the Patron members the game uses', () => {
-    const c = build(style, variant);
+    const c = build(style, variant, outfit);
     expect(c.hitMeshes).toHaveLength(1);
     expect(c.smoker).toBe(variant !== 'hitler' && style % 3 === 0);
     if (!c.smoker) expect(c.smokeEmit(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3())).toBe(-1);

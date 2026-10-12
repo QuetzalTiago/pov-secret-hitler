@@ -76,7 +76,7 @@ function outfitFor(styleIndex: number, variant: 'normal' | 'hitler'): Outfit {
 }
 
 /** The patron's cloth part: the jacket on the suit (named Shirt in the glTF), the shirt, the dress. */
-const CLOTH: Record<Outfit, string> = { suit: 'Shirt', shirt: 'Shirt', dress: 'Dress' };
+const CLOTH: Record<Outfit, string> = { suit: 'Shirt', shirt: 'Shirt', dress: 'Dress', blouse: 'Shirt' };
 
 interface SeatedPose {
   pos: THREE.Vector3[];
@@ -268,13 +268,13 @@ export class RiggedCharacter implements Patron {
    */
   constructor(public seat: number, styleIndex: number, public variant: 'normal' | 'hitler' = 'normal', template?: CharacterTemplate) {
     const hitler = variant === 'hitler';
-    const outfit = outfitFor(styleIndex, variant);
+    const outfit = template?.outfit ?? outfitFor(styleIndex, variant);
     const tpl = template ?? getAssets()?.characters[outfit];
     if (!tpl) throw new Error('rigged: assets not loaded');
     this.smoker = isSmoker(styleIndex, variant);
 
     const root = cloneSkinned(tpl.root);
-    const height = outfit === 'dress' ? HEIGHT_WOMAN : HEIGHT;
+    const height = outfit === 'dress' || outfit === 'blouse' ? HEIGHT_WOMAN : HEIGHT;
     root.scale.multiplyScalar(height);
     root.position.multiplyScalar(height);
     this.group.add(root);

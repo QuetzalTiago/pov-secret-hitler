@@ -7,6 +7,7 @@ All assets are CC0 1.0 (public domain dedication, https://creativecommons.org/pu
 | `chars/man_suit.glb` | [Man in Suit](https://poly.pizza/m/mQnGoME1ez), Poly Pizza | Quaternius | CC0 1.0 | prune, dedup, weld, resample, quantize |
 | `chars/man_casual.glb` | [Man](https://poly.pizza/m/HMnuH5geEG), Poly Pizza | Quaternius | CC0 1.0 | prune, dedup, weld, resample, quantize |
 | `chars/woman_dress.glb` | [Woman in Dress](https://poly.pizza/m/zMyPlQXBzq), Poly Pizza | Quaternius | CC0 1.0 | prune, dedup, weld, resample, quantize |
+| `chars/woman_casual.glb` | [Woman Casual](https://poly.pizza/m/jpKRgGDxhk), Poly Pizza | Quaternius | CC0 1.0 | prune, dedup, weld, resample, quantize |
 | `props/chair_wood.glb` | [Painted Wooden Chair 01](https://polyhaven.com/a/painted_wooden_chair_01), Poly Haven | Poly Haven | CC0 1.0 | textures 512 px WebP, quantize |
 | `props/stool_wood.glb` | [Painted Wooden Stool](https://polyhaven.com/a/painted_wooden_stool), Poly Haven | Poly Haven | CC0 1.0 | textures 512 px WebP, quantize |
 | `props/lamp_pendant.glb` | [Hanging Industrial Lamp](https://polyhaven.com/a/hanging_industrial_lamp), Poly Haven | Poly Haven | CC0 1.0 | simplified to 30% of triangles, textures 512 px WebP, quantize |
