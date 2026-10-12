@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_PITCH, PITCH_MAX, YAW_LIMIT, lookAngles } from '../client/scene/look';
+import { BASE_PITCH, LOCK_SETTLE, MAX_LOOK_STEP, PITCH_MAX, YAW_LIMIT, lookAngles, lookStep } from '../client/scene/look';
 
-const eye = { x: 0, y: 1.27, z: 2 };
+describe('lookStep', () => {
+  const settled = LOCK_SETTLE + 1;
+  it('passes a normal small movement through unchanged', () => {
+    expect(lookStep(12, -7, settled)).toEqual({ dx: 12, dy: -7 });
+  });
+  it('drops a spike above the maximum on either axis', () => {
+    expect(lookStep(MAX_LOOK_STEP + 1, 0, settled)).toBeNull();
+    expect(lookStep(0, -(MAX_LOOK_STEP + 1), settled)).toBeNull();
+  });
+  it('drops movement right after a lock change and passes it once settled', () => {
+    expect(lookStep(5, 5, LOCK_SETTLE - 0.01)).toBeNull();
+    expect(lookStep(5, 5, LOCK_SETTLE + 0.01)).toEqual({ dx: 5, dy: 5 });
+  });
+});
+
+const eye ={ x: 0, y: 1.27, z: 2 };
 
 describe('lookAngles', () => {
   it('straight ahead gives zero yaw', () => {

@@ -19,7 +19,7 @@ import { buildBackBar, chairModel, lampModel, stoolModel } from './roomprops';
 import { CigaretteSmoke } from './smoke';
 import { WAITER_SPOT, Waiter } from './waiter';
 import { ease } from './tween';
-import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles } from './look';
+import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles, lookStep } from './look';
 import { pointingArm, type PointingArm } from './pointarm';
 import { LIGHTING, POSTER_TINT } from './lighting';
 import {
@@ -301,10 +301,12 @@ export class World {
       this.lastY = e.clientY;
       const real = this.glanceMoved > 60;
       if (this.locked) {
+        const step = lookStep(e.movementX, e.movementY, performance.now() / 1000 - this.lockChangedAt);
+        if (!step) return;
         if (real) this.cancelGlance();
         // Captured mouse: relative look, clamped like a seated head turn.
-        this.targetYaw = clampLook(this.targetYaw - e.movementX * LOOK_SENS, -YAW_LIMIT, YAW_LIMIT);
-        this.targetPitch = clampLook(this.targetPitch - e.movementY * LOOK_SENS, PITCH_MIN, PITCH_MAX);
+        this.targetYaw = clampLook(this.targetYaw - step.dx * LOOK_SENS, -YAW_LIMIT, YAW_LIMIT);
+        this.targetPitch = clampLook(this.targetPitch - step.dy * LOOK_SENS, PITCH_MIN, PITCH_MAX);
         return;
       }
       this.mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
@@ -320,6 +322,7 @@ export class World {
     window.addEventListener('keyup', (e) => this.keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key));
     window.addEventListener('blur', () => this.keys.clear());
     document.addEventListener('pointerlockchange', () => {
+      this.lockChangedAt = performance.now() / 1000;
       this.locked = document.pointerLockElement === this.renderer.domElement;
       this.onLockChange(this.locked);
     });
@@ -332,6 +335,8 @@ export class World {
   /** Mouse travel (px) since the current glance began. */
   private glanceMoved = 0;
   private glancePrev = { yaw: 0, pitch: 0 };
+  /** When pointer lock last turned on or off (performance.now()/1000, so it counts between rendered frames too). */
+  private lockChangedAt = 0;
 
   /** The normalised look key for `e` (A/D/W/S/arrows), or null when it is not one or typing elsewhere. */
   private lookKey(e: KeyboardEvent): string | null {
@@ -364,7 +369,7 @@ export class World {
   onLockChange: (locked: boolean) => void = () => {};
   /** Holds the view completely still (no look keys, glances or head bob) while a card is picked. */
   freezeLook = false;
-  /** Holds the view at rest, centred (no look keys or glances), on the home screen and in the lobby. */
+  /** Holds the view at rest, wherever it is (no look keys or glances), on the home screen and in the lobby. */
   stillView = true;
 
   requestLock() {
@@ -946,8 +951,8 @@ export class World {
     }
     if (this.stillView) {
       this.glanceUntil = 0;
-      this.targetYaw = 0;
-      this.targetPitch = 0;
+      this.targetYaw = this.yaw;
+      this.targetPitch = this.pitch;
     }
     if (this.glanceUntil > 0 && t >= this.glanceUntil) {
       this.glanceUntil = 0;
