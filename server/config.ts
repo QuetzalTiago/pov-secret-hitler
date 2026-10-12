@@ -29,6 +29,10 @@ export const config = {
   maxRooms: num(process.env.SH_MAX_ROOMS, 50),
   maxConnections: num(process.env.SH_MAX_CONNECTIONS, 200),
   maxConnectionsPerIp: num(process.env.SH_MAX_PER_IP, 12),
+  /** Room creations (create + quickStart) allowed per IP: the burst size, refilled evenly over a minute. */
+  createsPerMinute: num(process.env.SH_CREATES_PER_MIN, 5),
+  /** Open lobby-stage rooms one IP may have created at a time. */
+  maxLobbiesPerIp: num(process.env.SH_MAX_LOBBIES_PER_IP, 3),
   roomIdleMs: 30 * 60_000,
   /** SQLite file for room persistence. In-memory by default (tests, dev scripts); the real server sets a file. */
   dbPath: process.env.SH_DB_PATH ?? ':memory:',

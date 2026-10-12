@@ -15,4 +15,9 @@ export class TokenBucket {
     this.tokens -= cost;
     return true;
   }
+
+  /** True once fully refilled, i.e. forgetting this bucket changes nothing. */
+  full(): boolean {
+    return this.tokens + ((Date.now() - this.last) / 1000) * this.perSecond >= this.capacity;
+  }
 }

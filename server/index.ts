@@ -54,6 +54,8 @@ const CSP = [
 export function startServer(port = config.port): Promise<RunningServer> {
   const rooms = new Map<string, Room>();
   const store = new RoomStore(config.dbPath);
+  const roomIp = new Map<string, string>(); // room code -> IP that created it
+  const createBuckets = new Map<string, TokenBucket>();
   const track = (room: Room) => {
     room.onChange = (r) => store.save(r.code, r.snapshot());
     rooms.set(room.code, room);
@@ -62,6 +64,7 @@ export function startServer(port = config.port): Promise<RunningServer> {
   // A room that really ends (empty lobby, idle too long) is removed from the database too.
   const ended = (room: Room) => {
     rooms.delete(room.code);
+    roomIp.delete(room.code);
     store.delete(room.code);
   };
   for (const row of store.load(config.restoreMaxAgeMs)) {
@@ -174,7 +177,7 @@ export function startServer(port = config.port): Promise<RunningServer> {
         return error('Malformed message.');
       }
       try {
-        const err = handle(conn, msg, chatBucket);
+        const err = handle(conn, msg, chatBucket, ip);
         if (err) error(err, msg.t === 'act');
       } catch (e) {
         console.error('handler error', e);
@@ -193,26 +196,34 @@ export function startServer(port = config.port): Promise<RunningServer> {
     ws.on('error', () => ws.terminate());
   }
 
-  function openRoom(current: Room | null): Room | string {
+  function openRoom(current: Room | null, ip: string): Room | string {
     if (current) return 'Leave your current room first.';
+    let lobbies = 0;
+    for (const [code, creator] of roomIp) if (creator === ip && rooms.get(code)?.stage === 'lobby') lobbies++;
+    if (lobbies >= config.maxLobbiesPerIp) return 'You already have open tables waiting. Start or leave one first.';
     if (rooms.size >= config.maxRooms) return 'The bar is packed: too many rooms right now. Try later.';
+    // Last, so a refused create does not burn a token.
+    let bucket = createBuckets.get(ip);
+    if (!bucket) createBuckets.set(ip, (bucket = new TokenBucket(config.createsPerMinute, config.createsPerMinute / 60)));
+    if (!bucket.take()) return 'Slow down: too many new tables. Try again in a minute.';
     const code = newCode();
     if (!code) return 'Could not allocate a room.';
+    roomIp.set(code, ip);
     return track(new Room(code, ended));
   }
 
-  function handle(conn: Conn, msg: ClientMsg, chatBucket: TokenBucket): string | null {
+  function handle(conn: Conn, msg: ClientMsg, chatBucket: TokenBucket, ip: string): string | null {
     const room = conn.room;
     switch (msg.t) {
       case 'ping':
         conn.send({ t: 'pong' });
         return null;
       case 'create': {
-        const r = openRoom(room);
+        const r = openRoom(room, ip);
         return typeof r === 'string' ? r : r.join(conn, msg.name);
       }
       case 'quickStart': {
-        const r = openRoom(room);
+        const r = openRoom(room, ip);
         if (typeof r === 'string') return r;
         const err = r.join(conn, msg.name);
         return err ?? r.quickStart(conn);
@@ -262,6 +273,7 @@ export function startServer(port = config.port): Promise<RunningServer> {
     for (const room of rooms.values()) {
       if (room.connectedHumans() === 0 && now - room.lastActivity > config.roomIdleMs) room.close();
     }
+    for (const [ip, bucket] of createBuckets) if (bucket.full()) createBuckets.delete(ip);
   }, 60_000);
 
   return new Promise((resolve, reject) => {

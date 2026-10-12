@@ -8,14 +8,20 @@ import { startServer, type RunningServer } from '../server/index';
 
 let server: RunningServer;
 let url: string;
+const saved = { creates: config.createsPerMinute, lobbies: config.maxLobbiesPerIp };
 
 beforeAll(async () => {
   config.botDelayMs = 5;
   config.reconnectGraceMs = 300;
+  // Every client here shares 127.0.0.1, so the per-IP create limits must not get in the way.
+  config.createsPerMinute = 1000;
+  config.maxLobbiesPerIp = 1000;
   server = await startServer(0);
   url = `ws://127.0.0.1:${server.port}/ws`;
 });
 afterAll(async () => {
+  config.createsPerMinute = saved.creates;
+  config.maxLobbiesPerIp = saved.lobbies;
   await server.close();
 });
 
@@ -267,5 +273,78 @@ describe('server', () => {
     const pongs = c.msgs.filter((m) => m.t === 'pong').length;
     expect(pongs).toBeLessThan(60);
     c.close();
+  });
+});
+
+describe('per-IP room creation limits', () => {
+  let limited: RunningServer;
+  const orig = { creates: config.createsPerMinute, lobbies: config.maxLobbiesPerIp };
+  const errors = (c: Client) => c.msgs.filter((m) => m.t === 'error').map((m) => (m as { msg: string }).msg);
+
+  beforeAll(async () => {
+    config.createsPerMinute = 5;
+    config.maxLobbiesPerIp = 1000;
+    limited = await startServer(0);
+    url = `ws://127.0.0.1:${limited.port}/ws`;
+  });
+  afterAll(async () => {
+    config.createsPerMinute = orig.creates;
+    config.maxLobbiesPerIp = orig.lobbies;
+    await limited.close();
+  });
+
+  it('6th create from one IP within a minute is refused', async () => {
+    const clients: Client[] = [];
+    for (let i = 0; i < 5; i++) {
+      const c = await client();
+      clients.push(c);
+      c.send({ t: 'create', name: `P${i}` });
+      await c.until(() => !!c.code);
+    }
+    const sixth = await client();
+    clients.push(sixth);
+    sixth.send({ t: 'create', name: 'Late' });
+    await sixth.until(() => errors(sixth).length > 0);
+    expect(errors(sixth)).toEqual(['Slow down: too many new tables. Try again in a minute.']);
+    expect(sixth.code).toBe('');
+    clients.forEach((c) => c.close());
+  });
+
+});
+
+describe('per-IP lobby cap', () => {
+  let limited: RunningServer;
+  const orig = { creates: config.createsPerMinute, lobbies: config.maxLobbiesPerIp };
+  const errors = (c: Client) => c.msgs.filter((m) => m.t === 'error').map((m) => (m as { msg: string }).msg);
+
+  beforeAll(async () => {
+    config.createsPerMinute = 1000;
+    config.maxLobbiesPerIp = 2;
+    limited = await startServer(0);
+    url = `ws://127.0.0.1:${limited.port}/ws`;
+  });
+  afterAll(async () => {
+    config.createsPerMinute = orig.creates;
+    config.maxLobbiesPerIp = orig.lobbies;
+    await limited.close();
+  });
+
+  it('caps open lobbies per IP and frees the slot when one closes', async () => {
+    const a = await client();
+    a.send({ t: 'create', name: 'A' });
+    await a.until(() => !!a.code);
+    const b = await client();
+    b.send({ t: 'create', name: 'B' });
+    await b.until(() => !!b.code);
+    const c = await client();
+    c.send({ t: 'quickStart', name: 'C' });
+    await c.until(() => errors(c).length > 0);
+    expect(errors(c)).toEqual(['You already have open tables waiting. Start or leave one first.']);
+
+    a.send({ t: 'leave' }); // an empty lobby ends, freeing the slot
+    await a.until(() => !limited.rooms.has(a.code));
+    c.send({ t: 'create', name: 'C' });
+    await c.until(() => !!c.code);
+    [a, b, c].forEach((x) => x.close());
   });
 });
