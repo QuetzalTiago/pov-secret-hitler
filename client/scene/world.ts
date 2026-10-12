@@ -7,6 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { disposeObject } from './dispose';
+import { bottlesGeometry, buntingGeometry, hallGlowGeometry, hallPropsGeometry, posterGeometry } from './beerhall';
 import { handGeometry } from './hands';
 import { cuffGeometry, pointingFingerGeometry, sleeveGeometry, unitSleeveGeometry } from './ownbody';
 import { cylinderBetween, limbGeometry, mergeParts } from './patron';
@@ -15,7 +16,7 @@ import { CigaretteSmoke } from './smoke';
 import { ease } from './tween';
 import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles } from './look';
 import {
-  feltTexture, glowTexture, markSharedTexture, plankTexture, smokeTexture, textSprite, wallTexture, woodTexture,
+  feltTexture, glowTexture, markSharedTexture, plankTexture, posterAtlas, signTexture, smokeTexture, wallTexture, woodTexture,
 } from './textures';
 
 export const TABLE_Y = 0.78;
@@ -206,7 +207,7 @@ export class World {
     this.scene.add(this.camera);
     if (this.fx) this.composer = this.buildComposer();
     this.scene.background = new THREE.Color(0x070504);
-    this.scene.fog = new THREE.FogExp2(0x0d0907, 0.085);
+    this.scene.fog = new THREE.FogExp2(0x100a06, 0.085);
 
     this.ambient = new THREE.HemisphereLight(0x9a6848, 0x1c0e06, 0.55);
     this.scene.add(this.ambient);
@@ -457,44 +458,26 @@ export class World {
     ceiling.position.y = H;
     room.add(ceiling);
 
-    // Back bar: counter, shelves, bottles, neon sign.
+    // Back bar: counter, shelves, merged bottles, painted sign.
     const counterWood = glossy(new THREE.MeshStandardMaterial({ map: woodTexture('#3b2210', '#1c0e05', 'counter', 2), roughness: 0.6 }), 0.15);
     const counter = new THREE.Mesh(new THREE.BoxGeometry(6, 1.05, 0.7), counterWood);
     counter.position.set(0, 0.52, -4.2);
     counter.castShadow = counter.receiveShadow = true;
     room.add(counter);
     const shelfMat = new THREE.MeshStandardMaterial({ color: 0x24140a, roughness: 0.7 });
-    const bottleColors = [0x3f6b2a, 0x7a3b12, 0x8c8f99, 0x5a1a14, 0x2d4b6b, 0xa2742a];
     for (let row = 0; row < 3; row++) {
       const shelf = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.05, 0.3), shelfMat);
       shelf.position.set(0, 1.45 + row * 0.55, -4.85);
       room.add(shelf);
-      for (let b = 0; b < 22; b++) {
-        if ((b * 7 + row * 3) % 5 === 0) continue;
-        const h = 0.22 + ((b * 13 + row) % 5) * 0.04;
-        const bottle = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.035, 0.045, h, 8),
-          glossy(new THREE.MeshStandardMaterial({
-            color: bottleColors[(b + row) % bottleColors.length],
-            roughness: 0.15,
-            metalness: 0.1,
-            transparent: true,
-            opacity: 0.85,
-            emissive: bottleColors[(b + row) % bottleColors.length],
-            emissiveIntensity: 0.15,
-          }), 0.35),
-        );
-        bottle.position.set(-2.6 + b * 0.25, 1.48 + row * 0.55 + h / 2, -4.85);
-        room.add(bottle);
-      }
     }
-    const neon = textSprite('povsecrethitler.app', { color: '#ff6fae', size: 64 });
-    const neonMat = new THREE.SpriteMaterial({ map: neon.texture, color: new THREE.Color(2.2, 2.2, 2.2), transparent: true, depthWrite: false });
-    const sign = new THREE.Sprite(neonMat);
-    sign.scale.set(2.2, 2.2 / neon.aspect, 1);
-    sign.position.set(0, 2.95, -4.6);
+    room.add(new THREE.Mesh(
+      bottlesGeometry(),
+      glossy(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 }), 0.35),
+    ));
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshStandardMaterial({ map: signTexture(), roughness: 0.45, metalness: 0.2 }));
+    sign.position.set(0, 2.95, -4.97 + 0.02);
     room.add(sign);
-    const neonLight = new THREE.PointLight(0xff4f9a, 2.5, 5, 1.5);
+    const neonLight = new THREE.PointLight(0xffb060, 1.6, 5, 1.5);
     neonLight.position.set(0, 3.0, -4.5);
     room.add(neonLight);
     // A few empty stools and a dartboard-ish clock on the side wall.
@@ -515,7 +498,23 @@ export class World {
     clock.rotation.z = Math.PI / 2;
     clock.position.set(4.95, 2.4, -1);
     room.add(clock);
+    this.addBeerHall(room);
     this.scene.add(room);
+  }
+
+  /** 1930s beer-hall dressing: four merged meshes, no extra lights. */
+  private addBeerHall(room: THREE.Group) {
+    const props = new THREE.Mesh(
+      hallPropsGeometry(),
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.15, side: THREE.DoubleSide }),
+    );
+    props.castShadow = false;
+    props.receiveShadow = true;
+    const glow = new THREE.Mesh(hallGlowGeometry(), new THREE.MeshBasicMaterial({ color: new THREE.Color(3.2, 2.2, 1.2), toneMapped: false }));
+    const posters = new THREE.Mesh(posterGeometry(), new THREE.MeshStandardMaterial({ map: posterAtlas(), roughness: 0.9 }));
+    posters.receiveShadow = true;
+    const bunting = new THREE.Mesh(buntingGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide }));
+    room.add(props, glow, posters, bunting);
   }
 
   private buildSmoke() {
