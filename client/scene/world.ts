@@ -20,6 +20,7 @@ import { CigaretteSmoke } from './smoke';
 import { WAITER_SPOT, Waiter } from './waiter';
 import { ease } from './tween';
 import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles } from './look';
+import { pointingArm, type PointingArm } from './pointarm';
 import { LIGHTING, POSTER_TINT } from './lighting';
 import {
   feltTexture, glowTexture, markSharedTexture, plankTexture, posterAtlas, signTexture, smokeTexture, wallTexture, woodTexture,
@@ -709,6 +710,7 @@ export class World {
     // Flat hand (fingers +Z, palm down) -> fingers up, palm facing away from the camera.
     handQ: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)),
   };
+  private pointArm: PointingArm = { elbow: new THREE.Vector3(), grip: new THREE.Vector3(), dir: new THREE.Vector3() };
   private ownArm: { fore: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Mesh; finger: THREE.Mesh; fist: THREE.BufferGeometry; point: THREE.BufferGeometry | null } | null = null;
   /** The patron model's mitten hand once the assets are loaded, else the procedural one. */
   private ownHandGeometry(kind: 'flat' | 'fist', side: 1 | -1): THREE.BufferGeometry {
@@ -773,28 +775,34 @@ export class World {
     fore.visible = cuff.visible = hand.visible = !!pose;
     for (const m of this.restRightArm) m.visible = !pose;
     if (!pose) return;
+    this.camera.updateMatrixWorld();
     let grip: THREE.Vector3;
+    let elbowLocal: THREE.Vector3;
+    let dirLocal: THREE.Vector3;
     if ('gun' in pose) {
       pose.gun.updateMatrixWorld();
       grip = pose.gun.localToWorld(new THREE.Vector3(0, -0.03, 0.08));
       hand.quaternion.copy(pose.gun.getWorldQuaternion(new THREE.Quaternion()));
       hand.geometry = fist;
       finger.visible = false;
+      elbowLocal = new THREE.Vector3(0.34, -0.5, 0.05);
+      dirLocal = this.camera.worldToLocal(grip.clone()).sub(elbowLocal).normalize();
     } else {
-      this.camera.updateMatrixWorld();
-      grip = this.camera.localToWorld(new THREE.Vector3(0.15, -0.1, -0.45)); // above the prompt banner
+      // The forearm runs along the line to the target, so the hand continues it instead of bending at the wrist.
+      const arm = pointingArm(this.camera.worldToLocal(pose.point.clone()), this.pointArm);
+      elbowLocal = arm.elbow;
+      dirLocal = arm.dir;
+      grip = this.camera.localToWorld(arm.grip.clone());
       // Hand faces the target (its -Z axis points at it) with the index finger extended.
       const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion); // no roll as you look around
       hand.quaternion.setFromRotationMatrix(new THREE.Matrix4().lookAt(grip, pose.point, camUp));
       hand.geometry = point ?? fist;
       finger.visible = !point;
     }
-    const elbowLocal = new THREE.Vector3(0.34, -0.5, 0.05);
     const elbow = this.camera.localToWorld(elbowLocal.clone());
     const len = elbow.distanceTo(grip);
     // Orient in camera space, then apply the camera's rotation: the arm turns with your view instead of
     // rolling around its own length (a world-space shortest-arc rotation twists as the camera yaws).
-    const dirLocal = this.camera.worldToLocal(grip.clone()).sub(elbowLocal).normalize();
     const quat = this.camera.quaternion.clone().multiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirLocal));
     this.poseForearm(fore, cuff, elbow, grip, quat, len);
     hand.position.copy(grip);
