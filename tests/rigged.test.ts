@@ -73,6 +73,30 @@ function boneY(c: InstanceType<Rigged['RiggedCharacter']>, name: string): number
   return y;
 }
 
+type Rig = InstanceType<Rigged['RiggedCharacter']>;
+
+function bonePos(c: Rig, name: string): THREE.Vector3 {
+  const v = new THREE.Vector3();
+  c.group.traverse((o) => {
+    if (o.name === name && (o as THREE.Bone).isBone) o.getWorldPosition(v);
+  });
+  return v;
+}
+
+/** Steps `secs` at 60 fps from `t0`; returns the time reached. */
+function run(c: Rig, secs: number, t0 = 0): number {
+  const n = Math.round(secs * 60);
+  for (let i = 0; i < n; i++) c.update(1 / 60, t0 + i / 60);
+  return t0 + n / 60;
+}
+
+/** Distance from `p` to the line through `a` and `b`. */
+function lineDistance(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): number {
+  const d = b.clone().sub(a).normalize();
+  const v = p.clone().sub(a);
+  return v.addScaledVector(d, -v.dot(d)).length();
+}
+
 const cases: [string, number, 'normal' | 'hitler'][] = [
   ...[...Array(10).keys()].map((i) => [`normal ${i}`, i, 'normal'] as [string, number, 'normal']),
   ['hitler 0', 0, 'hitler'],
@@ -101,7 +125,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
     const c = build(style, variant);
     expect(c.hitMeshes).toHaveLength(1);
     expect(c.smoker).toBe(variant !== 'hitler' && style % 3 === 0);
-    expect(c.smokeEmit(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3())).toBe(-1);
+    if (!c.smoker) expect(c.smokeEmit(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3())).toBe(-1);
     c.setLabel('Seat', '#fff');
     c.say('hello', 0);
     c.setHighlight(true);
@@ -156,5 +180,171 @@ describe('RiggedCharacter styles and disposal', () => {
     const p = chars.createCharacter(0, 0, 'normal');
     expect(p).toBeInstanceOf(chars.Character);
     p.dispose();
+  });
+});
+
+describe('RiggedCharacter motion', () => {
+  const TARGET = new THREE.Vector3(0.3, 1.25, 2);
+
+  it.each(['gun', 'point'] as const)('extends the right arm toward the target and points the revolver along it (%s)', (mode) => {
+    const c = build(1);
+    c.update(1 / 60, 0);
+    const rest = bonePos(c, 'PalmR');
+    c.setAim(TARGET, mode);
+    const t = run(c, 1);
+    expect(lineDistance(bonePos(c, 'PalmR'), bonePos(c, 'ShoulderR'), TARGET)).toBeLessThan(0.12);
+    const { pos, quat } = c.gunPose();
+    const barrel = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
+    expect(barrel.dot(TARGET.clone().sub(pos).normalize())).toBeGreaterThanOrEqual(0.9);
+    // The top of the revolver stays up.
+    expect(new THREE.Vector3(0, 1, 0).applyQuaternion(quat).y).toBeGreaterThan(0.8);
+    c.setAim(null);
+    run(c, 1.5, t);
+    c.update(1 / 60, 0);
+    expect(bonePos(c, 'PalmR').distanceTo(rest)).toBeLessThan(0.03);
+  });
+
+  it('kicks the aim arm up on recoil and settles back', () => {
+    const c = build(1);
+    c.setAim(TARGET);
+    const t = run(c, 1.5);
+    const dirY = (q: THREE.Quaternion) => new THREE.Vector3(0, 0, -1).applyQuaternion(q).y;
+    const level = dirY(c.gunPose().quat);
+    c.recoil();
+    c.update(1 / 60, t);
+    expect(dirY(c.gunPose().quat)).toBeGreaterThan(level + 0.2);
+    run(c, 0.5, t);
+    expect(dirY(c.gunPose().quat)).toBeCloseTo(level, 1);
+  });
+
+  it('raises both hands above the head when aimed at, and lowers them again', () => {
+    const c = build(1);
+    c.update(1 / 60, 0);
+    const restL = bonePos(c, 'PalmL');
+    const restR = bonePos(c, 'PalmR');
+    c.setHandsUp(true);
+    const t = run(c, 1);
+    const head = bonePos(c, 'Head').y;
+    expect(bonePos(c, 'PalmL').y).toBeGreaterThan(head - 0.05);
+    expect(bonePos(c, 'PalmR').y).toBeGreaterThan(head - 0.05);
+    // Palms face forward.
+    const palm = c.group.getObjectByName('PalmL')!.getWorldQuaternion(new THREE.Quaternion());
+    expect(new THREE.Vector3(0, 0, -1).applyQuaternion(palm).z).toBeGreaterThan(0.7);
+    c.setHandsUp(false);
+    run(c, 1.5, t);
+    c.update(1 / 60, 0);
+    expect(bonePos(c, 'PalmL').distanceTo(restL)).toBeLessThan(0.03);
+    expect(bonePos(c, 'PalmR').distanceTo(restR)).toBeLessThan(0.03);
+  });
+
+  it('smokers lift the cigarette to the mouth on a drag and lower it again', () => {
+    const c = build(0);
+    c.update(1 / 60, 0);
+    const rest = bonePos(c, 'PalmL');
+    const tip = new THREE.Vector3();
+    const mouth = new THREE.Vector3();
+    const dir = new THREE.Vector3();
+    expect(c.smokeEmit(tip, mouth, dir)).toBe(0);
+    c.startDrag();
+    // Peak: the arm has arrived and holds.
+    const t = run(c, 1.1);
+    expect(c.smokeEmit(tip, mouth, dir)).toBeGreaterThanOrEqual(0);
+    expect(tip.distanceTo(mouth)).toBeLessThan(0.1);
+    expect(dir.z).toBeGreaterThan(0.8);
+    expect(bonePos(c, 'PalmL').distanceTo(rest)).toBeGreaterThan(0.3);
+    // The exhale shows up while the arm is lowering, then the hand is back.
+    let exhaled = 0;
+    let now = t;
+    for (let i = 0; i < 150; i++, now += 1 / 60) {
+      c.update(1 / 60, now);
+      exhaled = Math.max(exhaled, c.smokeEmit(tip, mouth, dir));
+    }
+    expect(exhaled).toBeGreaterThan(0.5);
+    c.update(1 / 60, 0);
+    expect(bonePos(c, 'PalmL').distanceTo(rest)).toBeLessThan(0.03);
+  });
+
+  it('smokeEmit has nothing to emit for non-smokers, the dead and raised hands', () => {
+    const emit = (c: Rig) => c.smokeEmit(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3());
+    const other = build(1);
+    run(other, 0.2);
+    expect(emit(other)).toBe(-1);
+    const dead = build(0);
+    dead.dead = true;
+    run(dead, 0.2);
+    expect(emit(dead)).toBe(-1);
+    const up = build(0);
+    up.setHandsUp(true);
+    run(up, 1);
+    expect(emit(up)).toBe(-1);
+    up.setHandsUp(false);
+    run(up, 1.5, 1);
+    expect(emit(up)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('the cigarette hides while the hands are up', () => {
+    const c = build(0);
+    expect(measure(c).visible).toBe(3);
+    c.setHandsUp(true);
+    run(c, 1);
+    expect(measure(c).visible).toBe(2);
+  });
+
+  it('dies into a slump, and a patron that is already dead starts in it', () => {
+    const alive = build(1);
+    alive.update(1 / 60, 0);
+    const aliveY = bonePos(alive, 'Head').y;
+    const shot = build(1);
+    shot.die();
+    run(shot, 1.4 + 0.2);
+    const shotY = bonePos(shot, 'Head').y;
+    expect(shotY).toBeLessThan(aliveY - 0.1);
+    const snapped = build(1);
+    snapped.dead = true;
+    snapped.update(1 / 60, 0);
+    expect(Math.abs(bonePos(snapped, 'Head').y - shotY)).toBeLessThan(0.02);
+  });
+
+  it('tips the chair while dying', () => {
+    const chair = new THREE.Object3D();
+    const c = build(1);
+    c.chair = chair;
+    c.update(1 / 60, 0);
+    expect(chair.rotation.x).toBe(0);
+    c.die();
+    run(c, 0.2, 1);
+    expect(chair.rotation.x).toBeGreaterThan(0.1);
+  });
+
+  it('turns the head toward what it looks at', () => {
+    const c = build(1);
+    const forward = () => new THREE.Vector3(0, 0, 1).applyQuaternion(c.group.getObjectByName('Head')!.getWorldQuaternion(new THREE.Quaternion()));
+    c.lookAt(new THREE.Vector3(2, 1.4, 1)); // the patron's left is +x
+    run(c, 1.5);
+    expect(forward().x).toBeGreaterThan(0.5);
+    c.lookAt(new THREE.Vector3(-2, 1.4, 1));
+    run(c, 1.5, 2);
+    expect(forward().x).toBeLessThan(-0.5);
+    c.lookAt(new THREE.Vector3(0, 3, 1)); // above: the head tips up
+    run(c, 1.5, 4);
+    expect(forward().y).toBeGreaterThan(0.2);
+  });
+
+  it('reactions move the head and the fist reaction lifts the right hand', () => {
+    const c = build(1);
+    c.update(1 / 60, 0);
+    const rest = bonePos(c, 'PalmR');
+    c.react('fist');
+    run(c, 0.3);
+    expect(bonePos(c, 'PalmR').y).toBeGreaterThan(rest.y + 0.05);
+    const s = build(1);
+    const forwardX = () => new THREE.Vector3(0, 0, 1).applyQuaternion(s.group.getObjectByName('Head')!.getWorldQuaternion(new THREE.Quaternion())).x;
+    s.react('shake');
+    let widest = 0;
+    for (let i = 0; i < 60; i++) {
+      s.update(1 / 60, i / 60);
+      widest = Math.max(widest, Math.abs(forwardX()));
+    }
+    expect(widest).toBeGreaterThan(0.15);
   });
 });
