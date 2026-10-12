@@ -5,6 +5,7 @@ import type { GameView, PlayerView } from '../shared/view';
 import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
 import { portraitUrl, sealUrl } from './art';
 import { isMuted, setMuted } from './audio';
+import { nearBottom } from './chatscroll';
 import { ENACT_BANNER_MS, enactBanner } from './enact';
 import { loadRecord, recordGame, recordLine, saveRecord } from './record';
 import { REASONS, VICTORY_MS, victoryParticles, type VictoryBanner } from './victory';
@@ -205,8 +206,9 @@ export class UI {
 
     $('victory').onclick = () => this.finishVictory();
     window.addEventListener('keydown', (e) => {
-      if (this.victoryDone && (e.key === 'Escape' || e.key === ' ')) {
+      if (this.victoryDone && (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter')) {
         e.preventDefault();
+        e.stopImmediatePropagation();
         this.finishVictory();
       }
     });
@@ -748,6 +750,7 @@ export class UI {
 
   addChat(name: string, text: string, self: boolean) {
     const log = $('chat-log');
+    const stick = nearBottom(log.scrollTop, log.clientHeight, log.scrollHeight);
     const line = document.createElement('div');
     line.className = self ? 'line self' : 'line';
     const who = document.createElement('b');
@@ -755,7 +758,7 @@ export class UI {
     line.append(who, document.createTextNode(text));
     log.appendChild(line);
     while (log.children.length > 40) log.firstElementChild?.remove();
-    log.scrollTop = log.scrollHeight;
+    if (stick) log.scrollTop = log.scrollHeight;
     if (this.room?.stage === 'lobby') {
       const ll = $('lobby-chat');
       const l2 = line.cloneNode(true);

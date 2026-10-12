@@ -380,7 +380,10 @@ input:disabled { opacity: 0.5; }
 .toast.power { border-left-color: #8d65b3; }
 .toast.night { border-left-color: var(--hitler); }
 #chat { position: absolute; left: 14px; bottom: 200px; width: min(340px, calc(100vw - 28px)); display: flex; flex-direction: column; gap: 6px; }
-#chat-log { max-height: 180px; overflow: hidden; display: flex; flex-direction: column; gap: 2px; font-family: var(--font-type); font-size: 14px; color: var(--ink); text-shadow: 0 1px 3px #000; }
+#chat-log { max-height: 180px; overflow-y: auto; overflow-x: hidden; pointer-events: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.25) transparent; display: flex; flex-direction: column; gap: 2px; font-family: var(--font-type); font-size: 14px; color: var(--ink); text-shadow: 0 1px 3px #000; }
+#chat-log::-webkit-scrollbar { width: 6px; }
+#chat-log::-webkit-scrollbar-track { background: transparent; }
+#chat-log::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.25); border-radius: 3px; }
 #chat-log .line b { color: var(--accent); }
 #chat-log .line.self b { color: var(--lib); }
 #chat-input { background: rgba(0, 0, 0, 0.45); color: var(--ink); border: 1px solid var(--glass-edge); font-size: 14px; }

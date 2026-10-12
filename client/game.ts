@@ -118,6 +118,7 @@ export class Game {
   private executeSince = -1;
   private slowmoClock = Infinity;
   private invShown: number | null = null;
+  private invKey: string | null = null;
   private invFlight: { by: number; target: number; until: number } | null = null;
   private speaker: { seat: number; until: number } | null = null;
   /** The President keeps pointing at whoever they just chose for a moment. */
@@ -293,6 +294,11 @@ export class Game {
       if (v.phase !== prevPhase || v.round !== prevRound) {
         if (v.phase !== 'vote') this.myVote = null;
         this.pendingIndex = null;
+        // The card survives the phase its result arrived with, then drops.
+        if (this.invShown !== null && this.invKey !== `${v.phase}:${v.round}`) {
+          this.invShown = null;
+          this.invKey = null;
+        }
       }
       if (v.phase === 'night' && prevPhase !== 'night') this.envelopeOpen = false;
       if (v.phase !== 'night' && prevPhase === 'night') this.envelopeOpen = false;
@@ -419,6 +425,7 @@ export class Game {
     this.pendingIndex = null;
     this.shot = null;
     this.invShown = null;
+    this.invKey = null;
     this.invFlight = null;
     this.pointAt = null;
   }
@@ -720,6 +727,7 @@ export class Game {
         this.invFlight = { by: e.by, target: e.target, until: this.now + 2.6 };
         if (e.by === me) {
           this.invShown = e.target;
+          this.invKey = this.view ? `${this.view.phase}:${this.view.round}` : null;
           const res = v?.yourInvestigations.find((i) => i.target === e.target);
           if (res) this.invCard.setFace(membershipCard(this.name(e.target), res.party));
           this.invCard.mesh.position.copy(this.world.layout.front(e.target));
@@ -956,6 +964,7 @@ export class Game {
         action: false,
         onClick: () => {
           this.invShown = null;
+          this.invKey = null;
           this.refreshInteractables();
         },
       });
