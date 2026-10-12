@@ -4,6 +4,7 @@ import { officialImage, type ArtKey } from './officialart';
 import { rand } from './rand';
 import { drawPortrait } from './portraits';
 import { drawSeal } from './seals';
+import { officialImage } from './officialart';
 
 const DISPLAY = '"Jost", "Futura", "Century Gothic", "Trebuchet MS", sans-serif';
 const MONO = '"Courier Prime", "Courier New", Courier, monospace';
@@ -978,9 +979,41 @@ function titlePlaque(g: CanvasRenderingContext2D, cx: number, y: number, w: numb
   g.strokeRect(cx - w / 2, y, w, h);
 }
 
-/** The central board: liberal track, fascist track with powers, election tracker, inlaid in dark leather. */
+/** Which official fascist board art matches a game's power list (5-6 has peek at slot 3, 7-8 investigates at slot 2, 9-10 at slot 1). */
+export function fascistBoardKey(powers: (string | null)[]): 'board-fascist-56' | 'board-fascist-78' | 'board-fascist-910' {
+  if (powers[0] === 'investigate') return 'board-fascist-910';
+  if (powers[1] === 'investigate') return 'board-fascist-78';
+  return 'board-fascist-56';
+}
+
+/** Both official board images for these powers, or null until they have loaded. */
+export function officialBoard(powers: (string | null)[]): { liberal: ImageBitmap; fascist: ImageBitmap } | null {
+  const liberal = officialImage('board-liberal');
+  const fascist = officialImage(fascistBoardKey(powers));
+  return liberal && fascist ? { liberal, fascist } : null;
+}
+
+/** Official board art heights over widths: the liberal board stacked over a fascist board makes one composite. */
+const LIB_FRAC = 660 / 2018;
+const FAS_FRAC = 673 / 2035;
+/** v where the fascist board starts in the composite. */
+const BOARD_SPLIT = LIB_FRAC / (LIB_FRAC + FAS_FRAC);
+/** Width / height of the composite board (the table mesh and texture share it). */
+export const BOARD_ASPECT = 1 / (LIB_FRAC + FAS_FRAC);
+
+/** The central board: the official art when loaded, else liberal track, fascist track with powers and election tracker inlaid in dark leather. */
 export function boardTexture(powers: (string | null)[]) {
-  return tex(`board-${powers.join(',')}`, 1024, 640, (g, w, h) => {
+  return tex(`board-${powers.join(',')}`, 2048, Math.round(2048 / BOARD_ASPECT), (g, cw, ch) => {
+    const official = officialBoard(powers);
+    if (official) {
+      g.drawImage(official.liberal, 0, 0, cw, ch * BOARD_SPLIT);
+      g.drawImage(official.fascist, 0, ch * BOARD_SPLIT, cw, ch * (1 - BOARD_SPLIT));
+      return;
+    }
+    // The procedural board is laid out on 1024 x 640 and scaled to fill the canvas.
+    const [w, h] = [1024, 640];
+    g.save();
+    g.scale(cw / w, ch / h);
     // Dark leather / walnut ground with grain streaks.
     g.fillStyle = '#2a1a10';
     g.fillRect(0, 0, w, h);
@@ -1075,16 +1108,39 @@ export function boardTexture(powers: (string | null)[]) {
       if (i === 3) centerText(g, '!', 430 + i * 90, 581, `800 22px ${BLOCK}`, COLORS.fascist);
     }
     centerText(g, '3 failed = top policy enacted', 860, 580, `bold 13px ${MONO}`, COLORS.stock);
-    age(g, w, h, 21);
+    g.restore();
+    age(g, cw, ch, 21);
   });
 }
 
-/** Board-space helpers (u,v in 0..1 of the board texture). */
-export const BOARD_SLOTS = {
-  liberal: (i: number) => [(140 + i * 186) / 1024, 172 / 640] as const,
-  fascist: (i: number) => [(125 + i * 155) / 1024, 422 / 640] as const,
-  tracker: (i: number) => [(430 + i * 90) / 1024, 580 / 640] as const,
+type BoardSlots = {
+  liberal: (i: number) => readonly [number, number];
+  fascist: (i: number) => readonly [number, number];
+  tracker: (i: number) => readonly [number, number];
 };
+
+/** Slot centres (u,v in 0..1 of the board texture) on the procedural board. */
+export const BOARD_SLOTS_FALLBACK: BoardSlots = {
+  liberal: (i) => [(140 + i * 186) / 1024, 172 / 640],
+  fascist: (i) => [(125 + i * 155) / 1024, 422 / 640],
+  tracker: (i) => [(430 + i * 90) / 1024, 580 / 640],
+};
+
+const LIB_X = [428, 716.5, 1008, 1298.5, 1591];
+const TRK_X = [697, 894.5, 1092, 1290];
+const FAS_X = [292, 581.5, 872.5, 1165, 1460.5, 1751];
+
+/** Slot centres on the official composite board, measured from the art. */
+export const BOARD_SLOTS_OFFICIAL: BoardSlots = {
+  liberal: (i) => [LIB_X[i] / 2018, (330.5 / 660) * BOARD_SPLIT],
+  fascist: (i) => [FAS_X[i] / 2035, BOARD_SPLIT + (341 / 673) * (1 - BOARD_SPLIT)],
+  tracker: (i) => [TRK_X[i] / 2018, (586.5 / 660) * BOARD_SPLIT],
+};
+
+/** Slot centres matching whichever board art boardTexture(powers) currently draws. */
+export function boardSlots(powers: (string | null)[]): BoardSlots {
+  return officialBoard(powers) ? BOARD_SLOTS_OFFICIAL : BOARD_SLOTS_FALLBACK;
+}
 
 export function textSprite(
   text: string,

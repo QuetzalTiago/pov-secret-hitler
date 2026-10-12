@@ -994,6 +994,12 @@ export class Game {
     });
   }
 
+  /** Resizes and re-seats the tiles and token once the official board art has loaded. */
+  refreshBoardArt() {
+    this.board.refreshArt();
+    if (this.view) this.syncTiles(true);
+  }
+
   private syncTiles(instant: boolean) {
     const place = (tiles: THREE.Mesh[], count: number, kind: 'liberal' | 'fascist', offset: number) => {
       tiles.forEach((t, i) => {
@@ -1005,6 +1011,7 @@ export class Game {
             t.position.copy(slot).add(new THREE.Vector3(0, instant ? 0 : 0.5, 0));
           }
           m.visible = true;
+          m.scale = this.board.tileScale;
           m.set(slot, new THREE.Quaternion(), instant ? 50 : 6);
         } else {
           m.visible = false;

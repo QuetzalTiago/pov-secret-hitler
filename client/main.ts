@@ -150,7 +150,10 @@ if (/^[A-Z]{4}$/.test(invite)) {
 }
 // Official card and board art: cached canvas textures repaint once it lands; ?art=old keeps the procedural look.
 void loadOfficialArt().then((n) => {
-  if (n) redrawTextures();
+  if (n) {
+    redrawTextures();
+    game.refreshBoardArt();
+  }
 });
 // Models load first so the scene can use them; a slow or failed load must not hold the table up.
 void Promise.race([loadAssets(), new Promise<null>((r) => setTimeout(r, 10_000))])
