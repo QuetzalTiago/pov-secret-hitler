@@ -69,7 +69,7 @@ function lathe(points: [number, number][], segments: number): THREE.BufferGeomet
   );
 }
 
-function cylinderBetween(from: THREE.Vector3, to: THREE.Vector3, rFrom: number, rTo: number, radial: number, open: boolean): THREE.BufferGeometry {
+export function cylinderBetween(from: THREE.Vector3, to: THREE.Vector3, rFrom: number, rTo: number, radial: number, open: boolean): THREE.BufferGeometry {
   const dir = to.clone().sub(from);
   const g = new THREE.CylinderGeometry(rTo, rFrom, dir.length(), radial, 1, open);
   g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(Y_AXIS, dir.normalize()));

@@ -8,6 +8,8 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { disposeObject } from './dispose';
 import { handGeometry } from './hands';
+import { cuffGeometry, pointingFingerGeometry, sleeveGeometry, unitSleeveGeometry } from './ownbody';
+import { cylinderBetween, limbGeometry, mergeParts } from './patron';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
 import { CigaretteSmoke } from './smoke';
 import { ease } from './tween';
@@ -37,6 +39,8 @@ export function glossy<T extends THREE.MeshStandardMaterial>(m: T, intensity = 0
 const EYE_Y = 1.27;
 /** Your own hands read small up close next to the patrons' at a distance; scale them up a little. */
 const OWN_HAND_SCALE = 1.2;
+/** Sleeve radii of your own arms: shoulder, elbow, wrist. */
+const SLEEVE_R = { shoulder: 0.055, elbow: 0.05, wrist: 0.04 };
 /** With a free cursor the view turns toward it: yaw/pitch (rad) at the screen edge, around this resting pitch. */
 const FOLLOW_YAW = 1.05;
 const FOLLOW_PITCH = 0.32;
@@ -119,15 +123,6 @@ export class Mover {
   }
 }
 
-/** A box spanning two points (slightly overlapping the joints so limbs never show gaps). */
-export function boxLimb(a: THREE.Vector3, b: THREE.Vector3, w: number, d: number, mat: THREE.Material): THREE.Mesh {
-  const len = a.distanceTo(b) + Math.min(w, d) * 0.8;
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, len, d), mat);
-  m.position.copy(a).add(b).multiplyScalar(0.5);
-  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
-  return m;
-}
-
 export function yawQuat(yaw: number, extraX = 0, extraZ = 0): THREE.Quaternion {
   return new THREE.Quaternion().setFromEuler(new THREE.Euler(extraX, yaw, extraZ, 'YXZ'));
 }
@@ -153,6 +148,8 @@ export class World {
   private chairs = new Map<number, THREE.Group>();
   private ember: THREE.MeshStandardMaterial | null = null;
   private sleeve = new THREE.MeshStandardMaterial({ color: 0x2a2a33, roughness: 0.8 });
+  /** Shirt cuffs at the end of your sleeves (shared by every arm mesh). */
+  private cuff = new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.8 });
   private armband: THREE.Mesh | null = null;
   private hitlerOutfit = false;
   private smoke: { s: THREE.Sprite; v: THREE.Vector3; spin: number }[] = [];
@@ -542,7 +539,7 @@ export class World {
     const count = Math.max(n, 5);
     if (this.layout.n === count && this.layout.me === me && this.tableGroup.children.length) return;
     this.layout = new Layout(count, me);
-    disposeObject(this.tableGroup, { keep: [this.sleeve] });
+    disposeObject(this.tableGroup, { keep: [this.sleeve, this.cuff] });
     this.tableGroup.clear();
     this.chairs.clear();
     const L = this.layout;
@@ -602,11 +599,12 @@ export class World {
       const shoulder = new THREE.Vector3(side * 0.24, 1.0, L.rz + 0.42);
       const elbow = new THREE.Vector3(side * 0.44, 0.83, L.rz + 0.2);
       const wrist = new THREE.Vector3(side * 0.4, TABLE_Y + 0.03, L.rz - 0.07);
-      const upper = boxLimb(shoulder, elbow, 0.1, 0.1, sleeve);
-      const fore = boxLimb(elbow, wrist, 0.085, 0.075, sleeve);
+      const sleeveMesh = new THREE.Mesh(mergeParts([limbGeometry(shoulder, elbow, SLEEVE_R.shoulder, SLEEVE_R.elbow), sleeveGeometry(elbow, wrist, SLEEVE_R.elbow, SLEEVE_R.wrist)]), sleeve);
+      const cuff = new THREE.Mesh(cuffGeometry(wrist, wrist.clone().sub(elbow), SLEEVE_R.wrist * 0.95), this.cuff);
       if (side === -1) {
-        // Armband for when you are Hitler (hidden otherwise).
-        const band = boxLimb(elbow.clone().lerp(wrist, 0.25), elbow.clone().lerp(wrist, 0.4), 0.095, 0.085, new THREE.MeshStandardMaterial({ color: 0xa01818, roughness: 0.5 }));
+        // Armband for when you are Hitler (hidden otherwise): a ring around the forearm.
+        const bandR = SLEEVE_R.elbow + (SLEEVE_R.wrist - SLEEVE_R.elbow) * 0.33 + 0.006;
+        const band = new THREE.Mesh(cylinderBetween(elbow.clone().lerp(wrist, 0.25), elbow.clone().lerp(wrist, 0.4), bandR, bandR, 20, true), new THREE.MeshStandardMaterial({ color: 0xa01818, roughness: 0.5, side: THREE.DoubleSide }));
         band.visible = this.hitlerOutfit;
         this.armband = band;
         this.tableGroup.add(band);
@@ -617,12 +615,12 @@ export class World {
       hand.scale.setScalar(OWN_HAND_SCALE);
       hand.position.copy(wrist).addScaledVector(dir, 0.05).setY(TABLE_Y + 0.02 * OWN_HAND_SCALE); // palm bottom on the table
       hand.rotation.y = Math.atan2(dir.x, dir.z);
-      for (const m of [upper, fore, hand]) {
+      for (const m of [sleeveMesh, cuff, hand]) {
         m.castShadow = true;
         this.tableGroup.add(m);
       }
-      if (side === 1) this.restRightArm = [upper, fore, hand]; // your right (+X): the gun hand
-      else this.restLeftArm = [upper, fore, hand];
+      if (side === 1) this.restRightArm = [sleeveMesh, cuff, hand]; // your right (+X): the gun hand
+      else this.restLeftArm = [sleeveMesh, cuff, hand];
     }
     this.camera.position.copy(L.eye());
   }
@@ -631,7 +629,7 @@ export class World {
   private restLeftArm: THREE.Mesh[] = [];
   private handsUpTarget = 0;
   private handsUpAmount = 0;
-  private handsUp: { fore: THREE.Mesh; hand: THREE.Mesh; side: 1 | -1 }[] | null = null;
+  private handsUp: { fore: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Mesh; side: 1 | -1 }[] | null = null;
   private readonly hu = {
     elbow: new THREE.Vector3(),
     grip: new THREE.Vector3(),
@@ -643,7 +641,21 @@ export class World {
     // Flat hand (fingers +Z, palm down) -> fingers up, palm facing away from the camera.
     handQ: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)),
   };
-  private ownArm: { fore: THREE.Mesh; hand: THREE.Mesh; finger: THREE.Mesh } | null = null;
+  private ownArm: { fore: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Mesh; finger: THREE.Mesh } | null = null;
+  /** Forearm sleeve (y 0..1 from the elbow, stretched to length) and its wrist cuff, shared by the raised arms. */
+  private raisedArm(): { fore: THREE.Mesh; cuff: THREE.Mesh } {
+    const fore = new THREE.Mesh(unitSleeveGeometry(SLEEVE_R.elbow, SLEEVE_R.wrist), this.sleeve);
+    const cuff = new THREE.Mesh(cuffGeometry(new THREE.Vector3(), new THREE.Vector3(0, 1, 0), SLEEVE_R.wrist * 0.95), this.cuff);
+    return { fore, cuff };
+  }
+  /** Places the forearm from `elbow` to `grip` (world); `quat` is the arm's orientation, `len` its length. */
+  private poseForearm(fore: THREE.Mesh, cuff: THREE.Mesh, elbow: THREE.Vector3, grip: THREE.Vector3, quat: THREE.Quaternion, len: number) {
+    fore.position.copy(elbow);
+    fore.quaternion.copy(quat);
+    fore.scale.set(1, len, 1);
+    cuff.position.copy(grip);
+    cuff.quaternion.copy(quat);
+  }
 
   /**
    * Raises your right arm from below the view: onto the revolver's grip (`gun`), or pointing at a
@@ -652,20 +664,20 @@ export class World {
   setOwnArm(pose: { gun: THREE.Object3D } | { point: THREE.Vector3 } | null) {
     if (!this.ownArm) {
       const skin = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
-      const fore = new THREE.Mesh(new THREE.BoxGeometry(0.085, 1, 0.08), this.sleeve);
+      const { fore, cuff } = this.raisedArm();
       const handGeo = handGeometry('fist', -1); // a right fist, knuckles at +Z; turned to look down -Z
       handGeo.rotateY(Math.PI);
       const hand = new THREE.Mesh(handGeo, skin);
       hand.scale.setScalar(OWN_HAND_SCALE); // the finger is a child, so it scales along
-      const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.011, 0.06, 2, 6).rotateX(Math.PI / 2), skin);
+      const finger = new THREE.Mesh(pointingFingerGeometry(), skin);
       finger.position.set(0, 0.02, -0.08); // the hand looks down -Z, so the finger sticks out in front
       hand.add(finger);
-      fore.visible = hand.visible = false;
-      this.scene.add(fore, hand);
-      this.ownArm = { fore, hand, finger };
+      fore.visible = cuff.visible = hand.visible = false;
+      this.scene.add(fore, cuff, hand);
+      this.ownArm = { fore, cuff, hand, finger };
     }
-    const { fore, hand, finger } = this.ownArm;
-    fore.visible = hand.visible = !!pose;
+    const { fore, cuff, hand, finger } = this.ownArm;
+    fore.visible = cuff.visible = hand.visible = !!pose;
     for (const m of this.restRightArm) m.visible = !pose;
     if (!pose) return;
     let grip: THREE.Vector3;
@@ -685,12 +697,11 @@ export class World {
     const elbowLocal = new THREE.Vector3(0.34, -0.5, 0.05);
     const elbow = this.camera.localToWorld(elbowLocal.clone());
     const len = elbow.distanceTo(grip);
-    fore.position.copy(elbow).add(grip).multiplyScalar(0.5);
     // Orient in camera space, then apply the camera's rotation: the arm turns with your view instead of
     // rolling around its own length (a world-space shortest-arc rotation twists as the camera yaws).
     const dirLocal = this.camera.worldToLocal(grip.clone()).sub(elbowLocal).normalize();
-    fore.quaternion.copy(this.camera.quaternion).multiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirLocal));
-    fore.scale.set(1, len + 0.04, 1);
+    const quat = this.camera.quaternion.clone().multiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirLocal));
+    this.poseForearm(fore, cuff, elbow, grip, quat, len);
     hand.position.copy(grip);
   }
 
@@ -705,7 +716,7 @@ export class World {
     const up = this.handsUpAmount > 0.02;
     if (up) for (const m of this.restRightArm) m.visible = false;
     for (const m of this.restLeftArm) m.visible = !up;
-    if (this.handsUp) for (const a of this.handsUp) a.fore.visible = a.hand.visible = up;
+    if (this.handsUp) for (const a of this.handsUp) a.fore.visible = a.cuff.visible = a.hand.visible = up;
   }
 
   private updateOwnHandsUp(dt: number) {
@@ -713,11 +724,11 @@ export class World {
     if (this.handsUpAmount > 0.02 && !this.handsUp) {
       const skin = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
       this.handsUp = ([-1, 1] as const).map((side) => {
-        const fore = new THREE.Mesh(new THREE.BoxGeometry(0.085, 1, 0.08), this.sleeve);
+        const { fore, cuff } = this.raisedArm();
         const hand = new THREE.Mesh(handGeometry('flat', -side as 1 | -1), skin); // thumb toward the midline once turned palm-out
         hand.scale.setScalar(OWN_HAND_SCALE);
-        this.scene.add(fore, hand);
-        return { fore, hand, side };
+        this.scene.add(fore, cuff, hand);
+        return { fore, cuff, hand, side };
       });
     }
     this.applyHandsUpVisibility();
@@ -726,18 +737,17 @@ export class World {
     const a = this.handsUpAmount;
     const e = a * a * (3 - 2 * a);
     this.camera.updateMatrixWorld();
-    for (const { fore, hand, side } of this.handsUp) {
+    for (const { fore, cuff, hand, side } of this.handsUp) {
       // Camera space; lowered, both joints sit below the view.
       elbow.set(side * 0.32, -1.0 + 0.45 * e, -0.3);
       grip.set(side * 0.26, -1.0 + 0.82 * e, -0.5);
       elbowW.copy(elbow).applyMatrix4(this.camera.matrixWorld);
       gripW.copy(grip).applyMatrix4(this.camera.matrixWorld);
-      fore.position.copy(elbowW).add(gripW).multiplyScalar(0.5);
       // As setOwnArm: orient in camera space, then apply the camera rotation so the arm turns with your view.
       dir.copy(grip).sub(elbow);
       const len = dir.length();
-      fore.quaternion.copy(this.camera.quaternion).multiply(q.setFromUnitVectors(up, dir.divideScalar(len)));
-      fore.scale.set(1, len + 0.04, 1);
+      q.setFromUnitVectors(up, dir.divideScalar(len)).premultiply(this.camera.quaternion);
+      this.poseForearm(fore, cuff, elbowW, gripW, q, len);
       hand.position.copy(gripW);
       hand.quaternion.copy(this.camera.quaternion).multiply(handQ);
     }
