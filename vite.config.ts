@@ -7,8 +7,8 @@ export default defineConfig({
     outDir: '../dist/client',
     emptyOutDir: true,
     chunkSizeWarningLimit: 1200,
-    // Models are fetched by the loaders, and the CSP's connect-src blocks data: URLs: never inline them.
-    assetsInlineLimit: (file) => (/\.(glb|hdr|webp)$/.test(file) ? false : undefined),
+    // Models are fetched by the loaders, and the CSP blocks data: URLs for fetches and fonts: never inline them.
+    assetsInlineLimit: (file) => (/\.(glb|hdr|webp|woff2)$/.test(file) ? false : undefined),
   },
   server: {
     host: '127.0.0.1',

@@ -5,6 +5,8 @@ const DISPLAY = '"Jost", "Futura", "Century Gothic", "Trebuchet MS", sans-serif'
 const MONO = '"Courier Prime", "Courier New", Courier, monospace';
 /** Blackletter for period headings (sign, posters, card backs); never for small or game-critical text. */
 const BLACK = '"UnifrakturMaguntia", "Old English Text MT", "Times New Roman", serif';
+/** Blocky condensed display face for headings, ballots and card titles. */
+export const BLOCK = '"Big Shoulders Display", "Jost", "Futura", "Arial Narrow", sans-serif';
 const cache = new Map<string, THREE.CanvasTexture>();
 const redraws = new WeakMap<THREE.CanvasTexture, () => void>();
 const owned = new WeakSet<THREE.Texture>();

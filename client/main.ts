@@ -13,6 +13,14 @@ import { UI } from './ui';
 
 // Canvas textures drawn before the webfonts arrived used the fallback font: redraw them once fonts land.
 if ('fonts' in document) document.fonts.addEventListener('loadingdone', () => redrawTextures());
+// Canvas text never triggers a font load by itself, so request the faces textures.ts draws with.
+if (document.fonts) {
+  const faces = ['800 48px "Big Shoulders Display"', '800 48px "Jost"', '400 48px "Courier Prime"', '400 48px "UnifrakturMaguntia"'];
+  void Promise.all(faces.map((f) => document.fonts.load(f)))
+    .then(() => redrawTextures())
+    // A failed load just leaves the fallback fonts on the textures.
+    .catch(() => {});
+}
 
 interface Session {
   code: string;
