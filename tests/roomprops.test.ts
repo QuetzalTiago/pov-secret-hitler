@@ -60,6 +60,17 @@ describe('buildBackBar', () => {
     expect(drawn.length).toBeLessThanOrEqual(4);
   });
 
+  it('has no self-lit bottles', () => {
+    for (const m of meshes(buildBackBar(props))) {
+      const mat = m.material as THREE.MeshStandardMaterial;
+      expect(mat.emissive.getHex() === 0 || mat.emissiveIntensity === 0).toBe(true);
+      expect(mat.emissiveMap).toBeNull();
+    }
+    // The source GLB material is left alone.
+    const source = meshes(props.bottle_old).map((m) => m.material as THREE.MeshStandardMaterial);
+    expect(source.some((s) => s.emissiveMap)).toBe(true);
+  });
+
   it('sits on the shelves and the counter, glass is transparent without depth writes', () => {
     const bar = buildBackBar(props);
     const b = bounds(bar);
@@ -136,6 +147,17 @@ describe('stoolModel', () => {
     const stool = stoolModel(props);
     expect(meshes(stool)).toHaveLength(1);
     expect(Math.abs(bounds(stool).max.y - 0.78)).toBeLessThan(1e-3);
+  });
+
+  it('is tinted dark, not white', () => {
+    const mat = meshes(stoolModel(props))[0].material as THREE.MeshStandardMaterial;
+    expect(mat.map).toBeTruthy();
+    const source = meshes(props.stool_wood).map((m) => m.material);
+    expect(source).not.toContain(mat);
+    const { r, g, b } = mat.color;
+    expect(0.2126 * r + 0.7152 * g + 0.0722 * b).toBeLessThanOrEqual(0.4);
+    // The shared GLB material is left alone.
+    for (const s of source as THREE.MeshStandardMaterial[]) expect(s.color.getHex()).not.toBe(mat.color.getHex());
   });
 });
 

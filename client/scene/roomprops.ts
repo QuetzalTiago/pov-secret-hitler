@@ -105,21 +105,25 @@ function group(name: string, meshes: THREE.Mesh[], castShadow: boolean): THREE.G
   return g;
 }
 
-/** Dark walnut multiplier: the chair texture is mostly white paint, which this turns into stained brown wood. */
-const CHAIR_STAIN = 0x5a3a26;
+/** Dark walnut multiplier: the chair and stool textures are mostly white paint, which this turns into stained brown wood. */
+const WOOD_STAIN = 0x5a3a26;
 
-/** Dining chair as one mesh, 0.96 m tall, backrest on local +Z (like the procedural chair it replaces), stained dark. */
-export function chairModel(props: Props): THREE.Group {
-  const meshes = mergeProp(normalizeProp(props.chair_wood, CHAIR_HEIGHT));
+function stain(meshes: THREE.Mesh[]): void {
   // Own material: the GLB's is shared with the source scene.
   for (const m of meshes) {
     const mat = (m.material as THREE.MeshStandardMaterial).clone();
     if (mat.map) {
-      mat.color.setHex(CHAIR_STAIN);
+      mat.color.setHex(WOOD_STAIN);
       mat.envMapIntensity = 0.7;
     }
     m.material = mat;
   }
+}
+
+/** Dining chair as one mesh, 0.96 m tall, backrest on local +Z (like the procedural chair it replaces), stained dark. */
+export function chairModel(props: Props): THREE.Group {
+  const meshes = mergeProp(normalizeProp(props.chair_wood, CHAIR_HEIGHT));
+  stain(meshes);
   // Backrest side: where the vertices in the top 40% sit along z.
   let sumZ = 0;
   for (const m of meshes) {
@@ -180,9 +184,11 @@ export function chairSeat(chair: THREE.Object3D): { top: number; front: number; 
   return { top: sumY / sumA, front, back };
 }
 
-/** Bar stool as one mesh with the seat at 0.78 m. */
+/** Bar stool as one mesh with the seat at 0.78 m, stained dark. */
 export function stoolModel(props: Props): THREE.Group {
-  return group('stool', mergeProp(normalizeProp(props.stool_wood, STOOL_HEIGHT)), true);
+  const meshes = mergeProp(normalizeProp(props.stool_wood, STOOL_HEIGHT));
+  stain(meshes);
+  return group('stool', meshes, true);
 }
 
 /** Pendant lamp (feet = lowest point of the shade) with an emissive glass instead of a transmissive one. */
@@ -213,12 +219,29 @@ export function buildBackBar(props: Props): THREE.Group {
   const kinds = BOTTLES.filter((k) => props[k]);
   const bottles = new THREE.Group();
   let count = 0;
+  // The old bottle's GLB glows white through its emissive map. One shared unlit clone keeps them all in one merged mesh.
+  let unlit: THREE.MeshStandardMaterial | undefined;
+  const unlitOld = (src: THREE.Material) => {
+    if (!unlit) {
+      unlit = (src as THREE.MeshStandardMaterial).clone();
+      unlit.emissive.setHex(0x000000);
+      unlit.emissiveMap = null;
+      unlit.emissiveIntensity = 0;
+    }
+    return unlit;
+  };
   for (let row = 0; row < 3; row++) {
     for (let b = 0; b < 22; b++) {
       if ((b * 7 + row * 3) % 5 === 0) continue;
       const kind = kinds[(b + row * 2) % kinds.length];
       const h = 0.22 + ((b * 13 + row) % 5) * 0.04;
       const bottle = normalizeProp(props[kind], h);
+      if (kind === 'bottle_old') {
+        bottle.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) m.material = unlitOld(m.material as THREE.Material);
+        });
+      }
       // The old flask is wide: keep its broad side to the room; round bottles can face any way.
       bottle.rotation.y = kind === 'bottle_old' ? ((b + row) % 3 - 1) * 0.25 : ((b * 37 + row * 11) % 7) * 0.9;
       bottle.position.set(-2.6 + b * 0.25, 1.475 + row * 0.55, -4.85);
