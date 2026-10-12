@@ -8,15 +8,16 @@ export const THINK_SECONDS: Record<Phase, [number, number]> = {
 };
 
 // Matches client/game.ts animations: vote reveal `until: now + 4.5`, nomination point 2.5 s, shot 2.8 s,
-// enactment banner 0.65-3.15 s after the event plus ~1 s of breathing room.
+// enactment banner 0.65-3.15 s after the event plus ~1 s of breathing room. A chaos enactment follows the whole
+// chaos beat (client/beats.ts): vote reveal 4.5 s + sting 1.4 s + banner 3.15 s + ~1 s of air.
 /** Seconds the clients need to finish animating an event, at the default botDelayMs (1400 ms = 1 unit). */
-export const SETTLE_SECONDS = { votes: 4.5, nominated: 2.5, executed: 3, enacted: 4, other: 1 };
+export const SETTLE_SECONDS = { votes: 4.5, nominated: 2.5, executed: 3, enacted: 4, chaos: 10.1, other: 1 };
 
 /** How long bots wait for the animations of these events to settle, scaled by unitMs/1400; 0 for no events. */
 export function settleMs(events: GameEvent[], unitMs: number = config.botDelayMs): number {
   let seconds = 0;
   for (const e of events) {
-    const s = e.k === 'votes' || e.k === 'nominated' || e.k === 'executed' || e.k === 'enacted' ? SETTLE_SECONDS[e.k] : SETTLE_SECONDS.other;
+    const s = e.k === 'enacted' && e.chaos ? SETTLE_SECONDS.chaos : e.k === 'votes' || e.k === 'nominated' || e.k === 'executed' || e.k === 'enacted' ? SETTLE_SECONDS[e.k] : SETTLE_SECONDS.other;
     seconds = Math.max(seconds, s);
   }
   return (seconds * 1000 * unitMs) / 1400;

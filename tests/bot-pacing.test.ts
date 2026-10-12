@@ -5,6 +5,7 @@ import { THINK_SECONDS, SETTLE_SECONDS, botTempo, botThinkMs, choiceFactor, sett
 import { legalActions, pendingActors } from '../shared/engine';
 import { PHASES, type GameEvent } from '../shared/types';
 import type { ServerMsg } from '../shared/protocol';
+import { scheduleBatch } from '../client/beats';
 
 const TEMPO_MIN = 0.75;
 const TEMPO_MAX = 1.35;
@@ -163,6 +164,23 @@ describe('settleMs', () => {
     expect(settleMs([enacted, { k: 'nightStart' }], 1400)).toBe(4000);
     expect(settleMs([], 1400)).toBe(0);
     expect(settleMs([votes], 700)).toBe(2250);
+  });
+
+  it('settles a chaos enactment for the longer chaos beat', () => {
+    const chaos: GameEvent = { k: 'enacted', policy: 'F', chaos: true };
+    expect(settleMs([chaos], 1400)).toBe(SETTLE_SECONDS.chaos * 1000);
+    expect(settleMs([chaos], 700)).toBe(SETTLE_SECONDS.chaos * 500);
+  });
+
+  it('covers the whole client chaos beat plus a second of air', () => {
+    const batch: GameEvent[] = [
+      { k: 'votes', votes: [false, false, false, false, false], passed: false },
+      { k: 'tracker', value: 3 },
+      { k: 'tracker', value: 0 },
+      { k: 'enacted', policy: 'F', chaos: true },
+      { k: 'newPresident', seat: 1, special: false },
+    ];
+    expect(SETTLE_SECONDS.chaos * 1000).toBeGreaterThanOrEqual(scheduleBatch(batch, { chancellor: null, fascistBefore: 0 }).endsAt + 1000);
   });
 });
 
