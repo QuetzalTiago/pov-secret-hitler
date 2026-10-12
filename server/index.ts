@@ -43,7 +43,9 @@ const CSP = [
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
-  "connect-src 'self' ws: wss:",
+  // blob:/data: because three's GLTFLoader decodes embedded textures with fetch(blob URL) in Chrome; without
+  // them every GLB texture fails and the models render plain white.
+  "connect-src 'self' ws: wss: blob: data:",
   "object-src 'none'",
   "base-uri 'none'",
   "frame-ancestors 'none'",
