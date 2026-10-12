@@ -51,3 +51,8 @@ Decisions made autonomously while building, with the reasoning.
 23. **A bot only expects an answer when it asked one person a question.** Naming somebody is not a question,
     and a question to the whole table is nobody's to answer. Sulking about unanswered statements was the
     single most irritating behaviour in the first version.
+24. **Illustration and graphic design follow Mackenzie Schubert's Secret Hitler art, on dark.** Flat inks, blocky
+    type, per-party seals, photograph-like portraits; the guide is `docs/design/art-direction.md`. The UI stays
+    dark: no bright or white large fills, large-fill luminance <= 0.45 (pinned by
+    `tests/textures-palette.test.ts`), parchment only on `#prompt.mine` and `#confirm-card`. We take his
+    principles and never trace or copy his artwork.
