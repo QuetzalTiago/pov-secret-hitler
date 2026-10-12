@@ -5,7 +5,6 @@
   --glass-strong: rgba(16, 11, 9, 0.9);
   --glass-edge: rgba(255, 220, 170, 0.12);
   --ink: #f4ece0;
-  --ink-deep: var(--ink);
   --ink-dim: #b8aa95;
   --ink-faint: #7d7264;
   --accent: #c9a24a;
@@ -13,9 +12,6 @@
   --parch: #cdb68f;
   --parch-ink: #2a2118;
   --parch-dim: #5e4e38;
-  --paper: #1a120e;
-  --paper-alt: #2a1d14;
-  --kraft: #6b5a44;
   --hover: #e0c274;
   --lib: #6f9cc4;
   --lib-deep: #2f4f6f;
@@ -25,8 +21,6 @@
   --ok: #4f9a5c;
   --shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
   --blur: blur(12px) saturate(1.2);
-  --shadow-hard: 0 6px 0 #303030;
-  --shadow-hard-s: 0 3px 0 #303030;
   --ease-pop: cubic-bezier(0.5, 0.25, 0.75, 1.5);
 
   --radius-s: 3px;
@@ -348,28 +342,29 @@ input:disabled { opacity: 0.5; }
   color: var(--ink); padding: 4px 10px; border-radius: var(--radius-s); font-size: 14px; font-weight: 700; white-space: nowrap;
 }
 #status { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); background: var(--hitler); color: var(--ink); border: 1px solid var(--glass-edge); padding: 6px 14px; border-radius: var(--radius-s); z-index: 50; }
-#flash { position: fixed; inset: 0; background: #fff3d0; opacity: 0; pointer-events: none; z-index: 15; }
+#flash { position: fixed; inset: 0; background: rgba(255, 190, 110, 1); opacity: 0; pointer-events: none; z-index: 15; }
 #flash.on { animation: flash 0.45s ease-out; }
 @keyframes flash { 0% { opacity: 0.85; } 100% { opacity: 0; } }
-/* policy-enacted ceremony banner: a poster stamp on a paper plaque */
-#enact { position: fixed; inset: 0; z-index: 16; pointer-events: none; display: flex; align-items: center; justify-content: center; opacity: 0; --tint: var(--lib); --tint-ink: var(--lib-deep); }
-#enact.fascist { --tint: var(--fas); --tint-ink: #9c2f1f; }
+/* policy-enacted ceremony banner: a dark glass plaque with a faction glow and a brass rule */
+#enact { position: fixed; inset: 0; z-index: 16; pointer-events: none; display: flex; align-items: center; justify-content: center; opacity: 0; --tint: var(--lib); }
+#enact.fascist { --tint: var(--fas); }
 #enact::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 30%, color-mix(in srgb, var(--tint) 45%, transparent) 100%); }
 #enact.on { animation: enact-fade 2.5s ease-out forwards; }
 #enact .box {
   position: relative; text-align: center; padding: 24px 40px; transform: rotate(-3deg);
-  background: var(--paper) var(--grain); border: 4px solid var(--ink-deep); box-shadow: 0 10px 0 #303030;
+  background: var(--glass-strong); border: 2px solid var(--tint);
+  box-shadow: 0 0 60px color-mix(in srgb, var(--tint) 45%, transparent), inset 0 0 0 6px var(--glass-strong), inset 0 0 0 7px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 #enact.on .box { animation: enact-slam 0.25s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
-#enact-kicker { font-size: clamp(16px, 3.5vw, 32px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4em; margin-right: -0.4em; color: var(--ink-dim); }
-#enact-title { font-family: var(--font-display); font-size: clamp(40px, 9vw, 110px); font-weight: 800; text-transform: uppercase; line-height: 1.05; letter-spacing: 0.12em; margin-right: -0.12em; color: var(--tint-ink); text-shadow: 3px 3px 0 var(--tint); }
+#enact-kicker { font-size: clamp(16px, 3.5vw, 32px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.4em; margin-right: -0.4em; color: var(--accent); }
+#enact-title { font-family: var(--font-display); font-size: clamp(40px, 9vw, 110px); font-weight: 800; text-transform: uppercase; line-height: 1.05; letter-spacing: 0.12em; margin-right: -0.12em; color: var(--ink); text-shadow: 0 0 28px var(--tint), 0 2px 0 rgba(0, 0, 0, 0.6); }
 #enact-sub {
-  display: inline-block; background: var(--ink-deep); color: var(--paper-alt); font-family: var(--font-display); font-size: clamp(18px, 4vw, 40px); font-weight: 800;
+  display: inline-block; background: var(--accent); color: var(--accent-ink); font-family: var(--font-display); font-size: clamp(18px, 4vw, 40px); font-weight: 800;
   padding: 4px 18px 4px calc(18px + 0.5em); letter-spacing: 0.5em;
 }
 #enact-pips { display: flex; justify-content: center; gap: 8px; margin-top: 20px; }
-#enact-pips .pip { width: clamp(18px, 3.5vw, 30px); height: clamp(18px, 3.5vw, 30px); border: 2px solid var(--kraft); border-radius: 2px; background: transparent; }
-#enact-pips .pip.on { background: var(--tint); border-color: var(--ink-deep); }
+#enact-pips .pip { width: clamp(18px, 3.5vw, 30px); height: clamp(18px, 3.5vw, 30px); border: 2px solid rgba(255, 220, 170, 0.25); border-radius: 2px; background: transparent; }
+#enact-pips .pip.on { background: var(--tint); border-color: var(--tint); }
 #enact.on .pip.new { animation: enact-pip 0.4s 0.35s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
 @keyframes enact-fade { 0% { opacity: 0; } 8% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes enact-slam { 0% { transform: scale(1.6) rotate(-3deg); opacity: 0; } 70% { transform: scale(0.95) rotate(-3deg); opacity: 1; } 100% { transform: scale(1) rotate(-3deg); opacity: 1; } }
@@ -383,8 +378,8 @@ input:disabled { opacity: 0.5; }
 #victory.out { animation: victory-out 0.6s ease-in forwards; }
 #victory::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 20%, color-mix(in srgb, var(--tint) 60%, transparent) 100%); }
 #victory .box { position: relative; display: flex; flex-direction: column; align-items: center; gap: clamp(10px, 2vh, 24px); text-align: center; padding: 0 16px; }
-#victory-title { font-family: var(--font-display); font-size: clamp(48px, 11vw, 150px); font-weight: 800; text-transform: uppercase; line-height: 1.05; letter-spacing: 0.1em; color: var(--tint); text-shadow: 0 6px 0 var(--ink-deep), 0 10px 40px #000; animation: victory-slam 0.35s 0.15s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
-#victory-reason { font-size: clamp(16px, 2.6vw, 28px); font-weight: 700; letter-spacing: 0.08em; color: var(--paper); text-shadow: 0 2px 14px #000; animation: victory-rise 0.5s 0.6s ease-out both; }
+#victory-title { font-family: var(--font-display); font-size: clamp(48px, 11vw, 150px); font-weight: 800; text-transform: uppercase; line-height: 1.05; letter-spacing: 0.1em; color: var(--tint); text-shadow: 0 4px 0 rgba(0, 0, 0, 0.6), 0 10px 40px #000; animation: victory-slam 0.35s 0.15s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+#victory-reason { font-size: clamp(16px, 2.6vw, 28px); font-weight: 700; letter-spacing: 0.08em; color: var(--ink); text-shadow: 0 2px 14px #000; animation: victory-rise 0.5s 0.6s ease-out both; }
 #victory-stamp { font-family: var(--font-display); font-size: clamp(28px, 6vw, 72px); font-weight: 800; text-transform: uppercase; letter-spacing: 0.3em; padding: 0.1em 0.3em 0.1em 0.6em; border: 4px solid currentColor; border-radius: 3px; transform: rotate(-6deg); animation: victory-stamp 0.3s 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
 #victory-stamp.victory { color: var(--hover); }
 #victory-stamp.defeat { color: #9a9a9a; }
