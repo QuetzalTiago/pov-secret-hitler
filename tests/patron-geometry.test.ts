@@ -181,12 +181,59 @@ describe('head geometry', () => {
     expect(box.min.y).toBeCloseTo(-box.max.y, 4);
   });
 
-  it('mouth is a small flat capsule', () => {
-    const g = mouthGeometry();
+  it('eyes carry sclera, iris and pupil colours and are mirrored in x', () => {
+    const g = eyesGeometry();
+    const col = g.getAttribute('color');
+    expect(col).toBeDefined();
+    const pos = g.getAttribute('position');
+    let light = 0;
+    let dark = 0;
+    const keys = new Set<string>();
+    for (let i = 0; i < col.count; i++) {
+      const min = Math.min(col.getX(i), col.getY(i), col.getZ(i));
+      const max = Math.max(col.getX(i), col.getY(i), col.getZ(i));
+      if (min > 0.8) light++;
+      if (max < 0.15) dark++;
+      keys.add(`${pos.getX(i).toFixed(5)},${pos.getY(i).toFixed(5)},${pos.getZ(i).toFixed(5)}`);
+    }
+    expect(light).toBeGreaterThan(0);
+    expect(dark).toBeGreaterThan(0);
+    for (let i = 0; i < pos.count; i++) expect(keys.has(`${(-pos.getX(i)).toFixed(5)},${pos.getY(i).toFixed(5)},${pos.getZ(i).toFixed(5)}`)).toBe(true);
+  });
+
+  it('mouth is two lips centred at y 0, wider than tall', () => {
+    const g = mouthGeometry(0xb06a60);
     expectSmoothMesh(g);
-    const { size } = stats(g);
-    expect(size.x).toBeCloseTo(0.07, 2);
-    expect(size.y).toBeLessThan(0.02);
+    const col = g.getAttribute('color');
+    let lip = 0;
+    let inside = 0;
+    for (let i = 0; i < col.count; i++) {
+      if (Math.max(col.getX(i), col.getY(i), col.getZ(i)) < 0.15) inside++;
+      else lip++;
+    }
+    expect(lip).toBeGreaterThan(0);
+    expect(inside).toBeGreaterThan(0);
+    const { size, box } = stats(g);
+    expect(size.x).toBeCloseTo(0.06, 2);
+    expect(size.y).toBeLessThan(0.025);
+    expect(size.x).toBeGreaterThan(size.y * 2);
+    expect((box.min.y + box.max.y) / 2).toBeCloseTo(0, 2);
+  });
+
+  it('hair stops at the hairline: nothing in front of the face below the forehead', () => {
+    const base: FaceDetailOptions = { browTilt: 0, mustache: 'none', beard: false, hair: false, fringe: false };
+    const browVerts = faceDetailGeometry(base).getAttribute('position').count;
+    const g = faceDetailGeometry({ ...base, hair: true });
+    expectSmoothMesh(g);
+    const pos = g.getAttribute('position');
+    expect(pos.count).toBeGreaterThan(browVerts);
+    let top = -Infinity;
+    // The brows come first in the merged geometry; the rest is hair.
+    for (let i = browVerts; i < pos.count; i++) {
+      if (pos.getY(i) < 0.07) expect(pos.getZ(i)).toBeLessThanOrEqual(0.1);
+      top = Math.max(top, pos.getY(i));
+    }
+    expect(top).toBeGreaterThan(0.17);
   });
 
   it('face details grow with the variant options', () => {

@@ -182,11 +182,15 @@ export class Character {
 
     // Head: shaped skull with ears and nose, both eyes in one mesh, the mouth on its own (it scales while talking).
     const headSkin = new THREE.Mesh(headSkinGeometry(), skin);
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0c0806, emissive: 0x221100, roughness: 0.3, flatShading: false });
+    // Vertex-coloured (sclera, iris, pupil); a faint warm emissive keeps the eyes from going black in shadow.
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x110a06, roughness: 0.25, flatShading: false, vertexColors: true });
     const eyes = new THREE.Mesh(eyesGeometry(), eyeMat);
     eyes.position.set(0, 0.03, 0.135);
     this.eyes.push(eyes);
-    const mouth = new THREE.Mesh(mouthGeometry(), dark);
+    const lipHex = new THREE.Color(skinHex).multiply(new THREE.Color(0xc07870)).getHex();
+    const lips = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, flatShading: false, vertexColors: true });
+    this.mats.push(lips);
+    const mouth = new THREE.Mesh(mouthGeometry(lipHex), lips);
     mouth.position.set(0, -0.07, 0.135);
     this.mouth = mouth;
     const hat = hitler ? 'peaked' : HATS[styleIndex % HATS.length];
@@ -649,7 +653,7 @@ export class Character {
 
     // Mouth flaps while the bubble is up (not while it fades out).
     const talking = this.bubble !== null && this.bubbleUntil - now > 1 && !this.dead;
-    const mouthY = talking ? 1 + 3.5 * mouthOpen(t) : 1;
+    const mouthY = talking ? 1 + 1.8 * mouthOpen(t) : 1;
     this.mouth.scale.y += (mouthY - this.mouth.scale.y) * (talking ? 0.6 : k);
 
     // Highlight / death tint.

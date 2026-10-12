@@ -300,42 +300,153 @@ export function cigaretteGeometry(): THREE.BufferGeometry {
 
 // ---- Head (head-local space; the head group sits at y 1.4) ----
 
-/** Skull with a narrower jaw and cheekbones, ears and a shaped nose, all in one geometry. */
+/** A low-poly rounded taper between two points (a small limbGeometry, for face features). */
+function taper(from: THREE.Vector3, to: THREE.Vector3, rFrom: number, rTo: number): THREE.BufferGeometry {
+  const cap = (p: THREE.Vector3, r: number) => new THREE.SphereGeometry(r, 8, 6).translate(p.x, p.y, p.z);
+  return mergeParts([cylinderBetween(from, to, rFrom, rTo, 8, true), cap(from, rFrom), cap(to, rTo)]);
+}
+
+const smoothstep = (a: number, b: number, v: number) => {
+  const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+/** Gaussian bump in the (x, y) plane, 1 at the centre. */
+const blob = (dx: number, dy: number, sx: number, sy: number) => Math.exp(-((dx / sx) ** 2 + (dy / sy) ** 2));
+/** Sideways scale of the head at height y: the jaw narrows below the cheeks. */
+const jawScale = (y: number) => 1 - 0.3 * smoothstep(0, 1, Math.min(1, Math.max(0, (-0.05 - y) / 0.118)));
+
+/** One ear: a C-shaped rim (open towards the face) around a flatter disc, angled back a little. */
+function earGeometry(side: 1 | -1): THREE.BufferGeometry {
+  const gap = 1;
+  // After the Y rotation a torus's local -x (side 1) or +x (side -1) faces forward; open the C there.
+  const open = side === 1 ? Math.PI : 0;
+  const rim = new THREE.TorusGeometry(0.021, 0.0042, 6, 16, Math.PI * 2 - gap);
+  rim.rotateZ(open + gap / 2);
+  rim.scale(0.85, 1.3, 1);
+  rim.rotateY((side * Math.PI) / 2);
+  const g = mergeParts([smooth(rim), ellipsoid(0.005, 0.025, 0.015, side * -0.005, 0, 0, 10, 8)]);
+  g.rotateX(-0.2);
+  g.translate(side * 0.152, -0.005, -0.005);
+  return smooth(g);
+}
+
+/** Skull with brow ridge, eye sockets, cheekbones, a narrower jaw and chin, rimmed ears and a nose bridge, all in one geometry. */
 export function headSkinGeometry(): THREE.BufferGeometry {
-  const skull = new THREE.SphereGeometry(0.15, 32, 24);
+  const skull = new THREE.SphereGeometry(0.15, 40, 28);
   skull.scale(1, 1.12, 1);
   const pos = skull.getAttribute('position');
-  const smoothstep = (a: number, b: number, v: number) => {
-    const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
-    return t * t * (3 - 2 * t);
-  };
   for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
     const y = pos.getY(i);
     const z = pos.getZ(i);
-    const jaw = smoothstep(0, 1, Math.min(1, Math.max(0, (-0.05 - y) / 0.118)));
+    const ax = Math.abs(x);
+    const front = smoothstep(0.05, 0.12, z);
     const cheek = Math.exp(-Math.pow(y / 0.045, 2)) * smoothstep(0, 0.08, z);
-    pos.setX(i, pos.getX(i) * (1 - 0.3 * jaw) * (1 + 0.05 * cheek));
+    // Radial displacement, as a fraction of the radius: flatter face front, brow ridge, sockets, cheekbones, chin.
+    const d =
+      front *
+      (0.03 * smoothstep(0, 0.06, ax) * (1 - smoothstep(0.08, 0.13, ax)) * (1 - smoothstep(0.05, 0.1, y)) +
+        0.04 * blob(0, y - 0.062, 1, 0.014) * Math.exp(-Math.pow(ax / 0.085, 2)) -
+        0.045 * blob(ax - 0.055, y - 0.028, 0.024, 0.018) +
+        0.035 * blob(ax - 0.085, y + 0.01, 0.03, 0.025) +
+        0.05 * blob(x, y + 0.125, 0.03, 0.03));
+    const k = 1 + d;
+    pos.setXYZ(i, x * jawScale(y) * (1 + 0.05 * cheek) * k, y * k, z * k);
   }
-  const parts = [smooth(skull)];
-  for (const side of [-1, 1]) parts.push(ellipsoid(0.012, 0.028, 0.02, side * 0.148, -0.005, -0.005, 10, 8));
-  const nose = new THREE.ConeGeometry(0.024, 0.06, 10);
-  nose.rotateX(Math.PI / 2);
-  nose.scale(0.9, 1, 1);
-  nose.translate(0, -0.005, 0.16);
-  parts.push(nose);
+  const parts = [smooth(skull), earGeometry(-1), earGeometry(1)];
+  // Nose: a bridge ridge from between the eyes down to the tip, then the tip and nostril wings.
+  const bridge = taper(new THREE.Vector3(0, 0.035, 0.138), new THREE.Vector3(0, -0.006, 0.18), 0.007, 0.012);
+  bridge.scale(0.85, 1, 1);
+  parts.push(smooth(bridge));
   parts.push(ellipsoid(0.0145, 0.013, 0.014, 0, -0.012, 0.19, 10, 8));
   for (const side of [-1, 1]) parts.push(ellipsoid(0.01, 0.01, 0.012, side * 0.014, -0.014, 0.178, 8, 6));
   return mergeParts(parts);
 }
 
-/** Both eyes, centred at y 0 (place the mesh at the eye line and blink by scaling its y). */
+const SCLERA = 0xf6f2ec;
+const IRIS = 0x3a2414;
+const PUPIL = 0x050403;
+
+/** Both eyes (sclera, iris, pupil; vertex-coloured), centred at y 0 (place the mesh at the eye line and blink by scaling its y). */
 export function eyesGeometry(): THREE.BufferGeometry {
-  return mergeParts([-1, 1].map((side) => ellipsoid(0.0175, 0.011, 0.009, side * 0.055, 0, 0.012, 12, 8)));
+  const parts: THREE.BufferGeometry[] = [];
+  for (const side of [-1, 1]) {
+    const x = side * 0.055;
+    parts.push(paintGeometry(ellipsoid(0.019, 0.0125, 0.0125, x, 0, 0.002, 12, 8), SCLERA));
+    parts.push(paintGeometry(ellipsoid(0.0078, 0.0078, 0.007, x, 0, 0.0085, 10, 6), IRIS));
+    parts.push(paintGeometry(ellipsoid(0.0036, 0.0036, 0.004, x, 0, 0.0122, 6, 4), PUPIL));
+  }
+  return mergeParts(parts);
 }
 
-/** Rounded flat mouth, centred at the origin (it scales in y while talking). */
-export function mouthGeometry(): THREE.BufferGeometry {
-  return mergeParts([bar(0.07, 0.006, 0, 0, 0, 0.006, 0.7)]);
+const MOUTH_INSIDE = 0x1a0a08;
+
+/** Upper and lower lip (fuller lower, with a cupid's bow) around a dark mouth interior; vertex-coloured, centred at the origin (it scales in y while talking). */
+export function mouthGeometry(lipHex: number): THREE.BufferGeometry {
+  const lips = [bar(0.06, 0.0042, 0, 0, 0.0045, 0.004, 0.9), bar(0.054, 0.0062, 0, 0, -0.0033, 0.005, 0.9)];
+  for (const side of [-1, 1]) lips.push(ellipsoid(0.008, 0.0034, 0.0045, side * 0.0075, 0.0072, 0.0042, 8, 6));
+  return mergeParts([...lips.map((g) => paintGeometry(g, lipHex)), paintGeometry(ellipsoid(0.023, 0.0015, 0.004, 0, 0, 0.001, 10, 6), MOUTH_INSIDE)]);
+}
+
+/** Eyebrow: a rounded taper, thicker at the inner end, tilted per side. */
+function browGeometry(side: number, tilt: number): THREE.BufferGeometry {
+  const g = taper(new THREE.Vector3(-side * 0.03, 0, 0), new THREE.Vector3(side * 0.03, 0, 0), 0.0095, 0.0055);
+  g.scale(1, 1, 0.8);
+  g.rotateZ(side * tilt);
+  g.translate(side * 0.055, 0.065, 0.14);
+  return smooth(g);
+}
+
+/** Hairline height by angle from straight ahead (0 = front, 1 = back of the head): forehead, temples above the ears, down to the nape. */
+const HAIRLINE: [number, number][] = [
+  [0, 0.115],
+  [0.22, 0.1],
+  [0.4, 0.055],
+  [0.5, 0.04],
+  [0.7, -0.03],
+  [1, -0.1],
+];
+
+function hairlineY(a: number): number {
+  for (let i = 1; i < HAIRLINE.length; i++) {
+    const [a0, y0] = HAIRLINE[i - 1];
+    const [a1, y1] = HAIRLINE[i];
+    if (a <= a1) return y0 + ((y1 - y0) * (a - a0)) / (a1 - a0);
+  }
+  return HAIRLINE[HAIRLINE.length - 1][1];
+}
+
+/** Hair: a shell just outside the skull from the crown down to the hairline, tapering onto the skin along its edge. */
+function hairGeometry(): THREE.BufferGeometry {
+  const rings = 10;
+  const cols = 32;
+  const yScale = 1.12;
+  const pos: number[] = [];
+  const index: number[] = [];
+  for (let c = 0; c <= cols; c++) {
+    const theta = (c / cols) * Math.PI * 2; // 0 = straight ahead (+z), increasing towards +x
+    const a = Math.abs(Math.atan2(Math.sin(theta), Math.cos(theta))) / Math.PI;
+    const phiEnd = Math.acos(Math.min(1, hairlineY(a) / (0.157 * yScale)));
+    for (let r = 0; r <= rings; r++) {
+      const t = r / rings;
+      const phi = phiEnd * t;
+      const radius = 0.157 - 0.0055 * smoothstep(0.8, 1, t);
+      const y = radius * yScale * Math.cos(phi);
+      const ring = radius * Math.sin(phi);
+      pos.push(ring * Math.sin(theta) * jawScale(y), y, ring * Math.cos(theta));
+    }
+  }
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rings; r++) {
+      const i = c * (rings + 1) + r;
+      const j = i + rings + 1;
+      index.push(i, i + 1, j, i + 1, j + 1, j);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(index);
+  return smooth(g);
 }
 
 export interface FaceDetailOptions {
@@ -343,16 +454,16 @@ export interface FaceDetailOptions {
   browTilt: number;
   mustache: 'none' | 'wide' | 'toothbrush';
   beard: boolean;
-  /** Hair cap (for the bare-headed patrons). */
+  /** Hair (for the bare-headed patrons). */
   hair: boolean;
   /** Dark fringe swept across the forehead. */
   fringe: boolean;
 }
 
-/** Everything dark on the face: brows, moustache, beard, hair cap, fringe. */
+/** Everything dark on the face: brows, moustache, beard, hair, fringe. */
 export function faceDetailGeometry(opts: FaceDetailOptions): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
-  for (const side of [-1, 1]) parts.push(bar(0.06, 0.007, side * opts.browTilt, side * 0.055, 0.065, 0.14));
+  for (const side of [-1, 1]) parts.push(browGeometry(side, opts.browTilt));
   if (opts.mustache === 'wide') parts.push(bar(0.09, 0.011, 0, 0, -0.042, 0.149));
   if (opts.mustache === 'toothbrush') parts.push(ellipsoid(0.022, 0.0125, 0.01, 0, -0.04, 0.15));
   if (opts.beard) parts.push(ellipsoid(0.085, 0.06, 0.07, 0, -0.105, 0.075, 20, 14));
@@ -363,7 +474,7 @@ export function faceDetailGeometry(opts: FaceDetailOptions): THREE.BufferGeometr
     f.translate(-0.025, 0.085, 0.125);
     parts.push(smooth(f));
   }
-  if (opts.hair) parts.push(new THREE.SphereGeometry(0.158, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2.2).translate(0, 0.03, 0));
+  if (opts.hair) parts.push(hairGeometry());
   return mergeParts(parts);
 }
 
