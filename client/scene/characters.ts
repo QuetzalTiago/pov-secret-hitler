@@ -99,6 +99,8 @@ export interface Patron {
   readonly group: THREE.Group;
   readonly variant: 'normal' | 'hitler';
   readonly smoker: boolean;
+  /** Seated patron is a woman (dress or blouse body): picks the female death scream. */
+  readonly woman: boolean;
   dead: boolean;
   hitMeshes: THREE.Object3D[];
   /** This patron's chair (set by the game each frame). */
@@ -134,6 +136,7 @@ export function createCharacter(seat: number, seed: number, variant: 'normal' | 
 }
 
 export class Character implements Patron {
+  readonly woman = false;
   group = new THREE.Group();
   body = new THREE.Group();
   head = new THREE.Group();

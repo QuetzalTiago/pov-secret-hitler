@@ -176,6 +176,7 @@ function buttocksOf(mesh: THREE.SkinnedMesh, bones: THREE.Bone[]): { minY: numbe
 export class RiggedCharacter implements Patron {
   readonly group = new THREE.Group();
   readonly smoker: boolean;
+  readonly woman: boolean;
   dead = false;
   hitMeshes: THREE.Object3D[];
   chair: THREE.Object3D | null = null;
@@ -271,9 +272,10 @@ export class RiggedCharacter implements Patron {
     const tpl = template ?? getAssets()?.characters[outfit];
     if (!tpl) throw new Error('rigged: assets not loaded');
     this.smoker = isSmoker(seat, variant);
+    this.woman = outfit === 'dress' || outfit === 'blouse';
 
     const root = cloneSkinned(tpl.root);
-    const height = (outfit === 'dress' || outfit === 'blouse' ? HEIGHT_WOMAN : HEIGHT) * look.height;
+    const height = (this.woman ? HEIGHT_WOMAN : HEIGHT) * look.height;
     root.scale.multiplyScalar(height);
     root.position.multiplyScalar(height);
     this.group.add(root);

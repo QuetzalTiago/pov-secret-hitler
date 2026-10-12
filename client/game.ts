@@ -906,7 +906,7 @@ export class Game {
           this.blood.execute(this.bloodShot(e.by, e.target), () => this.chars.get(e.target)?.headWorld(this.bloodHead) ?? null);
         }
         voice.gunshot();
-        voice.death();
+        voice.death(this.chars.get(e.target)?.woman ?? false);
         this.world.addShake(e.target === me ? 1.5 : 1.0);
         let muzzle = new THREE.Vector3(0, 0, -0.2).applyMatrix4(this.gun.matrixWorld);
         let dir = new THREE.Vector3(0, 0, -1).transformDirection(this.gun.matrixWorld);

@@ -82,6 +82,10 @@ describe.each(cases)('Character %s', (key, style, variant) => {
     expect(tris).toBeGreaterThanOrEqual(base.tris * 3);
   });
 
+  it('is never a woman, so it keeps the male death sounds', () => {
+    expect(new Character(0, style, variant).woman).toBe(false);
+  });
+
   it('has hit meshes and smooth-shaded materials', () => {
     const c = new Character(0, style, variant);
     expect(c.hitMeshes.length).toBeGreaterThan(0);

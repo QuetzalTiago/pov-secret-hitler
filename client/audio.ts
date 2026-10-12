@@ -349,11 +349,14 @@ export const sfx = {
 import deathUrl1 from './sfx/death-1.mp3';
 import deathUrl2 from './sfx/death-2.mp3';
 import deathUrl3 from './sfx/death-3.mp3';
+import deathWomanUrl1 from './sfx/death-woman-1.mp3';
+import deathWomanUrl2 from './sfx/death-woman-2.mp3';
+import deathWomanUrl3 from './sfx/death-woman-3.mp3';
 import gunshotUrl from './sfx/gunshot.mp3';
 import jaUrl from './sfx/ja.mp3';
 import neinUrl from './sfx/nein.mp3';
 
-const SAMPLE_URLS = { gunshot: gunshotUrl, ja: jaUrl, nein: neinUrl, death1: deathUrl1, death2: deathUrl2, death3: deathUrl3 };
+const SAMPLE_URLS = { gunshot: gunshotUrl, ja: jaUrl, nein: neinUrl, death1: deathUrl1, death2: deathUrl2, death3: deathUrl3, deathWoman1: deathWomanUrl1, deathWoman2: deathWomanUrl2, deathWoman3: deathWomanUrl3 };
 type SampleName = keyof typeof SAMPLE_URLS;
 const samples = new Map<SampleName, AudioBuffer>();
 
@@ -396,8 +399,9 @@ export const voice = {
     // Spent casing pinging on the floor afterwards.
     [0.6, 0.77, 0.89, 0.97].forEach((d, i) => tone({ freq: 3200 + i * 240, dur: 0.18, gain: 0.06 / (i + 1), type: 'triangle', delay: d, wet: 0.4 }));
   },
-  death() {
-    const pick = (['death1', 'death2', 'death3'] as const)[Math.floor(Math.random() * 3)];
+  death(woman = false) {
+    const picks = woman ? (['deathWoman1', 'deathWoman2', 'deathWoman3'] as const) : (['death1', 'death2', 'death3'] as const);
+    const pick = picks[Math.floor(Math.random() * 3)];
     if (!sample(pick, { gain: 1.0, wet: 0.3, delay: 0.2 })) return sfx.death();
     // The body hits the table and the glasses rattle.
     tone({ freq: 75, dur: 0.45, gain: 1.0, slideTo: 38, delay: 1.0, wet: 0.4 });

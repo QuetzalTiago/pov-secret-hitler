@@ -157,6 +157,14 @@ describe('the cases', () => {
 });
 
 describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
+  it('flags dress and blouse bodies as women and suit and shirt bodies as men', () => {
+    for (const o of Object.keys(FILES) as Outfit[]) {
+      const look = { ...lookOf(0), body: o };
+      const c = new RiggedCharacter(0, look, 'normal', templates[o]);
+      expect(c.woman).toBe(o === 'dress' || o === 'blouse');
+    }
+  });
+
   it('stays within the draw-call and triangle budget', () => {
     const { visible, tris } = measure(build(style, variant));
     expect(visible).toBeLessThanOrEqual(3);
