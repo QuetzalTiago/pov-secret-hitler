@@ -185,6 +185,19 @@ export function glowTexture(color = '255,180,90') {
   });
 }
 
+/** Soft annulus: transparent centre, bright band near the rim, fading out at the edge. */
+export function ringTexture(color = '255,200,110') {
+  return tex(`ring-${color}`, 128, 128, (g, w, h) => {
+    const grad = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    grad.addColorStop(0, `rgba(${color},0)`);
+    grad.addColorStop(0.55, `rgba(${color},0)`);
+    grad.addColorStop(0.78, `rgba(${color},1)`);
+    grad.addColorStop(1, `rgba(${color},0)`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+  });
+}
+
 function frame(g: CanvasRenderingContext2D, w: number, h: number, color: string, inset = 10, width = 4) {
   g.strokeStyle = color;
   g.lineWidth = width;

@@ -2,12 +2,12 @@
 import * as THREE from 'three';
 import type { RoomView } from '../shared/protocol';
 import type { ActionBody, GameEvent, Policy } from '../shared/types';
-import { legalFromView, type GameView } from '../shared/view';
+import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { setMusicMood, sfx, voice } from './audio';
 import type { Interactable, Interactor } from './interact';
 import { Character } from './scene/characters';
 import { disposeObject } from './scene/dispose';
-import { Board, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
+import { ActingRings, Board, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
 import { ballotFace, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
 import { slowmoScale, tweens } from './scene/tween';
 import { Mover, TABLE_Y, type World } from './scene/world';
@@ -67,6 +67,7 @@ export class Game {
   private nein: Card;
   private jaMover: Mover;
   private neinMover: Mover;
+  private rings = new ActingRings();
   private voteCards = new Map<number, { card: Card; mover: Mover; shown: boolean }>();
   private vetoToken: THREE.Mesh;
   private vetoMover: Mover;
@@ -191,6 +192,7 @@ export class Game {
 
     this.invCard = new Card(membershipCard('?', 'liberal'), cardBack('MEMBERSHIP'), 1.25);
     scene.add(this.invCard.mesh);
+    scene.add(this.rings.mesh);
     this.invMover = world.track(new Mover(this.invCard.mesh));
 
     this.tileMovers = [...this.board.liberalTiles, ...this.board.fascistTiles].map((t) => world.track(new Mover(t)));
@@ -208,6 +210,7 @@ export class Game {
     const prevRound = this.view?.round;
     this.room = room;
     this.view = room.game;
+    this.rings.set(this.view ? actingSeats(this.view) : []);
     const n = room.game ? room.game.players.length : room.seats.length;
     this.relayout(n, room.you);
     this.syncCharacters();
@@ -292,6 +295,7 @@ export class Game {
   reset() {
     this.room = null;
     this.view = null;
+    this.rings.set([]);
     this.clearTable();
     this.settle();
     this.speaker = null;
@@ -993,6 +997,8 @@ export class Game {
       }
       if (p.where !== 'held' && p.where !== 'board') p.card.setGlow(0);
     }
+
+    this.rings.update((s) => L.front(s, 0, 0.08));
 
     // Ballots: your Ja/Nein pair plus everyone else's played cards.
     const revealing = this.reveal && now < this.reveal.until ? this.reveal : null;

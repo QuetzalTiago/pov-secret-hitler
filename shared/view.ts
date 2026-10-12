@@ -103,6 +103,11 @@ export function viewFor(s: GameState, viewer: number | null): GameView {
   };
 }
 
+/** Living seats the game is waiting on, for the table's acting rings; none at night (everyone acks) or game over. */
+export function actingSeats(v: GameView): number[] {
+  if (v.phase === 'night' || v.phase === 'gameOver') return [];
+  return v.pending.filter((s) => v.players[s]?.alive);
+}
 
 /**
  * Legal actions for the viewer, derived only from public/own info. The client uses this to decide what is

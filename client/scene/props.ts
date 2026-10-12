@@ -1,8 +1,9 @@
 // Physical props on the table.
 import * as THREE from 'three';
 import {
-  BOARD_SLOTS, ballotFace, boardTexture, cardBack, envelopeTexture, placardTexture, policyFace,
+  BOARD_SLOTS, ballotFace, boardTexture, cardBack, envelopeTexture, placardTexture, policyFace, ringTexture,
 } from './textures';
+import { ease, tween, type Tween } from './tween';
 import { TABLE_Y } from './world';
 
 export const CARD_W = 0.13;
@@ -50,6 +51,76 @@ export class Placard {
     const face = new THREE.MeshStandardMaterial({ map: t, roughness: 0.5, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.25 });
     this.mesh = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.085, 0.03), [side, side, side, side, face, face]);
     this.mesh.castShadow = true;
+  }
+}
+
+/** Soft gold rings on the table in front of every seat the game is waiting on: one InstancedMesh, one draw call. */
+export class ActingRings {
+  mesh: THREE.InstancedMesh;
+  private seats = new Map<number, { amt: number; tween: Tween | null }>();
+  /** Seats currently asked for (the rest are fading out). */
+  private lit = new Set<number>();
+  private pulse = { k: 0.65 };
+  private m = new THREE.Matrix4();
+  private c = new THREE.Color();
+
+  constructor() {
+    const geo = new THREE.PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({
+      map: ringTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+    });
+    this.mesh = new THREE.InstancedMesh(geo, mat, 10);
+    this.mesh.castShadow = false;
+    this.mesh.receiveShadow = false;
+    this.mesh.renderOrder = 1;
+    this.mesh.frustumCulled = false;
+    for (let i = 0; i < 10; i++) this.mesh.setColorAt(i, this.c.setRGB(0, 0, 0));
+    this.mesh.count = 0;
+    this.mesh.visible = false;
+    this.loop(1);
+  }
+
+  /** Breathe the shared brightness between 0.65 and 1, forever. */
+  private loop(to: number) {
+    tween(this.pulse, { k: to }, { dur: 0.9, ease: ease.inOutCubic, onDone: () => this.loop(to === 1 ? 0.65 : 1) });
+  }
+
+  /** Ring exactly these seats: new ones fade in, ones that left fade out. */
+  set(seats: number[]) {
+    for (const s of seats) {
+      if (this.lit.has(s)) continue;
+      this.lit.add(s);
+      const e = this.seats.get(s) ?? { amt: 0, tween: null };
+      this.seats.set(s, e);
+      e.tween?.cancel();
+      e.tween = tween(e, { amt: 1 }, { dur: 0.35, ease: ease.outQuad });
+    }
+    for (const s of [...this.lit]) {
+      if (seats.includes(s)) continue;
+      this.lit.delete(s);
+      const e = this.seats.get(s);
+      if (!e) continue;
+      e.tween?.cancel();
+      e.tween = tween(e, { amt: 0 }, { dur: 0.5, onDone: () => this.seats.delete(s) });
+    }
+  }
+
+  update(pos: (seat: number) => THREE.Vector3) {
+    let n = 0;
+    this.seats.forEach((e, seat) => {
+      if (e.amt <= 0.001) return;
+      const p = pos(seat);
+      this.m.makeScale(0.46, 0.46, 0.46).setPosition(p.x, p.y + 0.003, p.z);
+      this.mesh.setMatrixAt(n, this.m);
+      const k = e.amt * this.pulse.k * 0.8;
+      this.mesh.setColorAt(n, this.c.setRGB(k, 0.78 * k, 0.38 * k));
+      n++;
+    });
+    this.mesh.count = n;
+    this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    this.mesh.visible = n > 0;
   }
 }
 
