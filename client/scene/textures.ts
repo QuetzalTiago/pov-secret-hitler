@@ -4,7 +4,6 @@ import { officialImage, type ArtKey } from './officialart';
 import { rand } from './rand';
 import { drawPortrait } from './portraits';
 import { drawSeal } from './seals';
-import { officialImage } from './officialart';
 
 const DISPLAY = '"Jost", "Futura", "Century Gothic", "Trebuchet MS", sans-serif';
 const MONO = '"Courier Prime", "Courier New", Courier, monospace';
