@@ -22,7 +22,7 @@
         <div id="enact-pips"></div>
       </div>
     </div>
-    <div id="victory" class="hidden"><div id="victory-particles"></div><div class="box"><div id="victory-masthead"></div><div id="victory-dateline"></div><div id="victory-title"></div><div id="victory-reason"></div><div id="victory-stamp"></div></div><div id="victory-skip">Click or press Esc to continue</div></div>
+    <div id="victory" role="dialog" aria-modal="true" aria-labelledby="victory-title" tabindex="-1" class="hidden"><div id="victory-particles"></div><div class="box"><div id="victory-masthead"></div><div id="victory-dateline"></div><div id="victory-title"></div><div id="victory-reason"></div><div id="victory-stamp"></div></div><div id="victory-skip">Click or press Esc to continue</div></div>
 
     <!-- Lobby -->
     <div id="lobby" class="overlay">
@@ -115,7 +115,7 @@
         </div>
         <button id="leave" class="mini">Leave</button>
       </div>
-      <div id="toasts"></div>
+      <div id="toasts" aria-live="polite"></div>
       <div id="prompt" class="hidden">
         <div class="pr-row">
           <span id="pr-chip" class="chip hidden">Your move</span>
@@ -128,10 +128,10 @@
         <div id="timer-bar"><i id="timer-fill"></i></div>
       </div>
       <div id="chat">
-        <div id="chat-log"></div>
+        <div id="chat-log" role="log"></div>
         <input id="chat-input" maxlength="200" autocomplete="off" placeholder="Press Enter to talk…" />
       </div>
-      <div id="gameover" class="panel hidden">
+      <div id="gameover" role="dialog" aria-modal="true" aria-labelledby="gameover-title" class="panel hidden">
         <h2 id="gameover-title"></h2>
         <p id="gameover-reason"></p>
         <ul id="gameover-roles"></ul>
@@ -143,7 +143,7 @@
         <button id="rematch" class="link">Back to the lobby</button>
         <button id="gameover-leave" class="link">Leave table</button>
       </div>
-      <div id="confirm-leave" class="panel hidden">
+      <div id="confirm-leave" role="dialog" aria-modal="true" aria-label="Leave the game?" class="panel hidden">
         <p>Leave the game? A bot will take your seat until you come back.</p>
         <div class="row"><button id="confirm-yes">Leave</button><button id="confirm-no" class="primary">Stay</button></div>
       </div>
@@ -160,7 +160,7 @@
     <div id="lock-hint" class="hidden">Click the table to take your seat · <b>Esc</b> frees the mouse</div>
     <div id="status" class="hidden"></div>
 
-    <div id="rules" class="overlay hidden">
+    <div id="rules" role="dialog" aria-modal="true" aria-label="How to play" class="overlay hidden">
       <div class="panel wide">
         <h2>How to play</h2>
         <p>Liberals are the majority, but they do not know who anyone is. Fascists know each other and know Hitler. Hitler only knows the Fascists in 5–6 player games.</p>
@@ -173,7 +173,7 @@
       </div>
     </div>
 
-    <div id="credits" class="overlay hidden">
+    <div id="credits" role="dialog" aria-modal="true" aria-label="Credits and license" class="overlay hidden">
       <div class="panel wide">
         <h2>Credits &amp; license</h2>
         <p><b>Secret Hitler</b> was created by <b>Mike Boxleiter</b>, <b>Tommy Maranges</b> and <b>Max Temkin</b>, with illustrations by <b>Mac Schubert</b>, and is published by Goat, Wolf, &amp; Cabbage.</p>

@@ -131,7 +131,7 @@ export class UI {
     $('lobby-leave').onclick = () => h.leave();
     $('leave').onclick = () => {
       if (this.room?.stage === 'game' && this.room.game?.phase !== 'gameOver') {
-        $('confirm-leave').classList.remove('hidden');
+        this.openDialog('confirm-leave');
       } else h.leave();
     };
     $('confirm-yes').onclick = () => {
@@ -142,6 +142,7 @@ export class UI {
     // Enter confirms and Esc cancels the policy pick (unless typing in chat).
     window.addEventListener('keydown', (e) => {
       if (!this.cardConfirm) return;
+      if (!$('confirm-leave').classList.contains('hidden')) return;
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (e.key === 'Enter') this.cardConfirm.confirm();
@@ -157,9 +158,9 @@ export class UI {
     $('play-again').onclick = () => h.playAgain();
     $('redeal').onclick = () => h.redeal();
     $('gameover-leave').onclick = () => h.leave();
-    for (const id of ['credits-btn', 'home-credits']) $(id).onclick = () => $('credits').classList.remove('hidden');
+    for (const id of ['credits-btn', 'home-credits']) $(id).onclick = () => this.openDialog('credits');
     $('credits-close').onclick = () => $('credits').classList.add('hidden');
-    $('rules-btn').onclick = () => $('rules').classList.remove('hidden');
+    $('rules-btn').onclick = () => this.openDialog('rules');
     // Settings popover: the toggles keep it open so their label change is visible; any other row closes it.
     const settings = $('settings');
     const settingsBtn = $('settings-btn');
@@ -238,6 +239,8 @@ export class UI {
     const input = $<HTMLInputElement>('chat-input');
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && document.activeElement !== input && !$('hud').classList.contains('hidden')) {
+        // Enter on a dialog button activates it natively.
+        if ((document.activeElement as HTMLElement | null)?.closest('#confirm-leave, #rules, #credits')) return;
         if (input.disabled) return;
         e.preventDefault();
         input.focus();
@@ -246,6 +249,7 @@ export class UI {
         setSettings(false);
         $('credits').classList.add('hidden');
         $('rules').classList.add('hidden');
+        $('confirm-leave').classList.add('hidden');
       }
     });
     input.addEventListener('keydown', (e) => {
@@ -260,6 +264,13 @@ export class UI {
   }
 
   private invite: string | null = null;
+
+  /** Show a dialog and move focus into it: the primary button (so Enter on the leave confirm stays), else the first, else the element. */
+  private openDialog(id: string) {
+    const el = $(id);
+    el.classList.remove('hidden');
+    (el.querySelector<HTMLElement>('button.primary') ?? el.querySelector('button') ?? el).focus();
+  }
 
   /** Deterministic avatar hue (0-359) from a name. */
   private static hue(name: string): number {
@@ -813,6 +824,7 @@ export class UI {
     el.classList.remove('hidden', 'liberal', 'fascist', 'out');
     el.classList.add(b.cls);
     void el.offsetWidth;
+    el.focus();
     this.victoryDone = onDone;
     this.victoryTimers = [
       setTimeout(() => el.classList.add('out'), VICTORY_MS - 600),
@@ -863,6 +875,7 @@ export class UI {
   showGameOver(v: GameView, room: RoomView) {
     this.hideCardConfirm();
     const el = $('gameover');
+    const wasHidden = el.classList.contains('hidden');
     el.classList.remove('hidden');
     const title = $('gameover-title');
     title.textContent = v.winner === 'liberal' ? 'The Liberals win' : 'The Fascists win';
@@ -883,6 +896,8 @@ export class UI {
     $('play-again').textContent = room.seats[room.you]?.ready ? 'Ready ✓ (click to cancel)' : 'Play again';
     const humans = room.seats.filter((s) => !s.bot && s.connected);
     $('ready-note').textContent = `${humans.filter((s) => s.ready).length} of ${humans.length} ready`;
+    // Runs every view update: only pull focus in when the panel first opens, and never from chat.
+    if (wasHidden && document.activeElement?.id !== 'chat-input') $('play-again').focus();
     const isHost = room.you === room.host;
     $('redeal').classList.toggle('hidden', !isHost);
     $('rematch').classList.toggle('hidden', !isHost);
