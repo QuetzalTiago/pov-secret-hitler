@@ -274,6 +274,7 @@ input:disabled { opacity: 0.5; }
 .pr-row { display: flex; align-items: center; justify-content: space-between; min-height: 22px; }
 #pr-chip { background: rgba(201, 162, 74, 0.16); border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent); letter-spacing: 0.16em; text-transform: uppercase; font-size: 11px; }
 #timer { margin-left: auto; font-family: var(--font-display); font-size: 16px; font-variant-numeric: tabular-nums; color: var(--ink-dim); }
+#timer.mine, #timer.urgent { font-size: 24px; font-weight: 700; }
 #timer.urgent { color: var(--danger); animation: pulse 0.5s infinite alternate; }
 #pr-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; text-transform: uppercase; line-height: 1.25; color: var(--ink); }
 #prompt:not(.mine) #pr-title { font-size: 18px; color: var(--ink-dim); }

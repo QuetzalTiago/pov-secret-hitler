@@ -13,6 +13,8 @@ import { ActingRings, Board, Card, Envelope, Pile, Placard, ballotCard, policyCa
 import { ballotFace, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
 import { slowmoScale, tweens } from './scene/tween';
 import { Mover, TABLE_Y, type World } from './scene/world';
+import { flagTab, unflagTab } from './tabflag';
+import { TurnCue, myTurnKey } from './turncue';
 import type { UI } from './ui';
 import { victoryBanner, victoryDelay, type VictoryBanner } from './victory';
 
@@ -71,6 +73,7 @@ export class Game {
   private jaMover: Mover;
   private neinMover: Mover;
   private rings = new ActingRings();
+  private turnCue = new TurnCue();
   private voteCards = new Map<number, { card: Card; mover: Mover; shown: boolean }>();
   private vetoToken: THREE.Mesh;
   private vetoMover: Mover;
@@ -254,6 +257,11 @@ export class Game {
     this.syncGameOverPanel();
     const me = v?.players[room.you];
     this.ui.setChatEnabled(!v || v.phase === 'gameOver' || !!me?.alive);
+    if (this.turnCue.update(v)) {
+      sfx.turn();
+      if (document.hidden) flagTab();
+    }
+    if (myTurnKey(v) === null) unflagTab();
   }
 
   /** The roles panel shows once the game is over and no win ceremony is running. */
@@ -342,6 +350,8 @@ export class Game {
   reset() {
     this.room = null;
     this.view = null;
+    this.turnCue.reset();
+    unflagTab();
     this.rings.set([]);
     this.clearTable();
     this.settle();

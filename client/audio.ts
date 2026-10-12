@@ -281,6 +281,12 @@ export const sfx = {
   chat() {
     tone({ freq: 660, dur: 0.08, gain: 0.06, type: 'triangle' });
   },
+  /** Your turn: a gentle two-note bell rising. */
+  turn() {
+    tone({ freq: 784, dur: 0.5, gain: 0.14, type: 'triangle', wet: 0.6 });
+    tone({ freq: 1175, dur: 0.7, gain: 0.12, type: 'triangle', delay: 0.14, wet: 0.6 });
+    tone({ freq: 2350, dur: 0.5, gain: 0.03, type: 'sine', delay: 0.14, wet: 0.6 });
+  },
 };
 
 

@@ -495,7 +495,7 @@ export class UI {
 
   setTimer(secs: number | null, mine: boolean) {
     const text = secs === null ? '' : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
-    const cls = secs !== null && mine ? (secs <= 10 ? 'urgent' : 'mine') : '';
+    const cls = secs !== null && mine ? (secs <= 15 ? 'urgent' : 'mine') : '';
     if (text === this.timerText && cls === this.timerClass) return;
     this.timerText = text;
     this.timerClass = cls;
