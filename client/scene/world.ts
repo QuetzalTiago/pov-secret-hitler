@@ -21,6 +21,7 @@ import { WAITER_SPOT, Waiter } from './waiter';
 import { ease } from './tween';
 import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles, lookStep } from './look';
 import { pointingArm, type PointingArm } from './pointarm';
+import { fistOnGun, type FistOnGun } from './gunhold';
 import { LIGHTING, POSTER_TINT } from './lighting';
 import {
   feltTexture, glowTexture, markSharedTexture, plankTexture, posterAtlas, signTexture, smokeTexture, wallTexture, woodTexture,
@@ -720,6 +721,7 @@ export class World {
     // Flat hand (fingers +Z, palm down) -> fingers up, palm facing away from the camera.
     handQ: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)),
   };
+  private gunHold: FistOnGun = { position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), wrist: new THREE.Vector3() };
   private pointArm: PointingArm = { elbow: new THREE.Vector3(), grip: new THREE.Vector3(), dir: new THREE.Vector3() };
   private ownArm: { fore: THREE.Mesh; cuff: THREE.Mesh; hand: THREE.Mesh; finger: THREE.Mesh; fist: THREE.BufferGeometry; point: THREE.BufferGeometry | null } | null = null;
   /** The patron model's mitten hand once the assets are loaded, else the procedural one. */
@@ -791,8 +793,11 @@ export class World {
     let dirLocal: THREE.Vector3;
     if ('gun' in pose) {
       pose.gun.updateMatrixWorld();
-      grip = pose.gun.localToWorld(new THREE.Vector3(0, -0.03, 0.08));
-      hand.quaternion.copy(pose.gun.getWorldQuaternion(new THREE.Quaternion()));
+      // The fist closes around the grip; the forearm ends at its wrist.
+      const hold = fistOnGun(pose.gun.getWorldPosition(new THREE.Vector3()), pose.gun.getWorldQuaternion(new THREE.Quaternion()), OWN_HAND_SCALE, this.gunHold);
+      grip = hold.wrist;
+      hand.position.copy(hold.position);
+      hand.quaternion.copy(hold.quaternion);
       hand.geometry = fist;
       finger.visible = false;
       elbowLocal = new THREE.Vector3(0.34, -0.5, 0.05);
@@ -815,7 +820,7 @@ export class World {
     // rolling around its own length (a world-space shortest-arc rotation twists as the camera yaws).
     const quat = this.camera.quaternion.clone().multiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirLocal));
     this.poseForearm(fore, cuff, elbow, grip, quat, len);
-    hand.position.copy(grip);
+    if (!('gun' in pose)) hand.position.copy(grip);
   }
 
   /** Surrender: both hands rise into view, palms forward (the revolver is aimed at you). Call after setOwnArm. */
