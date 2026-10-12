@@ -131,7 +131,12 @@ if (/^[A-Z]{4}$/.test(invite)) {
   if (!s || s.code !== invite) ui.setInvite(invite);
 }
 // Models load first so the scene can use them; a slow or failed load must not hold the table up.
-void Promise.race([loadAssets(), new Promise((r) => setTimeout(r, 10_000))]).then(() => net.connect());
+void Promise.race([loadAssets(), new Promise<null>((r) => setTimeout(r, 10_000))])
+  .then((assets) => {
+    if (assets) world.useAssets(assets);
+  })
+  .catch((err) => console.warn('[assets] could not apply, keeping the procedural room', err))
+  .then(() => net.connect());
 const showHome = ui.showHome.bind(ui);
 ui.showHome = () => {
   interactor.setLockable(false);

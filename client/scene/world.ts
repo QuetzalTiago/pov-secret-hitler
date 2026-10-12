@@ -6,12 +6,14 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import type { Assets } from './assets';
 import { disposeObject } from './dispose';
 import { bottlesGeometry, buntingGeometry, hallGlowGeometry, hallPropsGeometry, posterGeometry } from './beerhall';
 import { handGeometry } from './hands';
 import { cuffGeometry, pointingFingerGeometry, sleeveGeometry, unitSleeveGeometry } from './ownbody';
 import { cylinderBetween, limbGeometry, mergeParts } from './patron';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
+import { buildBackBar, chairModel, lampModel, stoolModel } from './roomprops';
 import { CigaretteSmoke } from './smoke';
 import { ease } from './tween';
 import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles } from './look';
@@ -37,6 +39,8 @@ export function glossy<T extends THREE.MeshStandardMaterial>(m: T, intensity = 0
   }
   return m;
 }
+/** Strength of the HDRI image-based light; the pendant lamp stays the key light. */
+const ENV_INTENSITY = 0.35;
 const EYE_Y = 1.27;
 /** Your own hands read small up close next to the patrons' at a distance; scale them up a little. */
 const OWN_HAND_SCALE = 1.2;
@@ -147,6 +151,11 @@ export class World {
   handLight: THREE.PointLight;
   private tableGroup = new THREE.Group();
   private chairs = new Map<number, THREE.Group>();
+  private room = new THREE.Group();
+  private assets: Assets | null = null;
+  /** One shared chair mesh (asset mode); cloned per seat. */
+  private chairProto: THREE.Group | null = null;
+  private lampParts: { shade: THREE.Mesh; cord: THREE.Mesh; model: THREE.Group | null };
   private ember: THREE.MeshStandardMaterial | null = null;
   private sleeve = new THREE.MeshStandardMaterial({ color: 0x2a2a33, roughness: 0.8 });
   /** Shirt cuffs at the end of your sleeves (shared by every arm mesh). */
@@ -264,6 +273,7 @@ export class World {
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.6 }));
     glow.scale.setScalar(1.1);
     glow.position.set(0, 2.5, 0);
+    this.lampParts = { shade, cord, model: null };
     this.scene.add(shade, this.lampBulb, cord, glow);
 
     this.buildRoom();
@@ -433,17 +443,54 @@ export class World {
     return composer;
   }
 
+  /** Rebuilds the room from the CC0 assets (PBR textures, HDRI light, model chairs, stools, lamp and back bar). */
+  useAssets(a: Assets) {
+    this.assets = a;
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    // Image-based light for everything lit; props keep the RoomEnvironment propEnv via glossy().
+    this.scene.environment = markSharedTexture(pmrem.fromEquirectangular(a.environment).texture);
+    this.scene.environmentIntensity = ENV_INTENSITY;
+    pmrem.dispose();
+
+    this.chairProto = chairModel(a.props);
+    const lamp = lampModel(a.props);
+    lamp.position.y = 2.42; // the spot light and bulb sit inside the glass
+    this.lampBulb.position.y = 2.57;
+    this.lampParts.shade.visible = this.lampParts.cord.visible = false;
+    this.lampParts.model = lamp;
+    this.scene.add(lamp);
+
+    this.scene.remove(this.room);
+    disposeObject(this.room);
+    this.buildRoom();
+    this.setLayout(this.layout.n, this.layout.me, true);
+  }
+
+  /** `set.map` etc. cloned with their own repeat, so each surface can tile differently. */
+  private tiled(set: Assets['textures']['floor'], rx: number, ry: number) {
+    const t = (src: THREE.Texture) => {
+      const c = src.clone();
+      c.repeat.set(rx, ry);
+      return c;
+    };
+    return { map: t(set.map), normalMap: t(set.normalMap), roughnessMap: t(set.roughnessMap) };
+  }
+
   private buildRoom() {
-    const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(16, 16),
-      new THREE.MeshStandardMaterial({ map: plankTexture(), roughness: 0.85 }),
-    );
+    const a = this.assets;
+    const room = new THREE.Group();
+    this.room = room;
+    const floorMat = a
+      ? new THREE.MeshStandardMaterial({ ...this.tiled(a.textures.floor, 6, 6), roughness: 1 })
+      : new THREE.MeshStandardMaterial({ map: plankTexture(), roughness: 0.85 });
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
-    this.scene.add(floor);
+    room.add(floor);
 
-    const wallMat = new THREE.MeshStandardMaterial({ map: wallTexture(), roughness: 0.9 });
-    const room = new THREE.Group();
+    const wallMat = a
+      ? new THREE.MeshStandardMaterial({ ...this.tiled(a.textures.wall, 4, 1.5), roughness: 1 })
+      : new THREE.MeshStandardMaterial({ map: wallTexture(), roughness: 0.9 });
     const W = 10;
     const H = 3.6;
     for (let i = 0; i < 4; i++) {
@@ -458,8 +505,10 @@ export class World {
     ceiling.position.y = H;
     room.add(ceiling);
 
-    // Back bar: counter, shelves, merged bottles, painted sign.
-    const counterWood = glossy(new THREE.MeshStandardMaterial({ map: woodTexture('#3b2210', '#1c0e05', 'counter', 2), roughness: 0.6 }), 0.15);
+    // Back bar: counter, shelves, bottles, painted sign.
+    const counterWood = a
+      ? new THREE.MeshStandardMaterial({ ...this.tiled(a.textures.counter, 3, 1), roughness: 1 })
+      : glossy(new THREE.MeshStandardMaterial({ map: woodTexture('#3b2210', '#1c0e05', 'counter', 2), roughness: 0.6 }), 0.15);
     const counter = new THREE.Mesh(new THREE.BoxGeometry(6, 1.05, 0.7), counterWood);
     counter.position.set(0, 0.52, -4.2);
     counter.castShadow = counter.receiveShadow = true;
@@ -470,7 +519,9 @@ export class World {
       shelf.position.set(0, 1.45 + row * 0.55, -4.85);
       room.add(shelf);
     }
-    room.add(new THREE.Mesh(
+    // Model bottles and glasses with assets; the merged procedural bottles otherwise.
+    if (a) room.add(buildBackBar(a.props));
+    else room.add(new THREE.Mesh(
       bottlesGeometry(),
       glossy(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 }), 0.35),
     ));
@@ -481,7 +532,14 @@ export class World {
     neonLight.position.set(0, 3.0, -4.5);
     room.add(neonLight);
     // A few empty stools and a dartboard-ish clock on the side wall.
+    const stoolProto = a ? stoolModel(a.props) : null;
     for (let i = 0; i < 5; i++) {
+      if (stoolProto) {
+        const stool = stoolProto.clone();
+        stool.position.set(-2.4 + i * 1.2, 0, -3.5);
+        room.add(stool);
+        continue;
+      }
       const stool = new THREE.Group();
       const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 12), new THREE.MeshStandardMaterial({ color: 0x5a1f18, roughness: 0.6 }));
       seat.position.y = 0.78;
@@ -534,11 +592,12 @@ export class World {
   }
 
   /** Rebuilds table and chairs for a player count, placing your seat nearest the camera. */
-  setLayout(n: number, me: number) {
+  setLayout(n: number, me: number, force = false) {
     const count = Math.max(n, 5);
-    if (this.layout.n === count && this.layout.me === me && this.tableGroup.children.length) return;
+    if (!force && this.layout.n === count && this.layout.me === me && this.tableGroup.children.length) return;
     this.layout = new Layout(count, me);
-    disposeObject(this.tableGroup, { keep: [this.sleeve, this.cuff] });
+    const shared = this.chairProto ? this.chairProto.children.flatMap((m) => [(m as THREE.Mesh).geometry, (m as THREE.Mesh).material as THREE.Material]) : [];
+    disposeObject(this.tableGroup, { keep: [this.sleeve, this.cuff, ...shared] });
     this.tableGroup.clear();
     this.chairs.clear();
     const L = this.layout;
@@ -570,21 +629,23 @@ export class World {
     ember.position.set(L.rx * 0.62 + 0.05, TABLE_Y + 0.045, -L.rz * 0.15);
     this.tableGroup.add(ash, ember);
 
-    const chairMat = new THREE.MeshStandardMaterial({ map: woodTexture('#3d2414', '#1d0e06', 'chair'), roughness: 0.7 });
+    const chairMat = this.chairProto ? null : new THREE.MeshStandardMaterial({ map: woodTexture('#3d2414', '#1d0e06', 'chair'), roughness: 0.7 });
     for (let s = 0; s < count; s++) {
       if (s === me) continue;
-      const chair = new THREE.Group();
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.48), chairMat);
-      seat.position.y = 0.48;
-      const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.75, 0.06), chairMat);
-      back.position.set(0, 0.86, 0.24);
-      chair.add(seat, back);
-      for (const [x, z] of [[-0.21, -0.2], [0.21, -0.2], [-0.21, 0.2], [0.21, 0.2]]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.48, 0.05), chairMat);
-        leg.position.set(x, 0.24, z);
-        chair.add(leg);
+      const chair = this.chairProto ? this.chairProto.clone() : new THREE.Group();
+      if (chairMat) {
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.48), chairMat);
+        seat.position.y = 0.48;
+        const back = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.75, 0.06), chairMat);
+        back.position.set(0, 0.86, 0.24);
+        chair.add(seat, back);
+        for (const [x, z] of [[-0.21, -0.2], [0.21, -0.2], [-0.21, 0.2], [0.21, 0.2]]) {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.48, 0.05), chairMat);
+          leg.position.set(x, 0.24, z);
+          chair.add(leg);
+        }
+        chair.children.forEach((c) => (c.castShadow = true));
       }
-      chair.children.forEach((c) => (c.castShadow = true));
       chair.position.copy(L.chair(s));
       chair.rotation.y = L.yaw(s);
       this.tableGroup.add(chair);
