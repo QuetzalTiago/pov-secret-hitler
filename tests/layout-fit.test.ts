@@ -42,4 +42,13 @@ describe('windowed viewport fit', () => {
   it('has a short-height media block for the chat log', () => {
     expect(css).toMatch(/@media \(max-height: 720px\)\s*\{\s*#chat-log/);
   });
+
+  it('the action card caps at 100dvh and scrolls instead of clipping', () => {
+    expect(bodies('#prompt').some((b) => /max-height:[^;]*100dvh/.test(b) && /overflow-y:\s*auto/.test(b))).toBe(true);
+    expect(bodies('#prompt').join(';')).not.toMatch(/overflow:\s*hidden/);
+  });
+
+  it('the action card goes compact on short screens', () => {
+    expect(css).toMatch(/@media \(max-height: 720px\)\s*\{[^@]*#prompt\.mine::before\s*\{\s*display:\s*none/);
+  });
 });

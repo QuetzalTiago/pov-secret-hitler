@@ -320,9 +320,12 @@ input:disabled { opacity: 0.5; }
 /* Action card */
 #prompt {
   position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 32px));
-  padding: var(--space-3) var(--space-4) calc(var(--space-3) + 4px); border-radius: var(--radius-l); overflow: hidden;
+  padding: var(--space-3) var(--space-4) calc(var(--space-3) + 4px); border-radius: var(--radius-l);
+  /* Never taller than the window allows (status bar and stepper sit above it); scrolls rather than clipping. */
+  max-height: calc(100dvh - 140px); overflow-x: hidden; overflow-y: auto;
   display: flex; flex-direction: column; gap: 4px; text-align: left; color: var(--ink-dim);
 }
+#prompt > * { flex-shrink: 0; }
 #prompt.mine {
   background: var(--parch) var(--grain); color: var(--parch-ink); border: 1px solid rgba(40, 28, 15, 0.6); border-radius: 10px;
   -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: inset 0 0 40px rgba(60, 40, 15, 0.35), 0 14px 40px rgba(0, 0, 0, 0.6);
@@ -531,6 +534,13 @@ body.low-fx #victory .vp:nth-child(n+17) { display: none; }
 @media (max-height: 720px) {
   #chat-log { max-height: 90px; }
   #status-bar { gap: 4px; }
+  /* Windowed or short screens: a compact action card so it fits above the bottom edge. */
+  #prompt { bottom: 10px; padding: 8px 14px 10px; gap: 2px; }
+  #prompt.mine::before { display: none; }
+  #pr-title { font-size: 18px; }
+  #prompt:not(.mine) #pr-title { font-size: 16px; }
+  #pr-detail { font-size: 13px; }
+  #prompt .verb { margin-top: 2px; }
 }
 
 @media (max-height: 720px) and (max-width: 1239px) {
