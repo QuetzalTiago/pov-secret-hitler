@@ -2,7 +2,8 @@
 import { BOT_LEVELS, PACES, type BotLevel, type Pace, type RoomView, type Series } from '../shared/protocol';
 import type { Power } from '../shared/types';
 import type { GameView, PlayerView } from '../shared/view';
-import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
+import type { Badge, CardConfirmCopy, HudModel, ScreenBlood } from './hudmodel';
+import { SCREEN_BLOOD_S, screenBloodFrame, screenSplats, type ScreenSplat } from './screenblood';
 import { portraitUrl, sealUrl } from './art';
 import { isMuted, setMuted } from './audio';
 import { nearBottom } from './chatscroll';
@@ -74,6 +75,9 @@ export class UI {
   private victoryTimers: ReturnType<typeof setTimeout>[] = [];
   private victoryDone: (() => void) | null = null;
   private rosterKey = '';
+  private bloodSplats: ScreenSplat[] = [];
+  private bloodStart = 0;
+  private bloodRaf = 0;
   private markers = new Map<string, { key: string; label: string; w: number; h: number }>();
   /** Set by the game: a roster row was clicked, turn the camera to that seat. */
   onLookAt?: (seat: number) => void;
@@ -677,6 +681,62 @@ export class UI {
     el.classList.remove('on');
     void el.offsetWidth;
     el.classList.add('on');
+  }
+
+  /** Blood on your screen for a few seconds; a second hit while one runs replaces it. */
+  bloodScreen(kind: ScreenBlood, seed: number) {
+    if (kind === 'none') return;
+    const canvas = $<HTMLCanvasElement>('blood-screen');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    cancelAnimationFrame(this.bloodRaf);
+    this.bloodSplats = screenSplats(kind, seed);
+    this.bloodStart = performance.now();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(innerWidth * dpr);
+    canvas.height = Math.round(innerHeight * dpr);
+    canvas.style.display = 'block';
+    const frame = () => {
+      const t = (performance.now() - this.bloodStart) / 1000;
+      if (t >= SCREEN_BLOOD_S) return this.clearBloodScreen();
+      this.drawBlood(ctx, canvas.width, canvas.height, screenBloodFrame(t));
+      this.bloodRaf = requestAnimationFrame(frame);
+    };
+    frame();
+  }
+
+  /** Stops any running screen blood and hides it. */
+  clearBloodScreen() {
+    cancelAnimationFrame(this.bloodRaf);
+    this.bloodSplats = [];
+    const canvas = $<HTMLCanvasElement>('blood-screen');
+    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.style.display = 'none';
+  }
+
+  /** Flat-ink splats: a disc, its satellites and a dripping capsule straight down. */
+  private drawBlood(ctx: CanvasRenderingContext2D, w: number, h: number, f: { alpha: number; drip: number }) {
+    const u = Math.min(w, h);
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalAlpha = f.alpha;
+    const disc = (x: number, y: number, r: number) => {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    for (const s of this.bloodSplats) {
+      const x = s.x * w;
+      const y = s.y * h;
+      ctx.fillStyle = s.color;
+      disc(x, y, s.r * u);
+      for (const b of s.blobs) disc(x + b.dx * u, y + b.dy * u, b.r * u);
+      const len = s.drip * f.drip * u;
+      if (len <= 0) continue;
+      const dw = s.dripW * u;
+      ctx.fillRect(x - dw / 2, y, dw, len);
+      disc(x, y + len, dw * 0.7);
+    }
+    ctx.globalAlpha = 1;
   }
 
   /** Big policy-enacted ceremony banner; a second call restarts it. */

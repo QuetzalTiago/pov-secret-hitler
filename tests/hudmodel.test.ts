@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, type HudOpts } from '../client/hudmodel';
+import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, screenBlood, type HudOpts } from '../client/hudmodel';
 import type { RoomView } from '../shared/protocol';
 import type { Role } from '../shared/types';
 import type { GameView } from '../shared/view';
@@ -301,5 +301,45 @@ describe('actionLabel', () => {
   it('falls back to Your move', () => {
     expect(actionLabel(undefined, false)).toBe('Your move');
     expect(actionLabel('legPresident', true)).toBe('Your move');
+  });
+});
+
+describe('screenBlood', () => {
+  it('is a full hit when you are the victim', () => {
+    expect(screenBlood(2, 2, 5)).toBe('victim');
+  });
+
+  it('spatters both neighbours', () => {
+    expect(screenBlood(2, 3, 5)).toBe('spatter');
+    expect(screenBlood(2, 1, 5)).toBe('spatter');
+  });
+
+  it('wraps round the table both ways', () => {
+    for (const n of [5, 10]) {
+      expect(screenBlood(0, n - 1, n)).toBe('spatter');
+      expect(screenBlood(n - 1, 0, n)).toBe('spatter');
+    }
+  });
+
+  it('ignores a non-neighbour', () => {
+    expect(screenBlood(0, 2, 5)).toBe('none');
+    expect(screenBlood(0, 5, 10)).toBe('none');
+  });
+
+  it('shows nothing to a spectator', () => {
+    expect(screenBlood(null, 1, 5)).toBe('none');
+  });
+
+  it('rejects out-of-range and non-integer seats', () => {
+    expect(screenBlood(5, 1, 5)).toBe('none');
+    expect(screenBlood(1, 5, 5)).toBe('none');
+    expect(screenBlood(-1, 0, 5)).toBe('none');
+    expect(screenBlood(0.5, 1, 5)).toBe('none');
+    expect(screenBlood(0, 1, 1)).toBe('none');
+  });
+
+  it('treats the only other seat as a neighbour at 2 seats', () => {
+    expect(screenBlood(0, 1, 2)).toBe('spatter');
+    expect(screenBlood(1, 0, 2)).toBe('spatter');
   });
 });

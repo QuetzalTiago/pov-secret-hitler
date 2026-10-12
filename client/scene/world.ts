@@ -25,6 +25,9 @@ import {
 } from './textures';
 
 export const TABLE_Y = 0.78;
+const CUFF_HEX = 0xe8e2d6;
+/** Dried-blood colour your sleeves and cuffs lerp toward. */
+const BLOOD_TINT = new THREE.Color(0x5a0a0e);
 const LAMP_WARM = new THREE.Color(0xffa65a);
 const LAMP_HOT = new THREE.Color(0xff5a3a);
 /** Bloom threshold (linear radiance): lit white cards under the lamp reach ~7, so only emissives above that (the bulb) bloom. */
@@ -170,7 +173,8 @@ export class World {
   private skinMat = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
   private sleeve = new THREE.MeshStandardMaterial({ color: 0x2a2a33, roughness: 0.8 });
   /** Shirt cuffs at the end of your sleeves (shared by every arm mesh). */
-  private cuff = new THREE.MeshStandardMaterial({ color: 0xe8e2d6, roughness: 0.8 });
+  private cuff = new THREE.MeshStandardMaterial({ color: CUFF_HEX, roughness: 0.8 });
+  private ownBlood = 0;
   private armband: THREE.Mesh | null = null;
   private hitlerOutfit = false;
   private smoke: { s: THREE.Sprite; v: THREE.Vector3; spin: number }[] = [];
@@ -888,8 +892,15 @@ export class World {
   /** Sleeves and hands match the patron other players see in your seat. */
   private applyOwnColors() {
     const { coat, skin } = seatColors(this.layout.me, this.hitlerOutfit);
-    this.sleeve.color.set(coat);
+    this.sleeve.color.set(coat).lerp(BLOOD_TINT, this.ownBlood);
+    this.cuff.color.set(CUFF_HEX).lerp(BLOOD_TINT, this.ownBlood);
     this.skinMat.color.set(skin);
+  }
+
+  /** Stains your sleeves and cuffs (0 clean, 1 soaked). */
+  setOwnBlood(amount: number) {
+    this.ownBlood = THREE.MathUtils.clamp(amount, 0, 1);
+    this.applyOwnColors();
   }
 
   setNight(on: boolean) {

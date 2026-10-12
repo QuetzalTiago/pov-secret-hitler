@@ -8,7 +8,8 @@ import { BeatQueue, VOTE_REVEAL_MS, scheduleBatch, type Beat } from './beats';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
 import { ENACT_BANNER_DELAY_MS, ceremonyEndsAt } from './enact';
 import { eventCopy, powerCopy } from './eventcopy';
-import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, type Mark } from './hudmodel';
+import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, screenBlood, type Mark, type ScreenBlood } from './hudmodel';
+import { sleeveBlood } from './screenblood';
 import { loadMarks, saveMarks } from './marks';
 import type { Interactable, Interactor } from './interact';
 import { bloodSeed, pickAnchor, type AnchorRect } from './scene/blood';
@@ -164,6 +165,8 @@ export class Game {
   private blood: Bloodshed;
   /** Seats whose execution already has blood, so a snapshot does not rebuild it twice. */
   private bloodied = new Set<number>();
+  /** Heaviest blood tint on your sleeves this game (0 clean). */
+  private ownBlood = 0;
   /** Identity anchor (never in the scene) for blood that lands on the table or floor. */
   private static bloodGround = new THREE.Object3D();
   private bloodVictim = new THREE.Vector3();
@@ -350,6 +353,7 @@ export class Game {
           if (p.alive || this.bloodied.has(p.seat) || pending.has(p.seat)) continue;
           this.bloodied.add(p.seat);
           this.blood.settle(this.bloodShot(null, p.seat));
+          this.stainSleeves(screenBlood(v.you, p.seat, v.players.length));
         }
       }
     } else {
@@ -389,9 +393,20 @@ export class Game {
     this.chars.get(by)?.bloody(this.bloodDir.copy(this.bloodA).sub(head(by, this.bloodB)).normalize(), 0.3, seed + 104729, 'gunArm');
   }
 
+  /** Tints your own sleeves for a hit on you or a neighbour, keeping any heavier earlier stain. */
+  private stainSleeves(kind: ScreenBlood) {
+    const amount = sleeveBlood(kind);
+    if (amount <= this.ownBlood) return;
+    this.ownBlood = amount;
+    this.world.setOwnBlood(amount);
+  }
+
   private clearBloodshed() {
     this.blood.clear();
     this.bloodied.clear();
+    this.ownBlood = 0;
+    this.world.setOwnBlood(0);
+    this.ui.clearBloodScreen();
   }
 
   /** Where a droplet landing at (x, z) sticks: a face-up card on the board, the board, the table or the floor. */
@@ -874,6 +889,9 @@ export class Game {
         this.bloodOnPatrons(e.by, e.target);
         if (!this.bloodied.has(e.target)) {
           this.bloodied.add(e.target);
+          const sb = screenBlood(me ?? null, e.target, v?.players.length ?? 0);
+          this.ui.bloodScreen(sb, bloodSeed(e.target, 0));
+          this.stainSleeves(sb);
           this.blood.execute(this.bloodShot(e.by, e.target), () => this.chars.get(e.target)?.headWorld(this.bloodHead) ?? null);
         }
         voice.gunshot();

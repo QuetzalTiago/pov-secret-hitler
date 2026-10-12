@@ -321,3 +321,13 @@ export function actionLabel(phase: GameView['phase'] | undefined, vetoToken: boo
     : phase === 'night' ? 'Your envelope'
     : 'Your move';
 }
+
+export type ScreenBlood = 'none' | 'spatter' | 'victim';
+
+/** What blood lands on your screen when `victim` is shot at an n-seat table: you, a neighbour (wrapping round), or nobody. */
+export function screenBlood(me: number | null, victim: number, n: number): ScreenBlood {
+  const seat = (s: number | null): s is number => s !== null && Number.isInteger(s) && s >= 0 && s < n;
+  if (n < 2 || !seat(me) || !seat(victim)) return 'none';
+  if (me === victim) return 'victim';
+  return (me + 1) % n === victim || (me - 1 + n) % n === victim ? 'spatter' : 'none';
+}
