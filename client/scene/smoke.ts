@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { smokeTexture } from './textures';
 
-const PEAK_ALPHA = 0.35;
+export const PEAK_ALPHA = 0.7;
 const GROWTH = 2.5; // size ends at (1 + GROWTH) * size0
 const DAMP = 1.2;
 const BUOYANCY = 0.12;
@@ -187,7 +187,7 @@ export class CigaretteSmoke {
     const n = this.take(id, 6 * this.rate * dt);
     for (let i = 0; i < n; i++) {
       const j = () => (Math.random() - 0.5) * 0.02;
-      this.pool.emit(tip.x, tip.y, tip.z, j(), 0.06 + Math.random() * 0.04, j(), 0.025, 2.5 + Math.random());
+      this.pool.emit(tip.x, tip.y, tip.z, j(), 0.06 + Math.random() * 0.04, j(), 0.04, 2.5 + Math.random());
     }
   }
 
@@ -205,7 +205,7 @@ export class CigaretteSmoke {
       this.pool.emit(
         mouth.x, mouth.y, mouth.z,
         d.x * speed + j(), d.y * speed + 0.05 + j(), d.z * speed + j(),
-        0.05, 1.8 + Math.random() * 0.8,
+        0.08, 1.8 + Math.random() * 0.8,
       );
     }
   }

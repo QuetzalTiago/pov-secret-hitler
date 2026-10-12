@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { SmokePool } from '../client/scene/smoke';
+import { PEAK_ALPHA, SmokePool } from '../client/scene/smoke';
 
 describe('SmokePool', () => {
   it('never exceeds capacity', () => {
@@ -44,7 +44,7 @@ describe('SmokePool', () => {
     expect(p.position[1]).toBeGreaterThan(1);
     expect(p.size[0]).toBeGreaterThan(0.05);
     expect(maxAlpha).toBeGreaterThan(0.1);
-    expect(maxAlpha).toBeLessThanOrEqual(0.35);
+    expect(maxAlpha).toBeLessThanOrEqual(PEAK_ALPHA);
     for (let t = 0; t < 1.1; t += 1 / 60) p.update(1 / 60);
     expect(p.alpha[0]).toBe(0);
     expect(p.size[0]).toBe(0);
