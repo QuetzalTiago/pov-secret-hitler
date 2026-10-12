@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEATH_DUR, REACTION_DUR, blinkScale, deathPose, mouthOpen, nextBlinkDelay, reactionPose, type Reaction, type ReactionPose } from '../client/scene/life';
+import { DEATH_DUR, REACTION_DUR, SMOKE_CYCLE, SMOKE_DUR, blinkScale, deathPose, isSmoker, mouthOpen, nextBlinkDelay, nextDragDelay, reactionPose, smokePose, type Reaction, type ReactionPose, type SmokePose } from '../client/scene/life';
 
 const kinds = Object.keys(REACTION_DUR) as Reaction[];
 const pose = (): ReactionPose => ({ pitch: 9, yaw: 9, lean: 9, armLift: 9 });
@@ -73,5 +73,53 @@ describe('deathPose', () => {
   it('falls forward monotonically', () => {
     const lean = Array.from({ length: 10 }, (_, i) => dp(0.22 + (i / 9) * 0.73).lean);
     for (let i = 1; i < lean.length; i++) expect(lean[i]).toBeGreaterThan(lean[i - 1]);
+  });
+});
+
+describe('isSmoker and nextDragDelay', () => {
+  it('every third normal style smokes', () => {
+    const ids = Array.from({ length: 10 }, (_, i) => i).filter((i) => isSmoker(i, 'normal'));
+    expect(ids).toEqual([0, 3, 6, 9]);
+  });
+  it('hitler never smokes', () => {
+    for (let i = 0; i < 10; i++) expect(isSmoker(i, 'hitler')).toBe(false);
+  });
+  it('nextDragDelay in [8,15)', () => {
+    expect(nextDragDelay(0)).toBe(8);
+    expect(nextDragDelay(0.999)).toBeCloseTo(14.993, 5);
+    expect(nextDragDelay(0.999)).toBeLessThan(15);
+  });
+});
+
+describe('smokePose', () => {
+  const sp = (t: number) => smokePose(t, { reach: 9, ember: 9, exhale: 9 } as SmokePose);
+  const { raise, hold } = SMOKE_CYCLE;
+  const mid = raise + hold / 2;
+  const sweep = Array.from({ length: 1001 }, (_, i) => ({ ...sp((i / 1000) * 1.1 * SMOKE_DUR) }));
+  it('rests at the ends', () => {
+    for (const t of [0, -1, SMOKE_DUR, SMOKE_DUR + 5]) expect(sp(t)).toEqual({ reach: 0, ember: 0.35, exhale: 0 });
+  });
+  it('holds the cigarette at the mouth mid-drag', () => {
+    expect(sp(mid).reach).toBe(1);
+    expect(sp(mid).ember).toBe(1);
+  });
+  it('reach rises monotonically through the raise', () => {
+    const r = Array.from({ length: 50 }, (_, i) => sp((i / 49) * raise).reach);
+    for (let i = 1; i < r.length; i++) expect(r[i]).toBeGreaterThanOrEqual(r[i - 1]);
+  });
+  it('exhales only once lowering begins', () => {
+    expect(sp(raise * 0.5).exhale).toBe(0);
+    expect(sp(mid).exhale).toBe(0);
+    expect(sp(raise + hold + 0.3).exhale).toBeGreaterThan(0.5);
+    expect(sp(SMOKE_DUR).exhale).toBe(0);
+  });
+  it('ember never dims below idle and everything stays in [0,1]', () => {
+    for (const p of sweep) {
+      expect(p.ember).toBeGreaterThanOrEqual(0.35);
+      for (const v of [p.reach, p.ember, p.exhale]) {
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThanOrEqual(1);
+      }
+    }
   });
 });

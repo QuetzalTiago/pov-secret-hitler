@@ -109,3 +109,38 @@ export function deathPose(t: number, out: DeathPose): DeathPose {
   }
   return out;
 }
+
+/** Every third style smokes; never Hitler. */
+export function isSmoker(styleIndex: number, variant: 'normal' | 'hitler'): boolean {
+  return variant !== 'hitler' && styleIndex % 3 === 0;
+}
+
+export function nextDragDelay(rand: number): number {
+  return 8 + rand * 7;
+}
+
+/** Seconds. The exhale starts when lowering begins and outlasts the arm. */
+export const SMOKE_CYCLE = { raise: 0.7, hold: 0.9, lower: 0.7, exhale: 1.6 };
+export const SMOKE_DUR = Math.max(SMOKE_CYCLE.raise + SMOKE_CYCLE.hold + SMOKE_CYCLE.lower, SMOKE_CYCLE.raise + SMOKE_CYCLE.hold + SMOKE_CYCLE.exhale);
+
+/** reach: arm to mouth 0..1; ember: cigarette glow (0.35 idle, 1 on the drag); exhale: smoke puff envelope 0..1. */
+export interface SmokePose {
+  reach: number;
+  ember: number;
+  exhale: number;
+}
+
+/** t seconds since the drag began. */
+export function smokePose(t: number, out: SmokePose): SmokePose {
+  out.reach = out.exhale = 0;
+  out.ember = 0.35;
+  if (t <= 0 || t >= SMOKE_DUR) return out;
+  const { raise, hold, lower, exhale } = SMOKE_CYCLE;
+  const lowerAt = raise + hold;
+  out.reach = t < raise ? smooth(t / raise) : t < lowerAt ? 1 : 1 - smooth(clamp01((t - lowerAt) / lower));
+  // Glow ramps up as the cigarette arrives, fades back over the lowering.
+  out.ember = 0.35 + 0.65 * (t < lowerAt ? smooth(clamp01((t - raise) / 0.3)) : 1 - smooth(clamp01((t - lowerAt) / 0.8)));
+  const u = (t - lowerAt) / exhale;
+  if (u > 0) out.exhale = u < 0.2 ? smooth(u / 0.2) : 1 - smooth((u - 0.2) / 0.8);
+  return out;
+}
