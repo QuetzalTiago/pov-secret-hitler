@@ -669,14 +669,44 @@ function beerPoster(g: CanvasRenderingContext2D) {
   centerText(g, 'Berlin', w / 2, 690, `78px ${BLACK}`, COLORS.ink);
 }
 
-/** 2x2 atlas of period posters, each 512x768 (cell i at col i%2, row floor(i/2)); wear applied per poster. */
+type ArtImage = ImageBitmap;
+
+/** Draws img contain-fitted into the rect (x, y, w, h). */
+function drawContained(g: CanvasRenderingContext2D, img: ArtImage, x: number, y: number, w: number, h: number) {
+  const r = containRect(img.width, img.height, w, h);
+  g.drawImage(img, x + r.x, y + r.y, r.w, r.h);
+}
+
+/** Official single-card poster: ink field with the card contain-fitted 24 px in from every edge. */
+function artPoster(g: CanvasRenderingContext2D, img: ArtImage) {
+  g.fillStyle = COLORS.ink;
+  g.fillRect(0, 0, POSTER_W, POSTER_H);
+  drawContained(g, img, 24, 24, POSTER_W - 48, POSTER_H - 48);
+}
+
+/** Official logo poster: logo on top, the two policy cards below it when both are loaded. */
+function logoPoster(g: CanvasRenderingContext2D, logo: ArtImage, l: ArtImage | null, f: ArtImage | null) {
+  g.fillStyle = COLORS.ink;
+  g.fillRect(0, 0, POSTER_W, POSTER_H);
+  drawContained(g, logo, 24, 24, 464, 330);
+  if (l && f) {
+    drawContained(g, l, 40, 380, 200, 350);
+    drawContained(g, f, 272, 380, 200, 350);
+  }
+}
+
+/** 2x2 atlas of posters, each 512x768 (cell i at col i%2, row floor(i/2)); official art (role cards, logo + policy cards) when loaded, else the period posters per cell; wear applied per poster. */
 export function posterAtlas() {
   return tex('posters', POSTER_W * 2, POSTER_H * 2, (g) => {
+    const liberal = officialImage('role-liberal');
+    const fascist = officialImage('role-fascist');
+    const hitler = officialImage('role-hitler');
+    const logo = officialImage('logo');
     const draws: ((g: CanvasRenderingContext2D) => void)[] = [
-      (c) => electionPoster(c, 'L', 'WÄHLT', 'LISTE 1', 'LIBERALE PARTEI', COLORS.liberal, COLORS.liberalDeep),
-      (c) => electionPoster(c, 'F', 'ORDNUNG!', 'LISTE 2', 'WÄHLT LISTE 2', COLORS.fascist, COLORS.fascistDeep),
-      noticePoster,
-      beerPoster,
+      liberal ? (c) => artPoster(c, liberal) : (c) => electionPoster(c, 'L', 'WÄHLT', 'LISTE 1', 'LIBERALE PARTEI', COLORS.liberal, COLORS.liberalDeep),
+      fascist ? (c) => artPoster(c, fascist) : (c) => electionPoster(c, 'F', 'ORDNUNG!', 'LISTE 2', 'WÄHLT LISTE 2', COLORS.fascist, COLORS.fascistDeep),
+      hitler ? (c) => artPoster(c, hitler) : noticePoster,
+      logo ? (c) => logoPoster(c, logo, officialImage('policy-L'), officialImage('policy-F')) : beerPoster,
     ];
     draws.forEach((draw, i) => {
       const ox = (i % 2) * POSTER_W;
