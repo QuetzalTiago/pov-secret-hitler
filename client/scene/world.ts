@@ -16,6 +16,10 @@ import {
 export const TABLE_Y = 0.78;
 const LAMP_WARM = new THREE.Color(0xffa65a);
 const LAMP_HOT = new THREE.Color(0xff5a3a);
+/** Bloom threshold (linear radiance): lit white cards under the lamp reach ~7, so only emissives above that (the bulb) bloom. */
+const BLOOM_THRESHOLD = 9;
+/** Lamp bulb emissive intensity; boosted 6x with fx on so it still clears the bloom threshold. */
+const BULB_GLOW = 4;
 
 let propEnv: THREE.Texture | null = null;
 
@@ -128,6 +132,7 @@ export class World {
   renderer: THREE.WebGLRenderer;
   /** Post-processing on (bloom + vignette); off with ?fx=0 or ?perf=low. */
   readonly fx: boolean;
+  private readonly bulbGlow: number;
   private composer?: EffectComposer;
   scene = new THREE.Scene();
   camera: THREE.PerspectiveCamera;
@@ -189,6 +194,7 @@ export class World {
     const glName = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
     const software = /swiftshader|llvmpipe|software/i.test(glName);
     this.fx = q.get('fx') !== '0' && q.get('perf') !== 'low' && (q.get('fx') === '1' || !software);
+    this.bulbGlow = this.fx ? BULB_GLOW * 6 : BULB_GLOW;
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const env = new RoomEnvironment();
     propEnv = markSharedTexture(pmrem.fromScene(env, 0.04).texture);
@@ -249,7 +255,7 @@ export class World {
     shade.position.set(0, 2.62, 0);
     this.lampBulb = new THREE.Mesh(
       new THREE.SphereGeometry(0.08, 12, 8),
-      new THREE.MeshStandardMaterial({ color: 0xffe0a8, emissive: 0xffb060, emissiveIntensity: 4 }),
+      new THREE.MeshStandardMaterial({ color: 0xffe0a8, emissive: 0xffb060, emissiveIntensity: this.bulbGlow }),
     );
     this.lampBulb.position.set(0, 2.52, 0);
     const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 1.2), new THREE.MeshBasicMaterial({ color: 0x111111 }));
@@ -352,8 +358,8 @@ export class World {
     composer.setPixelRatio(this.renderer.getPixelRatio());
     composer.setSize(w, h);
     composer.addPass(new RenderPass(this.scene, this.camera));
-    // Threshold is in linear HDR radiance: only emissives (bulb, ember, glow sprites) exceed it.
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.4, 1.0));
+    // Threshold is in linear HDR radiance, set above lamp-lit surfaces so only the bulb blooms.
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.4, BLOOM_THRESHOLD));
     composer.addPass(
       new ShaderPass({
         uniforms: { tDiffuse: { value: null }, darkness: { value: 0.45 }, offset: { value: 1.0 } },
@@ -737,7 +743,9 @@ export class World {
     this.ambient.intensity = 0.55 * (1 - this.night * 0.85);
     this.handLight.intensity = 0.9 * (1 - this.night * 0.6);
     this.lamp.color.copy(LAMP_WARM).lerp(LAMP_HOT, Math.min(1, this.tension * 0.6 + danger * 0.3));
-    (this.lampBulb.material as THREE.MeshStandardMaterial).emissiveIntensity = 4 * lit * flicker;
+    // Boost only while the bloom pass runs (render() skips the composer on steps without shadows).
+    const glow = this.composer && this.quality.current.shadows ? this.bulbGlow : BULB_GLOW;
+    (this.lampBulb.material as THREE.MeshStandardMaterial).emissiveIntensity = glow * lit * flicker;
     if (this.ember) this.ember.emissiveIntensity = 2.2 + Math.sin(t * 2.3) * 0.5 + Math.sin(t * 5.1) * 0.25;
     this.redLight.intensity = danger * (3 + Math.sin(this.dangerPhase) * 1.5) + this.night * 0;
     this.muzzle.intensity *= Math.exp(-dt * 14);
