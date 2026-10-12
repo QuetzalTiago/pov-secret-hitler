@@ -1,3 +1,4 @@
+import { rand } from './rand';
 import { COLORS } from './textures';
 
 /**
@@ -15,15 +16,6 @@ type Pt = [number, number];
 type Hat = 'fedora' | 'homburg' | 'cloche' | 'cap' | 'none';
 /** Drawing frame: box, mirror flag, party ink. Shapes are authored in 0..1 box units facing +x. */
 type S = { g: CanvasRenderingContext2D; x: number; y: number; w: number; h: number; m: number; party: string };
-
-/** Seeded value noise (same LCG as textures.ts). */
-function rand(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-}
 
 const pt = (s: S, px: number, py: number): Pt => [s.x + (s.m > 0 ? px : 1 - px) * s.w, s.y + py * s.h];
 

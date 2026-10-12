@@ -1,5 +1,6 @@
 // Every texture in the game is drawn at runtime on a canvas. No image assets.
 import * as THREE from 'three';
+import { rand } from './rand';
 import { drawPortrait } from './portraits';
 import { drawSeal } from './seals';
 
@@ -105,15 +106,6 @@ export function redrawTextures(): number {
     n++;
   }
   return n;
-}
-
-/** Seeded value noise so textures look the same every load. */
-function rand(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
 }
 
 function grain(g: CanvasRenderingContext2D, w: number, h: number, amount: number, seed = 7, ox = 0, oy = 0) {

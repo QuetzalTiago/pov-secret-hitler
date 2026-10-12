@@ -23,7 +23,6 @@ export function reactionPose(kind: Reaction, t: number, out: ReactionPose): Reac
   const dur = REACTION_DUR[kind];
   if (t <= 0 || t >= dur) return out;
   const u = t / dur;
-  const env = Math.sin(Math.PI * u);
   switch (kind) {
     case 'thumbsUp':
     case 'thumbsDown': {

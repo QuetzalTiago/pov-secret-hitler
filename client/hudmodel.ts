@@ -3,7 +3,7 @@ import type { RoomView } from '../shared/protocol';
 import type { Party, Power, Role } from '../shared/types';
 import { actingSeats, type GameView } from '../shared/view';
 
-export type Verb =
+type Verb =
   | 'discard' | 'enact' | 'vote' | 'nominate' | 'shoot' | 'investigate' | 'elect' | 'peek' | 'role' | 'veto'
   | null;
 export interface CardConfirmCopy {
@@ -45,7 +45,7 @@ export function roleShown(live: Role | null, held: readonly (Role | null)[] | nu
   return held ? held[seat] ?? null : live;
 }
 
-export interface RosterEntry {
+interface RosterEntry {
   seat: number;
   name: string;
   you: boolean;

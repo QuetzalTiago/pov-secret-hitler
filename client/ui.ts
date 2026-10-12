@@ -11,11 +11,9 @@ import { fullscreenSupported, isFullscreen, isFullscreenKey, toggleFullscreen } 
 import { loadRecord, recordGame, recordLine, saveRecord } from './record';
 import { REASONS, VICTORY_MS, victoryParticles, type VictoryBanner } from './victory';
 
-export { enactBanner };
-
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
-export interface UIHandlers {
+interface UIHandlers {
   create(name: string): void;
   quickStart(name: string): void;
   join(code: string, name: string): void;
@@ -64,7 +62,6 @@ export function gameOverRow(p: PlayerView, you: number): HTMLLIElement {
 
 export class UI {
   private chipKey = '';
-  private chatOpen = false;
   private timerText: string | null = null;
   private timerClass: string | null = null;
   private timerMax = 0;
@@ -84,7 +81,7 @@ export class UI {
   /** Set by the game: the player skipped the Extrablatt banner. */
   onEnactSkip: (() => void) | null = null;
 
-  constructor(private h: UIHandlers) {
+  constructor(h: UIHandlers) {
     const nameInput = $<HTMLInputElement>('name');
     try {
       nameInput.value = localStorage.getItem('sh-name') ?? '';
@@ -240,7 +237,6 @@ export class UI {
         if (input.disabled) return;
         e.preventDefault();
         input.focus();
-        this.chatOpen = true;
       } else if (e.key === 'Escape') {
         input.blur();
         setSettings(false);
@@ -254,7 +250,6 @@ export class UI {
         if (text) h.chat(text);
         input.value = '';
         input.blur();
-        this.chatOpen = false;
         e.stopPropagation();
       }
     });
@@ -364,7 +359,6 @@ export class UI {
     const input = $<HTMLInputElement>('chat-input');
     input.blur();
     input.value = '';
-    this.chatOpen = false;
   }
 
   showRoom(room: RoomView) {

@@ -1,5 +1,5 @@
 // Pure copy/model for the policy-enacted banner (kept DOM- and audio-free so tests can import it).
-export interface EnactBanner {
+interface EnactBanner {
   title: string;
   subtitle: string;
   kicker: string;

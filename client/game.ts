@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import type { RoomView } from '../shared/protocol';
 import type { ActionBody, Party, Policy, Power, Role } from '../shared/types';
+import { partyOf } from '../shared/rules';
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { BeatQueue, VOTE_REVEAL_MS, scheduleBatch, type Beat } from './beats';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
@@ -89,7 +90,6 @@ export class Game {
   private invCard: Card;
   private invMover: Mover;
   private reveals = new Map<number, { card: Card; mover: Mover }>();
-  private tiles = { liberal: 0, fascist: 0 };
   private beats = new BeatQueue();
   /** Counts the board shows right now; trails the view while a batch of beats plays out. */
   private shown = { liberal: 0, fascist: 0, tracker: 0 };
@@ -297,7 +297,7 @@ export class Game {
     const base = this.beats.push(s, performance.now());
     const over = room.events.find((e) => e.k === 'gameOver');
     if (over && over.k === 'gameOver') {
-      const mine = this.view?.yourRole ? (this.view.yourRole === 'liberal' ? 'liberal' : 'fascist') : null;
+      const mine = this.view?.yourRole ? partyOf(this.view.yourRole) : null;
       const banner = victoryBanner(over.winner, over.reason, mine);
       this.ceremony = true;
       this.rolesHeld = true;
@@ -380,7 +380,7 @@ export class Game {
     this.world.addShake(0.7);
     for (const p of this.view?.players ?? []) {
       if (!p.alive || !p.role) continue;
-      const party = p.role === 'liberal' ? 'liberal' : 'fascist';
+      const party = partyOf(p.role);
       this.chars.get(p.seat)?.react(party === winner ? 'fist' : 'thumbsDown', 0.1 * p.seat);
     }
     this.ui.victory(banner, () => {
@@ -438,7 +438,6 @@ export class Game {
     this.cancelVictory();
     this.beats.clear();
     this.shown = { liberal: 0, fascist: 0, tracker: 0 };
-    this.tiles = { liberal: 0, fascist: 0 };
     this.tokenMover.set(this.board.slot('tracker', 0).setY(0.014));
     this.board.liberalTiles.concat(this.board.fascistTiles).forEach((t) => (t.visible = false));
     this.pool.forEach((p) => (p.where = 'pile'));
@@ -909,7 +908,6 @@ export class Game {
     const { liberal, fascist, tracker } = this.shown;
     place(this.board.liberalTiles, liberal, 'liberal', 0);
     place(this.board.fascistTiles, fascist, 'fascist', 5);
-    this.tiles = { liberal, fascist };
     this.tokenMover.set(this.board.slot('tracker', Math.min(3, tracker)).setY(0.014), undefined, instant ? 50 : 5);
   }
 

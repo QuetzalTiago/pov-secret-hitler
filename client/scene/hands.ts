@@ -13,7 +13,7 @@ const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
  */
 function loft(rings: Ring[], n: number, e: number, round: boolean): THREE.BufferGeometry {
   const pts = rings.map((r) => ({ ...r }));
-  const tangents = pts.map((r, i) => pts[Math.min(i + 1, pts.length - 1)].p.clone().sub(pts[Math.max(i - 1, 0)].p).normalize());
+  const tangents = pts.map((_r, i) => pts[Math.min(i + 1, pts.length - 1)].p.clone().sub(pts[Math.max(i - 1, 0)].p).normalize());
   if (round) {
     const last = pts[pts.length - 1];
     const t = tangents[tangents.length - 1];

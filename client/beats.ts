@@ -24,7 +24,7 @@ export type Beat =
 
 export interface Timed { at: number; beat: Beat } // ms after the batch starts
 
-export interface Schedule { beats: Timed[]; victoryAt: number | null; endsAt: number }
+interface Schedule { beats: Timed[]; victoryAt: number | null; endsAt: number }
 
 /** Turns one event batch into timed beats; `fascistBefore` is the Fascist policy count before the batch. */
 export function scheduleBatch(events: readonly GameEvent[], ctx: { chancellor: number | null; fascistBefore: number }): Schedule {

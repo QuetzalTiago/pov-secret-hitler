@@ -46,7 +46,7 @@ export function victoryDelay(reason: WinReason | null): number {
 /** Ceremony length in ms. */
 export const VICTORY_MS = 5500;
 
-export interface VictoryParticle {
+interface VictoryParticle {
   x: number; // start, percent of width
   delay: number; // s
   dur: number; // s

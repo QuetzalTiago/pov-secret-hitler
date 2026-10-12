@@ -1,6 +1,6 @@
 import type * as THREE from 'three';
 
-export interface PerfStats {
+interface PerfStats {
   fps: number;
   frameMs: number;
   worstMs: number;

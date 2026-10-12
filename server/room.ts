@@ -3,7 +3,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import { RuleError, createGame, legalActions, pendingActors, reduce } from '../shared/engine';
 import { BOT_LEVELS, DEFAULT_OPTIONS, PACES, QUICK_START_SEATS } from '../shared/protocol';
 import type { BotLevel, Pace, RoomView, SeatInfo, ServerMsg, Series, TableOptions } from '../shared/protocol';
-import { MAX_PLAYERS, MIN_PLAYERS } from '../shared/rules';
+import { MAX_PLAYERS, MIN_PLAYERS, partyOf } from '../shared/rules';
 import type { ActionBody, GameEvent, GameState, Phase } from '../shared/types';
 import { newMemory, noteMyAction, observe, type Memory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
@@ -515,7 +515,7 @@ export class Room {
   private recordResult(g: GameState, winner: 'liberal' | 'fascist') {
     this.series[winner] += 1;
     for (const p of g.players) {
-      if ((p.role === 'liberal' ? 'liberal' : 'fascist') === winner) this.series.wins[p.name] = (Object.hasOwn(this.series.wins, p.name) ? this.series.wins[p.name] : 0) + 1;
+      if (partyOf(p.role) === winner) this.series.wins[p.name] = (Object.hasOwn(this.series.wins, p.name) ? this.series.wins[p.name] : 0) + 1;
     }
   }
 
