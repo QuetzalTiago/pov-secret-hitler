@@ -6,7 +6,7 @@ import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { BeatQueue, VOTE_REVEAL_MS, scheduleBatch, type Beat } from './beats';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
 import { ENACT_BANNER_DELAY_MS, ceremonyEndsAt } from './enact';
-import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, type Mark } from './hudmodel';
+import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, type Mark } from './hudmodel';
 import { loadMarks, saveMarks } from './marks';
 import type { Interactable, Interactor } from './interact';
 import { createCharacter, type Patron } from './scene/characters';
@@ -362,7 +362,10 @@ export class Game {
         changed = true;
       }
     }
-    if (changed && v) this.syncTiles(false);
+    if (changed && v) {
+      this.syncTiles(false);
+      this.refreshHud();
+    }
   }
 
   /** The roles panel shows once the game is over and no win ceremony is running. */
@@ -377,6 +380,7 @@ export class Game {
     this.rolesHeld = false;
     this.revealedSeats.clear();
     if (this.room) this.syncCharacters();
+    this.refreshHud();
     sfx.victory(winner, mine === null ? null : mine === winner);
     duckMusic(6);
     this.world.addShake(0.7);
@@ -399,6 +403,7 @@ export class Game {
     this.rolesHeld = false;
     this.revealedSeats.clear();
     if (this.room) this.syncCharacters();
+    this.refreshHud();
   }
 
   /** The state our in-flight action answers; null with no game. */
@@ -588,7 +593,7 @@ export class Game {
       c.dead = !!p && !p.alive;
       let label = info?.name ?? p?.name ?? '?';
       let color = '#f0e6d2';
-      const role = this.rolesHeld ? this.heldRoles[seat] ?? null : p?.role ?? null;
+      const role = roleShown(p?.role ?? null, this.rolesHeld ? this.heldRoles : null, seat);
       if (role && role !== 'liberal') {
         label += role === 'hitler' ? ' · HITLER' : ' · FASCIST';
         color = '#ff8f7a';
@@ -1142,7 +1147,14 @@ export class Game {
   private refreshHud() {
     const { room, view } = this;
     if (room && view) {
-      const opts = { envelopeOpen: this.envelopeOpen, myVote: this.myVote, termLimited: this.termLimited(), marks: this.marks };
+      const opts = {
+        envelopeOpen: this.envelopeOpen,
+        myVote: this.myVote,
+        termLimited: this.termLimited(),
+        marks: this.marks,
+        shown: this.shown,
+        heldRoles: this.rolesHeld ? this.heldRoles : null,
+      };
       this.ui.renderHud(hudModel(view, room, opts), this.promptActive());
     } else if (room) {
       const text = room.seats.length < 5 ? 'Waiting for players… (5 to 10 seats, the host can add bots)' : 'Waiting for the host to start.';

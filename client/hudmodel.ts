@@ -36,6 +36,13 @@ export interface HudOpts {
   myVote: boolean | null; // this client's own vote, once cast
   termLimited: number[]; // seats that cannot be nominated Chancellor
   marks?: Record<number, Mark>; // this client's private suspicion marks by seat
+  shown?: { liberal: number; fascist: number; tracker: number }; // board counts the 3D table shows (beats may lag the view)
+  heldRoles?: readonly (Role | null)[] | null; // non-null while game-over roles are held until the victory ceremony
+}
+
+/** The role to show for a seat: the held one while roles are held (null = not held), else the live one. */
+export function roleShown(live: Role | null, held: readonly (Role | null)[] | null, seat: number): Role | null {
+  return held ? held[seat] ?? null : live;
 }
 
 export interface RosterEntry {
@@ -136,6 +143,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
   const over = v.phase === 'gameOver';
   const mine = !over && (v.phase === 'night' ? !mePlayer?.acked : v.pending.includes(me));
   const waitingOn = over ? [] : v.pending.filter((s) => s !== me).map(name);
+  const shown = opts.shown ?? v;
   const pres = name(v.president);
   const chanc = name(v.chancellor);
 
@@ -251,7 +259,8 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
       }
       break;
     case 'gameOver':
-      title = v.winner === 'liberal' ? 'The Liberals win' : 'The Fascists win';
+      // the ceremony announces the winner while roles are held
+      if (!opts.heldRoles) title = v.winner === 'liberal' ? 'The Liberals win' : 'The Fascists win';
       break;
   }
   if (!alive && !over) detail = 'You are dead: watch in silence. ' + detail;
@@ -275,7 +284,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
       bot: seat?.bot ?? false,
       away: seat ? !seat.connected && !seat.bot : false,
       badges,
-      knownRole: p.role,
+      knownRole: roleShown(p.role, opts.heldRoles ?? null, p.seat),
       mark: p.seat === me ? null : (opts.marks?.[p.seat] ?? null),
       intel: v.yourInvestigations.find((i) => i.target === p.seat)?.party ?? null,
     };
@@ -286,9 +295,9 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
       role: v.yourRole,
       roleLabel: v.yourRole ? ROLE_LABELS[v.yourRole] : '',
       alive,
-      liberal: v.liberal,
-      fascist: v.fascist,
-      tracker: v.tracker,
+      liberal: shown.liberal,
+      fascist: shown.fascist,
+      tracker: shown.tracker,
       deck: v.deckCount,
       discard: v.discardCount,
       round: v.round,

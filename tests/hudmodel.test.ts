@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, type HudOpts } from '../client/hudmodel';
+import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, type HudOpts } from '../client/hudmodel';
 import type { RoomView } from '../shared/protocol';
+import type { Role } from '../shared/types';
 import type { GameView } from '../shared/view';
 
 const NAMES = ['Ann', 'Bob', 'Cy', 'Di', 'Ed'];
@@ -141,6 +142,56 @@ describe('hudModel', () => {
       expect(m.action.detail.length).toBeGreaterThan(0);
       if (phase === 'investigate') expect(m.action.detail).toContain('investigate');
     }
+  });
+});
+
+describe('hudModel shown state', () => {
+  it('pips follow shown counts while a beat is pending', () => {
+    const { v, room } = fixture({ fascist: 3, tracker: 0, liberal: 1 });
+    const m = hudModel(v, room, { ...opts, shown: { liberal: 1, fascist: 2, tracker: 2 } });
+    expect(m.status.fascist).toBe(2);
+    expect(m.status.tracker).toBe(2);
+    expect(m.status.liberal).toBe(1);
+    const live = hudModel(v, room, opts);
+    expect(live.status.fascist).toBe(3);
+    expect(live.status.tracker).toBe(0);
+  });
+
+  it('gameOver with roles held does not leak roles or the winner', () => {
+    const { v, room } = fixture({ phase: 'gameOver', winner: 'fascist', pending: [] });
+    const roles = ['liberal', 'fascist', 'hitler', 'liberal', 'liberal'] as const;
+    v.players.forEach((p, i) => (p.role = roles[i]));
+    const held: (Role | null)[] = ['liberal', 'fascist', null, null, null];
+    const m = hudModel(v, room, { ...opts, heldRoles: held });
+    expect(m.roster.map((r) => r.knownRole)).toEqual(held);
+    expect(m.action.title).toBe('');
+    expect(m.action.title).not.toContain('win');
+    expect(m.action.detail).toBe('');
+  });
+
+  it('gameOver without held roles shows everything', () => {
+    const { v, room } = fixture({ phase: 'gameOver', winner: 'fascist', pending: [] });
+    const roles = ['liberal', 'fascist', 'hitler', 'liberal', 'liberal'] as const;
+    v.players.forEach((p, i) => (p.role = roles[i]));
+    const m = hudModel(v, room, { ...opts, heldRoles: null });
+    expect(m.roster.map((r) => r.knownRole)).toEqual([...roles]);
+    expect(m.action.title).toBe('The Fascists win');
+  });
+});
+
+describe('roleShown', () => {
+  it('uses the live role when nothing is held', () => {
+    expect(roleShown('fascist', null, 1)).toBe('fascist');
+    expect(roleShown(null, null, 1)).toBeNull();
+  });
+
+  it('uses the held role when held', () => {
+    expect(roleShown('fascist', ['liberal', null], 0)).toBe('liberal');
+    expect(roleShown('fascist', ['liberal', null], 1)).toBeNull();
+  });
+
+  it('is null for a seat missing from the held array', () => {
+    expect(roleShown('fascist', ['liberal'], 3)).toBeNull();
   });
 });
 
