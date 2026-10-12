@@ -2,6 +2,7 @@
 import type { RoomView } from '../shared/protocol';
 import type { Party, Power, Role } from '../shared/types';
 import { actingSeats, type GameView } from '../shared/view';
+import { hitlerKnowsFascists } from '../shared/rules';
 import { tr } from './i18n';
 
 type Verb =
@@ -86,6 +87,7 @@ export interface HudModel {
   status: {
     role: Role | null;
     roleLabel: string;
+    roleGoal: string;
     alive: boolean;
     liberal: number;
     fascist: number;
@@ -117,6 +119,30 @@ function roleLabel(role: Role): string {
         ? { en: 'Fascist', es: 'Fascista' }
         : { en: 'Hitler', es: 'Hitler' },
   );
+}
+
+/** How the role wins and who it knows, shown at night and as the role chip's tooltip. */
+export function roleGoal(role: Role, playerCount: number): string {
+  if (role === 'liberal') {
+    return tr({
+      en: 'Enact 5 Liberal policies or shoot Hitler.',
+      es: 'Promulga 5 leyes Liberales o dispara a Hitler.',
+    });
+  }
+  if (role === 'fascist') {
+    return tr({
+      en: 'Enact 6 Fascist policies, or get Hitler elected Chancellor after 3. You know your team.',
+      es: 'Promulga 6 leyes Fascistas, o haz que elijan Canciller a Hitler después de 3. Conoces a tu equipo.',
+    });
+  }
+  const goal = tr({
+    en: 'Stay hidden. Get elected Chancellor after 3 Fascist policies.',
+    es: 'Pasa desapercibido. Haz que te elijan Canciller después de 3 leyes Fascistas.',
+  });
+  const knows = hitlerKnowsFascists(playerCount)
+    ? tr({ en: 'You know your Fascist.', es: 'Conoces a tu Fascista.' })
+    : tr({ en: "You don't know your Fascists.", es: 'No conoces a tus Fascistas.' });
+  return `${goal} ${knows}`;
 }
 
 function stepIndex(phase: GameView['phase']): number | null {
@@ -201,7 +227,8 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
         verb = 'role';
       } else {
         title = tr({ en: 'Memorise your role', es: 'Memoriza tu rol' });
-        detail = tr({ en: 'Click the card to close your eyes.', es: 'Haz clic en la carta para cerrar los ojos.' });
+        const hint = tr({ en: 'Click the card to close your eyes.', es: 'Haz clic en la carta para cerrar los ojos.' });
+        detail = v.yourRole ? `${roleGoal(v.yourRole, v.players.length)} ${hint}` : hint;
         verb = 'role';
       }
       break;
@@ -388,6 +415,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
     status: {
       role: v.yourRole,
       roleLabel: v.yourRole ? roleLabel(v.yourRole) : '',
+      roleGoal: v.yourRole ? roleGoal(v.yourRole, v.players.length) : '',
       alive,
       liberal: shown.liberal,
       fascist: shown.fascist,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { setLang } from '../client/i18n';
-import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, screenBlood, type HudOpts } from '../client/hudmodel';
+import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleGoal, roleShown, screenBlood, type HudOpts } from '../client/hudmodel';
 import type { RoomView } from '../shared/protocol';
 import type { Role } from '../shared/types';
 import type { GameView } from '../shared/view';
@@ -342,6 +342,48 @@ describe('screenBlood', () => {
   it('treats the only other seat as a neighbour at 2 seats', () => {
     expect(screenBlood(0, 1, 2)).toBe('spatter');
     expect(screenBlood(1, 0, 2)).toBe('spatter');
+  });
+});
+
+describe('roleGoal', () => {
+  afterEach(() => setLang('en'));
+
+  it('liberal text does not depend on the player count', () => {
+    expect(roleGoal('liberal', 5)).toBe('Enact 5 Liberal policies or shoot Hitler.');
+    expect(roleGoal('liberal', 9)).toBe(roleGoal('liberal', 5));
+  });
+
+  it('fascist knows the team', () => {
+    expect(roleGoal('fascist', 7)).toBe(
+      'Enact 6 Fascist policies, or get Hitler elected Chancellor after 3. You know your team.',
+    );
+  });
+
+  it('Hitler knows the Fascist only at 5-6 players', () => {
+    const goal = 'Stay hidden. Get elected Chancellor after 3 Fascist policies.';
+    for (const n of [5, 6]) expect(roleGoal('hitler', n)).toBe(`${goal} You know your Fascist.`);
+    for (const n of [7, 10]) expect(roleGoal('hitler', n)).toBe(`${goal} You don't know your Fascists.`);
+  });
+
+  it('is translated to Spanish', () => {
+    setLang('es');
+    expect(roleGoal('liberal', 5)).toBe('Promulga 5 leyes Liberales o dispara a Hitler.');
+    expect(roleGoal('fascist', 5)).toContain('Conoces a tu equipo.');
+    expect(roleGoal('hitler', 5)).toBe(
+      'Pasa desapercibido. Haz que te elijan Canciller después de 3 leyes Fascistas. Conoces a tu Fascista.',
+    );
+    expect(roleGoal('hitler', 8)).toContain('No conoces a tus Fascistas.');
+  });
+
+  it('shows in the night prompt once the card is face up, and on the status chip', () => {
+    const { v, room } = fixture({ phase: 'night', yourRole: 'hitler', pending: [0] });
+    const open = hudModel(v, room, { ...opts, envelopeOpen: true });
+    expect(open.action.title).toBe('Memorise your role');
+    expect(open.action.detail.startsWith(roleGoal('hitler', 5))).toBe(true);
+    expect(open.action.detail.endsWith('Click the card to close your eyes.')).toBe(true);
+    const closed = hudModel(v, room, opts);
+    expect(closed.action.detail).toBe('Click your envelope to see it.');
+    expect(closed.status.roleGoal).toBe(roleGoal('hitler', 5));
   });
 });
 

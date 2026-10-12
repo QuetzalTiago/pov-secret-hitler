@@ -578,6 +578,7 @@ export class UI {
       chip.replaceChildren(...nodes);
       chip.className = className;
     }
+    chip.title = st.roleGoal;
     const pips = (id: string, total: number, filled: number, powers?: (Power | null)[], disabledFrom = total) => {
       $(id).replaceChildren(
         ...Array.from({ length: total }, (_, i) => {
