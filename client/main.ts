@@ -6,6 +6,7 @@ import { Interactor } from './interact';
 import { Net } from './net';
 import { createPerfHud } from './perf';
 import { loadAssets } from './scene/assets';
+import { loadOfficialArt } from './scene/officialart';
 import { GRAPHICS_MODES, saveGraphicsPref } from './scene/quality';
 import { redrawTextures } from './scene/textures';
 import { World } from './scene/world';
@@ -147,6 +148,10 @@ if (/^[A-Z]{4}$/.test(invite)) {
   if (s && s.code !== invite) saveSession(null); // the invite wins over an old table
   if (!s || s.code !== invite) ui.setInvite(invite);
 }
+// Official card and board art: cached canvas textures repaint once it lands; ?art=old keeps the procedural look.
+void loadOfficialArt().then((n) => {
+  if (n) redrawTextures();
+});
 // Models load first so the scene can use them; a slow or failed load must not hold the table up.
 void Promise.race([loadAssets(), new Promise<null>((r) => setTimeout(r, 10_000))])
   .then((assets) => {
