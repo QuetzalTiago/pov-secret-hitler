@@ -9,7 +9,7 @@ import { MAX_PLAYERS, MIN_PLAYERS } from '../shared/rules';
 import type { ActionBody, GameEvent, GameState, Phase } from '../shared/types';
 import { newMemory, observe, profiles, type Memory } from '../shared/tracker';
 import { viewFor } from '../shared/view';
-import { heuristicTalk, planTalk, type TalkPlan } from './botchat';
+import { heuristicTalk, planTalk, talkReads, type TalkPlan } from './botchat';
 import {
   cool, newMood, offend, readMessage, relation, tension, warmTo,
   writeAccusation, writeIgnored, writeIntent, writeReconsider, writeReply,
@@ -1039,14 +1039,14 @@ export class Room {
     if (!g) return false;
     const view = viewFor(g, seat);
     const m = this.memories[seat];
-    const prof = profiles(m, view);
+    const { sus } = talkReads(m, view);
     for (const p of view.players) {
       if (p.seat === seat || !p.alive || mood.recanted.has(p.seat)) continue;
       const rel = relation(mood, p.seat);
       const govs = m.governments.filter((x) => x.president === p.seat || x.chancellor === p.seat);
       const last = govs.at(-1);
       if (!last || last.result !== 'L' || view.round - last.round > 2) continue; // nothing new in their favour
-      const wasDown = rel.rapport < -0.15 || prof[p.seat].suspicion >= 1.2 || govs.some((x) => x.result === 'F');
+      const wasDown = rel.rapport < -0.15 || sus[p.seat] >= 1.2 || govs.some((x) => x.result === 'F');
       if (!wasDown) continue;
       if (Math.random() > 0.45) continue;
       mood.recanted.add(p.seat);
@@ -1077,13 +1077,14 @@ export class Room {
     const view = viewFor(g, seat);
     const fascist = view.yourRole !== 'liberal';
     const prof = profiles(this.memories[seat], view);
+    const { sus } = talkReads(this.memories[seat], view);
     const speakable = prof
       .filter((p) => p.seat !== seat && g.players[p.seat].alive)
       // Never hand your own team in: a Fascist knows who its teammates are.
       .filter((p) => !(fascist && view.players[p.seat].role && view.players[p.seat].role !== 'liberal'));
     if (!speakable.length) return;
     // An ally gets the benefit of the doubt; someone you are at odds with gets less of it.
-    const heatOf = (s: number) => (prof[s].suspicion ?? 0) - relation(mood, s).rapport * 1.5 + relation(mood, s).heat;
+    const heatOf = (s: number) => sus[s] - relation(mood, s).rapport * 1.5 + relation(mood, s).heat;
     const target = speakable.sort((a, b) => heatOf(b.seat) - heatOf(a.seat))[0];
     const heat = heatOf(target.seat);
     const persona = this.personaOf(seat);

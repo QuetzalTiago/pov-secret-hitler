@@ -10,6 +10,7 @@
 import { MAX_CHAT, cleanText } from '../shared/protocol';
 import { buildState } from '../shared/smartbot';
 import { profiles, type Memory } from '../shared/tracker';
+import { talkReads } from './botchat';
 import type { GameView } from '../shared/view';
 import type { BotLang } from './config';
 import { config } from './config';
@@ -233,7 +234,7 @@ function situationBlock(ctx: TalkContext, situation: string, toward: number | nu
     .slice(-10)
     .map((l) => `${l.name}: ${l.text}`)
     .join('\n');
-  const reads = readsOn(ctx, prof);
+  const reads = readsOn(ctx);
   return [
     `${es ? 'ESTADO DE LA PARTIDA (sólo lo que vos sabés)' : 'GAME STATE (only what you know)'}:\n${JSON.stringify(state)}`,
     reads ? `${es ? 'CÓMO VIENE CADA UNO (lo último pesa más que lo viejo)' : 'HOW EACH PLAYER IS TRENDING (recent beats old)'}:\n${reads}` : '',
@@ -246,11 +247,12 @@ function situationBlock(ctx: TalkContext, situation: string, toward: number | nu
 }
 
 /**
- * A short per-player trend line. The raw suspicion score in the game state is cumulative, which anchors the
- * writer on whatever someone did first and never lets it move. This says what each player has done LATELY,
- * and flags the Chancellor who had no choice, so a bot can actually change its mind.
+ * A short per-player trend line. The percentage is the whole-game read from the belief model; the trend
+ * bits say what each player has done LATELY, so the writer is not anchored on whatever someone did first,
+ * and flag the Chancellor who had no choice, so a bot can actually change its mind.
  */
-function readsOn(ctx: TalkContext, prof: ReturnType<typeof profiles>): string {
+function readsOn(ctx: TalkContext): string {
+  const { pF } = talkReads(ctx.memory, ctx.view);
   const es = ctx.lang === 'es-AR';
   const me = ctx.view.you!;
   const round = ctx.view.round;
@@ -277,7 +279,7 @@ function readsOn(ctx: TalkContext, prof: ReturnType<typeof profiles>): string {
         ? `ojo: fue CANCILLER, puede no haber tenido opción si ${ctx.name(last.president)} le pasó dos fachas`
         : `note: they were CHANCELLOR and may have had no choice if ${ctx.name(last.president)} handed them two Fascists`);
     }
-    lines.push(`${ctx.name(p.seat)}: ${bits.join('; ')}. ${es ? 'Sospecha acumulada' : 'Cumulative suspicion'} ${prof[p.seat].suspicion.toFixed(1)}.`);
+    lines.push(`${ctx.name(p.seat)}: ${bits.join('; ')}. ${es ? 'Probabilidad de facho' : 'Likely Fascist'} ${Math.round(pF[p.seat] * 100)}%.`);
   }
   return lines.join('\n');
 }

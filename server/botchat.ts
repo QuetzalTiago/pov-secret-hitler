@@ -6,6 +6,8 @@
 // `line` is read by players, so it follows SH_BOT_LANG: it is what a bot actually types whenever the writing
 // model in bottalk.ts is unavailable, and an English fallback at a Rioplatense table reads broken.
 import { buildState, type Rand } from '../shared/smartbot';
+import { beliefs } from '../shared/belief';
+import { ROLE_COUNTS } from '../shared/rules';
 import { profiles, type Memory } from '../shared/tracker';
 import type { GameEvent, Policy } from '../shared/types';
 import type { GameView } from '../shared/view';
@@ -36,6 +38,29 @@ function cardsEn(cs: Policy[]): string {
   return l === 0 ? 'three Fascists' : l === 3 ? 'three Liberals' : `${l} Liberal${l > 1 ? 's' : ''} and ${f} Fascist${f > 1 ? 's' : ''}`;
 }
 
+/** How Fascist each seat looks to this bot when it talks, from the belief model. Liberals use everything
+ *  they know; the Fascist team reads the table's view, so what they say sounds plausible. `sus` puts
+ *  pFascist on the old suspicion scale (0 = the prior, about +3 = certain), which the talk thresholds use:
+ *  a read at about 60%, a warning at 75%, an outright accusation at 80%. */
+export function talkReads(m: Memory, v: GameView): { pF: number[]; sus: number[] } {
+  const fasc = v.yourRole !== 'liberal';
+  const pF = beliefs(m, v, fasc ? { observer: 'liberal' } : undefined).pFascist;
+  const k = ROLE_COUNTS[m.n][1] + 1;
+  const prior = fasc ? k / m.n : k / (m.n - 1);
+  return { pF, sus: pF.map((p) => 6 * (p - prior)) };
+}
+
+/** buildState with each player's `suspicion` swapped for the belief percentage. buildState lists the other
+ *  players in seat order, so the swap goes by that order. */
+function withLikelyFascist(state: ReturnType<typeof buildState>, v: GameView, pF: number[]) {
+  const others = v.players.filter((p) => p.seat !== v.you);
+  const players = (state.players as Record<string, unknown>[]).map((p, i) => {
+    const { suspicion: _s, ...rest } = p;
+    return { ...rest, likelyFascist: `${Math.round(pF[others[i].seat] * 100)}%` };
+  });
+  return { ...state, players };
+}
+
 export interface TalkOption {
   line: string | null; // null = say nothing
   description: string; // what this choice means, for Jev
@@ -62,7 +87,7 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
     situation,
     instructions: `${situation} What do you say to the table? ${honesty(fasc)}`,
     options,
-    state: buildState(v, m, profiles(m, v), name),
+    state: withLikelyFascist(buildState(v, m, profiles(m, v), name), v, talkReads(m, v).pF),
   });
   const line = (situation: string, text: string): TalkPlan => ({ kind: 'line', line: text, situation });
   const role = (s: number) => v.players[s]?.role;
@@ -147,18 +172,19 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
     case 'votes': {
       const el = m.elections.at(-1);
       if (!el) return null;
-      const prof = profiles(m, v);
+      const { pF, sus } = talkReads(m, v);
       const pres = name(el.president);
       const nom = name(el.nominee);
-      const presSus = prof[el.president].suspicion;
-      const nomSus = prof[el.nominee].suspicion;
+      const presSus = sus[el.president];
+      const nomSus = sus[el.nominee];
+      const pct = (s: number) => Math.round(pF[s] * 100);
       // A government just formed in which a suspicious President hands cards to someone the table still
       // trusts. That is the classic setup ("hacer la cama"): two Fascists passed down, and the Chancellor
       // wears it. Bots call it out, exactly as players do - louder when it is about to happen to them.
       if (el.passed && presSus >= 1.5 && v.players[el.nominee].alive) {
         if (el.nominee === me) {
           return choice(
-            `You were just elected Chancellor under President ${pres}, who you do not trust (suspicion ${presSus.toFixed(1)}). ` +
+            `You were just elected Chancellor under President ${pres}, who you do not trust (likely Fascist ${pct(el.president)}%). ` +
               `If ${pres} is a Fascist they can hand you two Fascist policies, leaving you no choice and no way to prove it was not you.`,
             {
               warn: {
@@ -172,8 +198,8 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
         }
         if (el.president !== me && nomSus < 0.5 && rand() < 0.5) {
           return choice(
-            `The election passed: President ${pres} (suspicion ${presSus.toFixed(1)}) will hand policies to Chancellor ${nom}, ` +
-              `who the table still trusts (suspicion ${nomSus.toFixed(1)}). If ${pres} is a Fascist, they can pass ${nom} two Fascist ` +
+            `The election passed: President ${pres} (likely Fascist ${pct(el.president)}%) will hand policies to Chancellor ${nom}, ` +
+              `who the table still trusts (likely Fascist ${pct(el.nominee)}%). If ${pres} is a Fascist, they can pass ${nom} two Fascist ` +
               `policies and leave ${nom} carrying the blame for them.`,
             {
               warn: {

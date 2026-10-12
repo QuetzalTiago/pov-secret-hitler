@@ -500,6 +500,12 @@ describe('a room with talking bots', () => {
 });
 
 describe('calling out a setup', () => {
+  // The belief model only counts a government that has a passed election behind it.
+  const fGov = (m: { governments: unknown[]; elections: unknown[] }, round: number, president: number, chancellor: number) => {
+    m.governments.push({ round, president, chancellor, result: 'F' });
+    m.elections.push({ round, president, nominee: chancellor, votes: [true, true, true, true, true], passed: true });
+  };
+
   it('warns the Chancellor when a suspicious President is about to hand them the cards', async () => {
     const { planTalk } = await import('../server/botchat');
     const { newMemory, observe } = await import('../shared/tracker');
@@ -517,11 +523,14 @@ describe('calling out a setup', () => {
     s = act(s, 0, { type: 'presDiscard', index: 0 });
     s = act(s, s.chancellor!, { type: 'chancEnact', index: 0 });
     feed(s, [{ k: 'enacted', policy: 'F', chaos: false }]);
-    // A second Fascist policy under the same President is what pushes them past the warning threshold.
-    m.governments.push({ round: 2, president: 0, chancellor: 4, result: 'F' });
+    // More Fascist policies under the same President is what pushes them past the warning threshold.
+    fGov(m, 2, 0, 4);
+    fGov(m, 3, 0, 3);
+    fGov(m, 4, 0, 1);
+    fGov(m, 5, 0, 4);
 
     // Now seat 0 is suspicious. Put them back in the chair with a clean Chancellor.
-    const el = { round: 2, president: 0, nominee: 3, votes: [true, true, true, true, true], passed: true };
+    const el = { round: 6, president: 0, nominee: 3, votes: [true, true, true, true, true], passed: true };
     m.elections.push(el);
     const plan = planTalk({ k: 'votes', votes: el.votes, passed: true }, viewFor(s, 2), m, (x) => `P${x}`, () => 0.1);
     expect(plan?.kind).toBe('choice');
@@ -539,9 +548,12 @@ describe('calling out a setup', () => {
 
     const s = setup(5, { president: 0, roles: roles(5, 4, [3]) });
     const m = newMemory(2, 5);
-    m.governments.push({ round: 1, president: 0, chancellor: 1, result: 'F' });
-    m.governments.push({ round: 2, president: 0, chancellor: 4, result: 'F' });
-    const el = { round: 3, president: 0, nominee: 2, votes: [true, true, true, true, true], passed: true };
+    fGov(m, 1, 0, 1);
+    fGov(m, 2, 0, 4);
+    fGov(m, 3, 0, 3);
+    fGov(m, 4, 0, 1);
+    fGov(m, 5, 0, 4);
+    const el = { round: 6, president: 0, nominee: 2, votes: [true, true, true, true, true], passed: true };
     m.elections.push(el);
     const plan = planTalk({ k: 'votes', votes: el.votes, passed: true }, viewFor(s, 2), m, (x) => `P${x}`, () => 0.1);
     if (plan?.kind !== 'choice') throw new Error('expected a choice');
