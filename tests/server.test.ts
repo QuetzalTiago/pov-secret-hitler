@@ -210,6 +210,9 @@ describe('server', () => {
     c.send({ t: 'join', code: 'ZZZZ', name: 'x' });
     await c.until(() => c.msgs.filter((m) => m.t === 'error').length >= 2);
     expect(c.msgs.map((m) => (m as { msg?: string }).msg)).toEqual(['You are not in a room.', 'No room with that code.']);
+    const errs = c.msgs.filter((m) => m.t === 'error') as { for?: 'act' }[];
+    expect(errs[0].for).toBe('act');
+    expect(errs[1].for).toBeUndefined();
     c.close();
   });
 
@@ -227,6 +230,21 @@ describe('server', () => {
     host.send({ t: 'chat', text: 'boo' });
     await host.until(() => host.msgs.some((m) => m.t === 'error'));
     expect(host.msgs.filter((m) => m.t === 'chat').length).toBe(1);
+    expect((host.msgs.find((m) => m.t === 'error') as { for?: 'act' }).for).toBeUndefined();
+    host.close();
+  });
+
+  it('tags a refused game action with for: act', async () => {
+    const host = await client();
+    host.send({ t: 'create', name: 'Solo' });
+    await host.until(() => !!host.code);
+    for (let i = 0; i < 4; i++) host.send({ t: 'addBot' });
+    await host.until(() => host.room?.seats.length === 5);
+    host.send({ t: 'start' });
+    await host.until(() => host.room?.stage === 'game');
+    host.send({ t: 'act', a: { type: 'proposeVeto' } }); // never legal before 5 fascist policies
+    await host.until(() => host.msgs.some((m) => m.t === 'error'));
+    expect(host.msgs.find((m) => m.t === 'error')).toMatchObject({ msg: 'That move is not allowed right now.', for: 'act' });
     host.close();
   });
 

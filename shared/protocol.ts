@@ -73,7 +73,7 @@ export type ServerMsg =
   | { t: 'welcome'; code: string; token: string; seat: number }
   | { t: 'room'; room: RoomView }
   | { t: 'chat'; seat: number; name: string; text: string }
-  | { t: 'error'; msg: string; fatal?: boolean }
+  | { t: 'error'; msg: string; fatal?: boolean; for?: 'act' } // for: 'act' = the server refused the client's action
   | { t: 'left' }
   | { t: 'pong' };
 

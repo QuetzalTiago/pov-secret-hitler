@@ -153,7 +153,7 @@ export function startServer(port = config.port): Promise<RunningServer> {
         if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
       },
     };
-    const error = (msg: string) => conn.send({ t: 'error', msg });
+    const error = (msg: string, forAct = false) => conn.send(forAct ? { t: 'error', msg, for: 'act' } : { t: 'error', msg });
 
     ws.on('pong', () => (alive = true));
     const heartbeat = setInterval(() => {
@@ -175,10 +175,10 @@ export function startServer(port = config.port): Promise<RunningServer> {
       }
       try {
         const err = handle(conn, msg, chatBucket);
-        if (err) error(err);
+        if (err) error(err, msg.t === 'act');
       } catch (e) {
         console.error('handler error', e);
-        error('Server error.');
+        error('Server error.', msg.t === 'act');
       }
     });
 

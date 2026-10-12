@@ -127,7 +127,7 @@ net.onMessage = (m: ServerMsg) => {
       if (m.fatal) {
         leaving = false;
         resetClient();
-      } else game.actionRejected();
+      } else if (m.for === 'act') game.actionRejected();
       ui.error(m.msg);
       break;
     case 'left':
