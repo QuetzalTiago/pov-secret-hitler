@@ -11,6 +11,10 @@ const TEMPO_MIN = 0.75;
 const TEMPO_MAX = 1.35;
 
 const original = { timerScale: config.timerScale, botDelayMs: config.botDelayMs };
+// Fixed wall clock for tests that install fake timers, so Date.now() bounds are exact.
+const FROZEN_NOW = 1_700_000_000_000;
+// Upper bound on fake-timer steps in the busy-wait loops; the phases under test finish well before this.
+const MAX_STEPS = 10_000;
 
 type Plan = { key: string; readyAt: number; timer: unknown };
 const plansOf = (room: Room) => (room as unknown as { botPlans: Map<number, Plan> }).botPlans;
@@ -48,20 +52,22 @@ describe('per-seat bot plans', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     config.timerScale = original.timerScale;
     config.botDelayMs = original.botDelayMs;
   });
 
   it('draws every pending bot a plan at once when the night opens', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FROZEN_NOW);
     config.timerScale = 1e4; // keep the deadline cap out of the way
-    const before = Date.now();
     const { room } = startGame();
     const u = config.botDelayMs / 1400;
     const plans = plansOf(room);
     expect([...plans.keys()].sort()).toEqual([1, 2, 3, 4]);
     for (const p of plans.values()) {
-      expect(p.readyAt).toBeGreaterThanOrEqual(before + (SETTLE_SECONDS.other + THINK_SECONDS.night[0] * TEMPO_MIN) * 1000 * u - 5);
-      expect(p.readyAt).toBeLessThanOrEqual(Date.now() + (SETTLE_SECONDS.other + THINK_SECONDS.night[1] * TEMPO_MAX) * 1000 * u);
+      expect(p.readyAt).toBeGreaterThanOrEqual(FROZEN_NOW + (SETTLE_SECONDS.other + THINK_SECONDS.night[0] * TEMPO_MIN) * 1000 * u);
+      expect(p.readyAt).toBeLessThanOrEqual(FROZEN_NOW + (SETTLE_SECONDS.other + THINK_SECONDS.night[1] * TEMPO_MAX) * 1000 * u);
       expect(p.timer).not.toBeNull();
     }
     room.close();
@@ -76,14 +82,15 @@ describe('per-seat bot plans', () => {
   });
 
   it('lets voters act independently, each at its own readyAt', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FROZEN_NOW);
     config.botDelayMs = 20; // 1 unit = 20 ms: vote think time 43-129 ms
     config.timerScale = 1;
     const { room, human } = startGame();
     try {
       let voteOpened = 0;
       let readyAts: number[] = [];
-      const t0 = Date.now();
-      while (Date.now() - t0 < 20_000) {
+      for (let step = 0; step < MAX_STEPS; step++) {
         const g = room.game!;
         if (g.phase === 'vote') {
           voteOpened = Date.now();
@@ -92,31 +99,34 @@ describe('per-seat bot plans', () => {
           expect(plansOf(room).size).toBe(pendingActors(g).filter((s) => s !== 0).length);
           break;
         }
+        // Our own move may open the phase now: re-check before letting time pass.
         if (pendingActors(g).includes(0)) room.act(human, legalActions(g, 0)[0]);
-        await new Promise((r) => setTimeout(r, 1));
+        else await vi.advanceTimersToNextTimerAsync();
       }
       expect(voteOpened).toBeGreaterThan(0);
       const u = config.botDelayMs / 1400;
       for (const r of readyAts) {
-        expect(r).toBeGreaterThanOrEqual(voteOpened - 50 + THINK_SECONDS.vote[0] * TEMPO_MIN * 1000 * u);
-        expect(r).toBeLessThanOrEqual(voteOpened + 50 + THINK_SECONDS.vote[1] * TEMPO_MAX * 1000 * u);
+        expect(r).toBeGreaterThanOrEqual(voteOpened + THINK_SECONDS.vote[0] * TEMPO_MIN * 1000 * u);
+        // The vote opens on a nomination, so the plan also waits out its settle.
+        expect(r).toBeLessThanOrEqual(voteOpened + (SETTLE_SECONDS.nominated + THINK_SECONDS.vote[1] * TEMPO_MAX) * 1000 * u);
       }
       expect(new Set(readyAts).size).toBeGreaterThan(1);
       // The human votes now; the phase then ends when the slowest bot's own timer fires (not after the sum of all delays).
       room.act(human, legalActions(room.game!, 0)[0]);
-      const t1 = Date.now();
-      while (room.game!.phase === 'vote' && Date.now() - t1 < 5000) await new Promise((r) => setTimeout(r, 1));
+      for (let step = 0; step < MAX_STEPS && room.game!.phase === 'vote'; step++) await vi.advanceTimersToNextTimerAsync();
       expect(room.game!.phase).not.toBe('vote');
       const last = Math.max(...readyAts);
-      expect(Date.now()).toBeGreaterThanOrEqual(last - 5);
+      expect(Date.now()).toBeGreaterThanOrEqual(Math.floor(last)); // timers fire on whole ms; readyAt is fractional
       // Serialized voters would finish at least 3 × 43 ms after the slowest one's own readyAt.
-      expect(Date.now()).toBeLessThan(last + 100);
+      expect(Date.now()).toBeLessThan(last + 3 * 43);
     } finally {
       room.close();
     }
   });
 
   it('a bot president does not discard before reveal settle + min think', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FROZEN_NOW);
     config.botDelayMs = 20;
     config.timerScale = 1;
     const { room, human } = startGame();
@@ -125,8 +135,7 @@ describe('per-seat bot plans', () => {
       let opened = 0;
       let president = -1;
       let readyAt = 0;
-      const t0 = Date.now();
-      while (Date.now() - t0 < 20_000) {
+      for (let step = 0; step < MAX_STEPS; step++) {
         const g = room.game!;
         if (g.phase === 'legPresident' && g.president !== 0) {
           opened = Date.now();
@@ -134,16 +143,16 @@ describe('per-seat bot plans', () => {
           readyAt = plansOf(room).get(president)!.readyAt;
           break;
         }
+        // Our own move may open the phase now: re-check before letting time pass.
         if (pendingActors(g).includes(0)) room.act(human, legalActions(g, 0)[0]);
-        await new Promise((r) => setTimeout(r, 1));
+        else await vi.advanceTimersToNextTimerAsync();
       }
       expect(opened).toBeGreaterThan(0);
       const minWait = (SETTLE_SECONDS.votes + THINK_SECONDS.legPresident[0] * TEMPO_MIN) * 1000 * u;
-      expect(readyAt).toBeGreaterThanOrEqual(opened - 10 + minWait);
-      const t1 = Date.now();
-      while (room.game!.phase === 'legPresident' && Date.now() - t1 < 5000) await new Promise((r) => setTimeout(r, 1));
+      expect(readyAt).toBeGreaterThanOrEqual(opened + minWait);
+      for (let step = 0; step < MAX_STEPS && room.game!.phase === 'legPresident'; step++) await vi.advanceTimersToNextTimerAsync();
       expect(room.game!.phase).not.toBe('legPresident');
-      expect(Date.now() - opened).toBeGreaterThanOrEqual(minWait - 15);
+      expect(Date.now() - opened).toBeGreaterThanOrEqual(minWait);
     } finally {
       room.close();
     }
@@ -237,11 +246,14 @@ describe('bot think time ignores the hand', () => {
 
 describe('bot plans after an enactment', () => {
   afterEach(() => {
+    vi.useRealTimers();
     config.timerScale = original.timerScale;
     config.botDelayMs = original.botDelayMs;
   });
 
   it('wait out the enacted ceremony before thinking', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FROZEN_NOW);
     config.timerScale = 1e4; // keep the deadline cap out of the way
     config.botDelayMs = 1_000_000;
     const { room } = startGame();
@@ -249,10 +261,10 @@ describe('bot plans after an enactment', () => {
       const u = config.botDelayMs / 1400;
       const r = room as unknown as { schedule(settle?: number): void; game: { phase: keyof typeof THINK_SECONDS } };
       plansOf(room).clear();
-      const now = Date.now();
+      const now = FROZEN_NOW;
       r.schedule(settleMs([{ k: 'enacted', policy: 'L', chaos: false }]));
       expect(plansOf(room).size).toBeGreaterThan(0);
-      const floor = now + SETTLE_SECONDS.enacted * 1000 * u + THINK_SECONDS[r.game.phase][0] * 1000 * u * TEMPO_MIN - 5;
+      const floor = now + SETTLE_SECONDS.enacted * 1000 * u + THINK_SECONDS[r.game.phase][0] * 1000 * u * TEMPO_MIN;
       for (const p of plansOf(room).values()) expect(p.readyAt).toBeGreaterThanOrEqual(floor);
     } finally {
       room.close();

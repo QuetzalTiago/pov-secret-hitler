@@ -10,7 +10,6 @@ vi.mock('../server/brain', async (orig) => ({
 }));
 
 const original = { timerScale: config.timerScale, botDelayMs: config.botDelayMs };
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Starts a 5-player game (1 human + 4 bots). Bot scheduling is effectively off so only the phase timer acts.
 function startGame() {
@@ -31,12 +30,14 @@ describe('room resilience', () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     config.timerScale = 0.001;
     config.botDelayMs = 1_000_000;
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     config.timerScale = original.timerScale;
     config.botDelayMs = original.botDelayMs;
     errorSpy.mockRestore();
@@ -49,12 +50,12 @@ describe('room resilience', () => {
       throw new Error('boom');
     };
     const before = phaseKey(room);
-    await sleep(80); // night timer is ~20ms
+    await vi.advanceTimersByTimeAsync(80); // night timer is ~20ms
     expect(errorSpy).toHaveBeenCalled();
     expect(phaseKey(room)).toBe(before);
 
     (room as any).apply = realApply;
-    await sleep(120);
+    await vi.advanceTimersByTimeAsync(120);
     expect(phaseKey(room)).not.toBe(before);
     room.close();
   });
@@ -65,7 +66,7 @@ describe('room resilience', () => {
     (room as any).onTimeout = () => {
       throw new Error('timeout boom');
     };
-    await sleep(80);
+    await vi.advanceTimersByTimeAsync(80);
     expect(errorSpy).toHaveBeenCalledWith('[room] onTimeout failed', expect.any(Error));
     (room as any).onTimeout = realTimeout;
     room.close();
@@ -80,7 +81,7 @@ describe('room resilience', () => {
       return body.type === 'ack' ? realApply(seat, body) : 'nope';
     };
     const before = phaseKey(room);
-    await sleep(80);
+    await vi.advanceTimersByTimeAsync(80);
     expect(errorSpy).toHaveBeenCalledWith('[bot] illegal move', expect.anything(), { type: 'peekDone' }, 'nope');
     expect(tried.slice(0, 2)).toEqual(['peekDone', 'ack']);
     expect(phaseKey(room)).not.toBe(before);
@@ -89,7 +90,7 @@ describe('room resilience', () => {
 
   it('tells the human, and only the human, they timed out', async () => {
     const { room, msgs } = startGame();
-    await sleep(80); // night timer is ~20ms
+    await vi.advanceTimersByTimeAsync(80); // night timer is ~20ms
     const events = msgs.flatMap((m) => (m.t === 'room' ? m.room.events : []));
     const timedOut = events.filter((e) => e.k === 'timedOut');
     expect(timedOut).toContainEqual({ k: 'timedOut', seat: 0 });

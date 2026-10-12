@@ -66,6 +66,10 @@ async function boot(): Promise<RunningServer> {
   return startServer(0);
 }
 
+// The server has registered that every human seat is disconnected (or the room is already gone).
+const awayNoticed = (srv: RunningServer, code: string) =>
+  (srv.rooms.get(code) as any)?.seats.every((s: any) => s.bot || s.conn === null) ?? true;
+
 describe('persistence', () => {
   it('a game in progress survives a server restart', async () => {
     let server = await boot();
@@ -80,11 +84,10 @@ describe('persistence', () => {
     // Play until a few rounds in.
     await host.until(() => (host.room?.game?.round ?? 0) >= 3 || host.room?.game?.phase === 'gameOver');
     host.autoplay = false;
-    await new Promise((r) => setTimeout(r, 50));
     const before = host.room!.game!;
     const { code, token } = host;
     host.ws.terminate();
-    await new Promise((r) => setTimeout(r, 50));
+    await host.until(() => awayNoticed(server, code));
     await server.close();
 
     // New process, same database file.
@@ -108,6 +111,7 @@ describe('persistence', () => {
     await back.until(() => back.room?.game?.phase === 'gameOver', 30000);
     expect(back.errors.filter((e) => !/not allowed/.test(e))).toEqual([]);
     back.ws.terminate();
+    await back.until(() => awayNoticed(server, code));
     await server.close();
   });
 
@@ -121,7 +125,7 @@ describe('persistence', () => {
     await host.until(() => host.room?.seats.length === 2);
     const { code, token } = host;
     host.ws.terminate();
-    await new Promise((r) => setTimeout(r, 50));
+    await host.until(() => awayNoticed(server, code));
     await server.close();
 
     server = await boot();
@@ -134,7 +138,7 @@ describe('persistence', () => {
     back.send({ t: 'leave' });
     await back.until(() => !server.rooms.has(code));
     back.ws.terminate();
-    await new Promise((r) => setTimeout(r, 50));
+    await back.until(() => awayNoticed(server, code));
     await server.close();
     server = await boot();
     expect(server.rooms.has(code)).toBe(false);

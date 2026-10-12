@@ -1,23 +1,41 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import type { RoomView, ServerMsg } from '../shared/protocol';
 import { config } from '../server/config';
 import { startServer, type RunningServer } from '../server/index';
 
-// "Everyone away": with no human connected for config.abandonMs (1 minute in production, shortened here),
-// the room is ended and deleted. One player being away is handled by the separate 60 s grace (bot takeover).
+// "Everyone away": with no human connected for config.abandonMs (1 minute), the room is ended and deleted.
+// One player being away is handled by the separate reconnect grace (bot takeover).
+// Only the server's abandon timer runs on fake time. Socket I/O and the polling helpers keep the real timers.
+const realSetTimeout = globalThis.setTimeout;
 let server: RunningServer;
-const ABANDON = 400;
+const ABANDON = 60_000;
 
 beforeAll(async () => {
   config.abandonMs = ABANDON;
-  config.reconnectGraceMs = 10_000; // longer than ABANDON, so only the abandon rule can end the room
+  config.reconnectGraceMs = 10 * ABANDON; // longer than ABANDON, so only the abandon rule can end the room
   config.botDelayMs = 1e7; // bots hold still
+  config.timerScale = 1e4; // phase timers far beyond any advance, so only the abandon timer acts
   server = await startServer(0);
 });
+afterEach(() => {
+  vi.useRealTimers();
+});
 afterAll(async () => {
+  vi.useRealTimers();
   await server.close();
 });
+
+// Real-time polling: Date.now and the real setTimeout, unaffected by fake timers.
+async function until(pred: () => boolean, ms = 5000) {
+  const end = Date.now() + ms;
+  while (!pred()) {
+    if (Date.now() > end) throw new Error('timeout');
+    await new Promise((r) => realSetTimeout(r, 20));
+  }
+}
+const abandonArmed = (code: string) => (server.rooms.get(code) as any)?.abandonTimer != null;
+const connectedHumans = (code: string) => (server.rooms.get(code) as any)?.connectedHumans() ?? -1;
 
 class Client {
   ws: WebSocket;
@@ -47,12 +65,10 @@ class Client {
     const end = Date.now() + ms;
     while (!pred()) {
       if (Date.now() > end) throw new Error('timeout');
-      await new Promise((r) => setTimeout(r, 20));
+      await new Promise((r) => realSetTimeout(r, 20));
     }
   }
 }
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function gameWith(humans: number): Promise<Client[]> {
   const host = new Client();
@@ -74,17 +90,23 @@ async function gameWith(humans: number): Promise<Client[]> {
   return [host, ...others];
 }
 
+// Fake only the timers the abandon rule uses; socket I/O and polling stay on real time.
+const fakeTimers = () => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
 describe('everyone away', () => {
   it('ends the session once no human has been connected for the timeout', async () => {
     const [host] = await gameWith(1);
     const code = host.code;
+    fakeTimers();
     host.ws.terminate(); // closes the tab without clicking Leave
-    await sleep(ABANDON / 2);
+    await until(() => abandonArmed(code));
+    await vi.advanceTimersByTimeAsync(ABANDON - 1);
     expect(server.rooms.has(code)).toBe(true); // still within the minute
-    await sleep(ABANDON);
+    await vi.advanceTimersByTimeAsync(1);
     expect(server.rooms.has(code)).toBe(false);
 
     // Coming back afterwards finds no session.
+    vi.useRealTimers();
     const back = new Client();
     await back.open();
     back.send({ t: 'resume', code, token: host.token });
@@ -96,20 +118,28 @@ describe('everyone away', () => {
   it('keeps the session while anyone is still connected, and a reconnect in time saves it', async () => {
     const [host, guest] = await gameWith(2);
     const code = host.code;
+    fakeTimers();
     guest.ws.terminate(); // one player away: not the everyone-away case
-    await sleep(ABANDON * 2);
+    await until(() => connectedHumans(code) === 1);
+    expect(abandonArmed(code)).toBe(false);
+    await vi.advanceTimersByTimeAsync(ABANDON * 2);
     expect(server.rooms.has(code)).toBe(true);
 
     host.ws.terminate(); // now everyone is away
-    await sleep(ABANDON / 2);
+    await until(() => abandonArmed(code));
+    await vi.advanceTimersByTimeAsync(ABANDON / 2);
     const back = new Client();
     await back.open();
     back.send({ t: 'resume', code, token: host.token }); // back inside the window
-    await back.until(() => back.room?.stage === 'game');
-    await sleep(ABANDON * 2);
+    await until(() => back.room?.stage === 'game' && !abandonArmed(code));
+    await vi.advanceTimersByTimeAsync(ABANDON * 2);
     expect(server.rooms.has(code)).toBe(true);
+
     back.ws.terminate();
-    await sleep(ABANDON * 2);
+    await until(() => abandonArmed(code));
+    await vi.advanceTimersByTimeAsync(ABANDON - 1);
+    expect(server.rooms.has(code)).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
     expect(server.rooms.has(code)).toBe(false);
   });
 
@@ -121,8 +151,12 @@ describe('everyone away', () => {
     host.send({ t: 'addBot' });
     await host.until(() => host.room?.seats.length === 2);
     const code = host.code;
+    fakeTimers();
     host.ws.terminate();
-    await sleep(ABANDON * 2);
+    await until(() => abandonArmed(code));
+    await vi.advanceTimersByTimeAsync(ABANDON - 1);
+    expect(server.rooms.has(code)).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
     expect(server.rooms.has(code)).toBe(false);
   });
 });
