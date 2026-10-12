@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLang } from '../client/i18n';
 import { UI } from '../client/ui';
 
 // Minimal fake DOM: every id resolves to a cached stub element.
@@ -29,6 +30,7 @@ describe('UI copy and error timers', () => {
   let ui: UI;
 
   beforeEach(() => {
+    setLang('en');
     vi.useFakeTimers();
     els = {};
     const get = (id: string) => (els[id] ??= stubEl(id === 'copy-code' ? 'copy' : ''));
@@ -41,6 +43,7 @@ describe('UI copy and error timers', () => {
     get('hud').classList.add('hidden');
   });
   afterEach(() => {
+    setLang('en');
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });

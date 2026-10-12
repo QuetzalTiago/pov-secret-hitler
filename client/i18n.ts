@@ -3,9 +3,9 @@ export type Lang = 'en' | 'es';
 
 const KEY = 'sh-lang';
 
-export function detectLang(stored: string | null, navLang: string | undefined): Lang {
-  if (stored === 'en' || stored === 'es') return stored;
-  return navLang && navLang.toLowerCase().startsWith('es') ? 'es' : 'en';
+// Spanish unless the player picked English (the saved choice wins).
+export function detectLang(stored: string | null): Lang {
+  return stored === 'en' ? 'en' : 'es';
 }
 
 let current: Lang | null = null;
@@ -14,9 +14,9 @@ const listeners = new Set<(l: Lang) => void>();
 export function lang(): Lang {
   if (!current) {
     try {
-      current = detectLang(localStorage.getItem(KEY), navigator.language);
+      current = detectLang(localStorage.getItem(KEY));
     } catch {
-      current = 'en';
+      current = 'es';
     }
   }
   return current;

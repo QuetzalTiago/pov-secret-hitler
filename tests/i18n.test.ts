@@ -4,19 +4,18 @@ import { describe, expect, it } from 'vitest';
 import { detectLang, lang, onLangChange, setLang, tr } from '../client/i18n';
 
 describe('detectLang', () => {
-  it('a stored choice wins over the browser language', () => {
-    expect(detectLang('en', 'es-ES')).toBe('en');
-    expect(detectLang('es', 'en-US')).toBe('es');
+  it('a saved en stays en', () => {
+    expect(detectLang('en')).toBe('en');
   });
-  it('Spanish browsers get es', () => {
-    for (const n of ['es-ES', 'es-419', 'ES', 'es']) expect(detectLang(null, n)).toBe('es');
+  it('a saved es stays es', () => {
+    expect(detectLang('es')).toBe('es');
   });
-  it('everything else gets en', () => {
-    for (const n of ['en-US', 'fr', undefined]) expect(detectLang(null, n)).toBe('en');
+  it('no saved choice defaults to es', () => {
+    expect(detectLang(null)).toBe('es');
   });
-  it('ignores a garbage stored value', () => {
-    expect(detectLang('de', 'es-ES')).toBe('es');
-    expect(detectLang('', 'en-US')).toBe('en');
+  it('junk stored values default to es', () => {
+    expect(detectLang('de')).toBe('es');
+    expect(detectLang('')).toBe('es');
   });
 });
 
