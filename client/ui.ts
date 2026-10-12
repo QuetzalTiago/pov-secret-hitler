@@ -5,6 +5,7 @@ import type { GameView } from '../shared/view';
 import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
 import { isMuted, setMuted } from './audio';
 import { ENACT_BANNER_MS, enactBanner } from './enact';
+import { REASONS } from './victory';
 
 export { enactBanner };
 
@@ -20,13 +21,6 @@ export interface UIHandlers {
   chat(text: string): void;
   rematch(): void;
 }
-
-const REASONS: Record<string, string> = {
-  liberalPolicies: 'Five Liberal policies were enacted.',
-  hitlerExecuted: 'Hitler was executed.',
-  fascistPolicies: 'Six Fascist policies were enacted.',
-  hitlerElected: 'Hitler was elected Chancellor.',
-};
 
 const POWER_GLYPHS: Record<Power, string> = { peek: '👁', investigate: '🔍', special: '★', execute: '✕' };
 
