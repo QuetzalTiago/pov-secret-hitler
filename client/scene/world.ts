@@ -33,6 +33,8 @@ export function glossy<T extends THREE.MeshStandardMaterial>(m: T, intensity = 0
   return m;
 }
 const EYE_Y = 1.27;
+/** Your own hands read small up close next to the patrons' at a distance; scale them up a little. */
+const OWN_HAND_SCALE = 1.2;
 /** With a free cursor the view turns toward it: yaw/pitch (rad) at the screen edge, around this resting pitch. */
 const FOLLOW_YAW = 0.7;
 const FOLLOW_PITCH = 0.32;
@@ -557,7 +559,8 @@ export class World {
       const dir = wrist.clone().sub(elbow).setY(0).normalize();
       // The camera looks toward -Z, so the yaw below mirrors local X: flip the side to keep the thumb on the inner side.
       const hand = new THREE.Mesh(handGeometry('flat', -side as 1 | -1), skin);
-      hand.position.copy(wrist).addScaledVector(dir, 0.05).setY(TABLE_Y + 0.02); // palm bottom on the table
+      hand.scale.setScalar(OWN_HAND_SCALE);
+      hand.position.copy(wrist).addScaledVector(dir, 0.05).setY(TABLE_Y + 0.02 * OWN_HAND_SCALE); // palm bottom on the table
       hand.rotation.y = Math.atan2(dir.x, dir.z);
       for (const m of [upper, fore, hand]) {
         m.castShadow = true;
@@ -582,6 +585,7 @@ export class World {
       const handGeo = handGeometry('fist', -1); // a right fist, knuckles at +Z; turned to look down -Z
       handGeo.rotateY(Math.PI);
       const hand = new THREE.Mesh(handGeo, skin);
+      hand.scale.setScalar(OWN_HAND_SCALE); // the finger is a child, so it scales along
       const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.011, 0.06, 2, 6).rotateX(Math.PI / 2), skin);
       finger.position.set(0, 0.02, -0.08); // the hand looks down -Z, so the finger sticks out in front
       hand.add(finger);
