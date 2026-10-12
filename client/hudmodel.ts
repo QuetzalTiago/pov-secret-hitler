@@ -1,6 +1,6 @@
 // Pure HUD model: everything the HUD displays, derived from the game view. No DOM, no three.
 import type { RoomView } from '../shared/protocol';
-import type { Power, Role } from '../shared/types';
+import type { Party, Power, Role } from '../shared/types';
 import { actingSeats, type GameView } from '../shared/view';
 
 export type Verb =
@@ -22,12 +22,20 @@ export function cardConfirmCopy(verb: 'discard' | 'enact', face: 'L' | 'F', hand
     : { verb: 'ENACT', policy, face, detail: 'It goes on the board. The other policy is discarded.', confirm: 'Enact it' };
 }
 
+/** A private suspicion mark on a roster row: client-only, never sent anywhere. */
+export type Mark = '?' | 'L' | 'F' | null;
+
+export function nextMark(m: Mark): Mark {
+  return m === null ? '?' : m === '?' ? 'L' : m === 'L' ? 'F' : null;
+}
+
 export type Badge = 'president' | 'chancellor' | 'nominee' | 'termLimited' | 'voted' | 'acting';
 
 export interface HudOpts {
   envelopeOpen: boolean; // the night role card is face up
   myVote: boolean | null; // this client's own vote, once cast
   termLimited: number[]; // seats that cannot be nominated Chancellor
+  marks?: Record<number, Mark>; // this client's private suspicion marks by seat
 }
 
 export interface RosterEntry {
@@ -39,6 +47,8 @@ export interface RosterEntry {
   away: boolean;
   badges: Badge[];
   knownRole: Role | null;
+  mark: Mark; // private suspicion mark (always null on your own row)
+  intel: Party | null; // party you learned by investigating this player
 }
 
 export interface HudModel {
@@ -197,6 +207,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
         verb = 'veto';
       } else {
         title = `President ${pres} is considering the veto`;
+        detail = `Chancellor ${chanc} wants to discard both policies. A veto advances the election tracker.`;
       }
       break;
     case 'peek':
@@ -206,6 +217,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
         verb = 'peek';
       } else {
         title = `President ${pres} is peeking`;
+        detail = 'Only the President sees the top three policies.';
       }
       break;
     case 'investigate':
@@ -215,6 +227,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
         verb = 'investigate';
       } else {
         title = `President ${pres} is investigating`;
+        detail = 'Choosing whom to investigate. Only the President sees the party card.';
       }
       break;
     case 'special':
@@ -224,6 +237,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
         verb = 'elect';
       } else {
         title = `President ${pres} is choosing the next President`;
+        detail = 'Whoever they pick is the next President; then the order resumes.';
       }
       break;
     case 'execute':
@@ -233,6 +247,7 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
         verb = 'shoot';
       } else {
         title = `President ${pres} has the revolver`;
+        detail = 'Choosing whom to shoot. If it is Hitler, the Liberals win.';
       }
       break;
     case 'gameOver':
@@ -261,6 +276,8 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
       away: seat ? !seat.connected && !seat.bot : false,
       badges,
       knownRole: p.role,
+      mark: p.seat === me ? null : (opts.marks?.[p.seat] ?? null),
+      intel: v.yourInvestigations.find((i) => i.target === p.seat)?.party ?? null,
     };
   });
 

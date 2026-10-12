@@ -60,6 +60,7 @@ export class UI {
   private markers = new Map<string, { key: string; label: string; w: number; h: number }>();
   /** Set by the game: a roster row was clicked, turn the camera to that seat. */
   onLookAt?: (seat: number) => void;
+  onMark?: (seat: number) => void;
 
   constructor(private h: UIHandlers) {
     const nameInput = $<HTMLInputElement>('name');
@@ -477,18 +478,35 @@ export class UI {
         }
         const badges = document.createElement('span');
         badges.className = 'r-badges';
-        const add = (cls: string, text: string) => {
+        const add = (cls: string, text: string, title = '') => {
           const b = document.createElement('span');
           b.className = `badge ${cls}`;
           b.textContent = text;
+          if (title) b.title = title;
           badges.appendChild(b);
         };
         if (!r.alive) add('b-dead', '✝');
+        if (r.intel) {
+          add(`b-intel ${r.intel === 'liberal' ? 'lib' : 'fas'}`, `🔍 ${r.intel === 'liberal' ? 'L' : 'F'}`, 'You investigated this player');
+        }
         for (const b of r.badges) {
           const def = BADGES[b];
           if (def) add(def[0], def[1]);
         }
         row.appendChild(badges);
+        if (!r.you) {
+          // A span, not a nested button: the row itself is a button.
+          const mark = document.createElement('span');
+          mark.className = `r-mark${r.mark ? ` m-${r.mark === '?' ? 'q' : r.mark.toLowerCase()}` : ''}`;
+          mark.setAttribute('role', 'button');
+          mark.title = 'Your private mark (click to change)';
+          mark.textContent = r.mark ?? '·';
+          mark.onclick = (ev) => {
+            ev.stopPropagation();
+            this.onMark?.(r.seat);
+          };
+          row.appendChild(mark);
+        }
         row.onclick = () => {
           this.onLookAt?.(r.seat);
           row.blur(); // keep WASD look working

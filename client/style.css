@@ -282,6 +282,17 @@ input:disabled { opacity: 0.5; }
 .badge.b-nom { animation: pulse 0.9s ease-in-out infinite alternate; }
 .badge.b-voted { color: var(--ok); padding: 1px 3px; }
 .badge.b-dead { padding: 1px 3px; }
+.badge.b-intel { padding: 1px 4px; border: 1px solid currentColor; }
+.badge.b-intel.lib { color: var(--lib); }
+.badge.b-intel.fas { color: var(--fas); }
+.r-mark {
+  flex: none; width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; line-height: 1; color: var(--ink-faint); border: 1px solid transparent; cursor: pointer;
+}
+.r-mark:hover { border-color: var(--glass-edge); background: rgba(255, 240, 220, 0.08); }
+.r-mark.m-q { color: var(--accent); border-color: var(--accent); }
+.r-mark.m-l { color: var(--lib); border-color: var(--lib); }
+.r-mark.m-f { color: var(--fas); border-color: var(--fas); }
 .badge.b-acting { width: 8px; height: 8px; padding: 0; align-self: center; background: var(--accent); animation: pulse 0.9s ease-in-out infinite alternate; }
 
 /* Off-screen markers for the President and the Chancellor nominee */

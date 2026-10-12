@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, type HudOpts } from '../client/hudmodel';
+import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, type HudOpts } from '../client/hudmodel';
 import type { RoomView } from '../shared/protocol';
 import type { GameView } from '../shared/view';
 
@@ -118,6 +118,38 @@ describe('hudModel', () => {
     expect(m.roster[3].away).toBe(true);
     expect(m.action.title).toBe('The Fascists win');
     expect(m.action.mine).toBe(false);
+  });
+
+  it('carries private marks for other seats only', () => {
+    const { v, room } = fixture();
+    const m = hudModel(v, room, { ...opts, marks: { 0: 'F', 2: 'L', 3: '?' } });
+    expect(m.roster.map((r) => r.mark)).toEqual([null, null, 'L', '?', null]);
+    expect(hudModel(v, room, opts).roster.every((r) => r.mark === null)).toBe(true);
+  });
+
+  it('tags investigated players with the party you saw', () => {
+    const { v, room } = fixture({ yourInvestigations: [{ target: 3, party: 'fascist' }] });
+    const m = hudModel(v, room, opts);
+    expect(m.roster.map((r) => r.intel)).toEqual([null, null, null, 'fascist', null]);
+  });
+
+  it('gives watchers a detail line in every power phase', () => {
+    for (const phase of ['veto', 'peek', 'investigate', 'special', 'execute'] as const) {
+      const { v, room } = fixture({ phase, president: 1, chancellor: 2, pending: [1] }, 0);
+      const m = hudModel(v, room, opts);
+      expect(m.action.mine).toBe(false);
+      expect(m.action.detail.length).toBeGreaterThan(0);
+      if (phase === 'investigate') expect(m.action.detail).toContain('investigate');
+    }
+  });
+});
+
+describe('nextMark', () => {
+  it('cycles none, ?, L, F, none', () => {
+    expect(nextMark(null)).toBe('?');
+    expect(nextMark('?')).toBe('L');
+    expect(nextMark('L')).toBe('F');
+    expect(nextMark('F')).toBeNull();
   });
 });
 

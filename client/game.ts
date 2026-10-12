@@ -5,7 +5,8 @@ import type { ActionBody, GameEvent, Party, Policy, Power } from '../shared/type
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
 import { ENACT_BANNER_DELAY_MS, ceremonyEndsAt } from './enact';
-import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse } from './hudmodel';
+import { cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, type Mark } from './hudmodel';
+import { loadMarks, saveMarks } from './marks';
 import type { Interactable, Interactor } from './interact';
 import { createCharacter, type Patron } from './scene/characters';
 import { disposeObject } from './scene/dispose';
@@ -53,6 +54,8 @@ const POWER_TEXT: Record<string, string> = {
 
 export class Game {
   room: RoomView | null = null;
+  private marks: Record<number, Mark> = {}; // private suspicion marks for the current room
+  private marksCode: string | null = null;
   view: GameView | null = null;
   private chars = new Map<number, Patron>();
   private board = new Board();
@@ -169,6 +172,13 @@ export class Game {
     private send: (a: ActionBody) => void,
   ) {
     ui.onLookAt = (seat) => this.world.glanceAt(this.world.layout.head(seat), 3);
+    ui.onMark = (seat) => {
+      const next = nextMark(this.marks[seat] ?? null);
+      if (next) this.marks[seat] = next;
+      else delete this.marks[seat];
+      if (this.room) saveMarks(this.room.code, this.marks);
+      this.refreshHud();
+    };
     const scene = world.scene;
     scene.add(this.board.group);
     this.drawPile = new Pile('POLICY', new THREE.Vector3(-0.66, TABLE_Y, -0.05));
@@ -231,6 +241,14 @@ export class Game {
     const prevRound = this.view?.round;
     this.room = room;
     this.view = room.game;
+    if (this.marksCode !== room.code) {
+      this.marksCode = room.code;
+      this.marks = loadMarks(room.code);
+    }
+    if (this.view?.phase === 'night' && prevPhase !== 'night') {
+      this.marks = {}; // a new deal (also a rematch): fresh suspicions
+      saveMarks(room.code, this.marks);
+    }
     this.rings.set(this.view ? actingSeats(this.view) : []);
     const n = room.game ? room.game.players.length : room.seats.length;
     this.relayout(n, room.you);
@@ -983,7 +1001,7 @@ export class Game {
   private refreshHud() {
     const { room, view } = this;
     if (room && view) {
-      const opts = { envelopeOpen: this.envelopeOpen, myVote: this.myVote, termLimited: this.termLimited() };
+      const opts = { envelopeOpen: this.envelopeOpen, myVote: this.myVote, termLimited: this.termLimited(), marks: this.marks };
       this.ui.renderHud(hudModel(view, room, opts), this.promptActive());
     } else if (room) {
       const text = room.seats.length < 5 ? 'Waiting for players… (5 to 10 seats, the host can add bots)' : 'Waiting for the host to start.';
