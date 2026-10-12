@@ -346,6 +346,12 @@ input:disabled { opacity: 0.5; }
 #timer.urgent { color: var(--danger); animation: pulse 0.5s infinite alternate; }
 #pr-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; text-transform: uppercase; line-height: 1.25; color: var(--ink); }
 #prompt:not(.mine) #pr-title { font-size: 18px; color: var(--ink-dim); }
+/* Watching someone else: no chip, so the title ("Chancellor X is enacting") shares the first row with the timer. */
+#prompt:not(.mine) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: baseline; }
+#prompt:not(.mine) .pr-row { display: contents; }
+#prompt:not(.mine) > :not(.pr-row) { grid-column: 1 / -1; }
+#prompt:not(.mine) #pr-title { grid-column: 1; grid-row: 1; }
+#prompt:not(.mine) #timer { grid-column: 2; grid-row: 1; }
 #pr-detail { font-size: 14px; color: var(--ink); }
 #pr-detail:empty { display: none; }
 #pr-wait { font-size: 13px; color: var(--ink-faint); }
