@@ -7,6 +7,7 @@ import { portraitUrl, sealUrl } from './art';
 import { isMuted, setMuted } from './audio';
 import { nearBottom } from './chatscroll';
 import { ENACT_BANNER_MS, enactBanner } from './enact';
+import { fullscreenSupported, isFullscreen, isFullscreenKey, toggleFullscreen } from './fullscreen';
 import { loadRecord, recordGame, recordLine, saveRecord } from './record';
 import { REASONS, VICTORY_MS, victoryParticles, type VictoryBanner } from './victory';
 
@@ -177,6 +178,24 @@ export class UI {
       setMuted(!isMuted());
       $('sound').textContent = isMuted() ? 'Sound: off' : 'Sound: on';
     };
+    const fsBtn = $('fullscreen-btn');
+    if (!fullscreenSupported()) fsBtn.classList.add('hidden');
+    else {
+      fsBtn.onclick = () => toggleFullscreen();
+      window.addEventListener('keydown', (e) => {
+        if (isFullscreenKey(e, document.activeElement)) {
+          e.preventDefault();
+          toggleFullscreen();
+        }
+      });
+      document.addEventListener('fullscreenchange', () => {
+        const on = isFullscreen();
+        const label = on ? 'Exit fullscreen (F)' : 'Fullscreen (F)';
+        fsBtn.setAttribute('aria-label', label);
+        fsBtn.title = label;
+        fsBtn.setAttribute('aria-pressed', String(on));
+      });
+    }
     $('copy-code').onclick = () => this.copy(this.room?.code ?? '', 'copy-code', 'copied');
     $('copy-invite').onclick = () => this.copy(UI.inviteLink(this.room?.code ?? ''), 'copy-invite', 'Link copied!');
     $('invite-link').onclick = () => $<HTMLInputElement>('invite-link').select();
