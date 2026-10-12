@@ -92,7 +92,10 @@ export class Character {
         // Right arm (the figure faces +Z, so its right is -X): swapped for the aiming rig when holding the gun.
         this.restArm = [upper, fore, hand];
         this.buildAimArm(shoulder, wrist, coat, skin);
+      } else {
+        this.restArmLeft = [upper, fore, hand];
       }
+      this.buildHandsUpArm(side as 1 | -1, shoulder, elbow, wrist, coat, skin);
       if (hitler && side === 1) {
         // Plain red armband on the upper arm (deliberately no insignia).
         const band = boxLimb(shoulder.clone().lerp(elbow, 0.38), shoulder.clone().lerp(elbow, 0.62), 0.125, 0.135, mat(0xa01818, 0.5));
@@ -100,6 +103,7 @@ export class Character {
         disc.position.copy(shoulder).lerp(elbow, 0.5).add(new THREE.Vector3(0.066, 0, 0));
         disc.rotation.z = Math.PI / 2;
         this.body.add(band, disc);
+        this.restArmLeft.push(band, disc);
       }
     }
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 6), skin);
@@ -297,6 +301,11 @@ export class Character {
   }
 
   private restArm: THREE.Mesh[] = [];
+  private restArmLeft: THREE.Mesh[] = [];
+  private handsUpArms: { shoulder: THREE.Group; elbow: THREE.Group; restS: THREE.Quaternion; restE: THREE.Quaternion; upS: THREE.Quaternion; upE: THREE.Quaternion }[] = [];
+  private handsUpTarget = 0;
+  private handsUpAmount = 0;
+  private handsUpQ = new THREE.Quaternion();
   private aimArm = new THREE.Group();
   /** Where the revolver's grip sits while aiming (world position read by the game each frame). */
   handAnchor = new THREE.Object3D();
@@ -326,6 +335,60 @@ export class Character {
     this.restQuat.setFromRotationMatrix(m);
     this.aimArm.quaternion.copy(this.restQuat);
     this.body.add(this.aimArm);
+  }
+
+  /**
+   * The surrender rig for one arm: a shoulder group and a child elbow group whose +Z runs along the bone,
+   * with their rest (arm on the table) and raised (upper arm out and up, forearm straight up) orientations.
+   */
+  private buildHandsUpArm(side: 1 | -1, shoulder: THREE.Vector3, elbow: THREE.Vector3, wrist: THREE.Vector3, coat: THREE.Material, skin: THREE.Material) {
+    const z = new THREE.Vector3(0, 0, 1);
+    const upperLen = elbow.distanceTo(shoulder);
+    const foreLen = 0.28;
+    const sg = new THREE.Group();
+    sg.position.copy(shoulder);
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, upperLen), coat);
+    upper.position.z = upperLen / 2;
+    const eg = new THREE.Group();
+    eg.position.z = upperLen;
+    const fore = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, foreLen), coat);
+    fore.position.z = foreLen / 2;
+    const hand = new THREE.Mesh(handGeometry('flat', side), skin);
+    hand.position.z = foreLen + 0.05;
+    eg.add(fore, hand);
+    sg.add(upper, eg);
+    for (const m of [upper, fore, hand]) m.castShadow = true;
+    sg.visible = false;
+    this.body.add(sg);
+    const q = (dir: THREE.Vector3) => new THREE.Quaternion().setFromUnitVectors(z, dir.clone().normalize());
+    const restS = q(elbow.clone().sub(shoulder));
+    const upS = q(new THREE.Vector3(side * 0.85, 0.25, 0.35));
+    // The elbow group is relative to the shoulder group: inverse(shoulder) * world.
+    const restE = restS.clone().invert().multiply(q(wrist.clone().sub(elbow)));
+    const upE = upS.clone().invert().multiply(q(new THREE.Vector3(0, 1, 0.15)));
+    this.handsUpArms.push({ shoulder: sg, elbow: eg, restS, restE, upS, upE });
+  }
+
+  /** The aimed-at patron raises both hands (false lowers them). */
+  setHandsUp(on: boolean) {
+    this.handsUpTarget = on ? 1 : 0;
+  }
+
+  /** Runs after updateAim: while raised, the surrender rig replaces the rest arms and the aim arm. */
+  private updateHandsUp(dt: number, now: number) {
+    this.handsUpAmount += ((this.handsUpTarget && !this.dead ? 1 : 0) - this.handsUpAmount) * (1 - Math.exp(-7 * dt));
+    const a = this.handsUpAmount;
+    const up = a > 0.02;
+    for (const m of this.restArmLeft) m.visible = !up;
+    for (const arm of this.handsUpArms) arm.shoulder.visible = up;
+    if (!up) return;
+    for (const m of this.restArm) m.visible = false;
+    this.aimArm.visible = false;
+    const e = a * a * (3 - 2 * a);
+    for (const arm of this.handsUpArms) {
+      arm.shoulder.quaternion.slerpQuaternions(arm.restS, arm.upS, e);
+      arm.elbow.quaternion.slerpQuaternions(arm.restE, arm.upE, e).multiply(this.handsUpQ.setFromAxisAngle(this.xAxis, Math.sin(now * 23 + this.phase) * 0.03 * a));
+    }
   }
 
   /** Raise the gun arm toward a world point (null lowers it back to the table). */
@@ -421,6 +484,7 @@ export class Character {
     if (this.reaction) reactionPose(this.reaction.kind, Math.max(0, this.reaction.t), this.pose);
     else this.pose.pitch = this.pose.yaw = this.pose.lean = this.pose.armLift = 0;
     this.updateAim(dt);
+    this.updateHandsUp(dt, now);
     // Idle: breathing and a slow sway.
     const k = 1 - Math.exp(-4 * dt);
     if (!this.dead) this.deathT = null;

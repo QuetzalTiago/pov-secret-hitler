@@ -567,11 +567,27 @@ export class World {
         this.tableGroup.add(m);
       }
       if (side === 1) this.restRightArm = [upper, fore, hand]; // your right (+X): the gun hand
+      else this.restLeftArm = [upper, fore, hand];
     }
     this.camera.position.copy(L.eye());
   }
 
   private restRightArm: THREE.Mesh[] = [];
+  private restLeftArm: THREE.Mesh[] = [];
+  private handsUpTarget = 0;
+  private handsUpAmount = 0;
+  private handsUp: { fore: THREE.Mesh; hand: THREE.Mesh; side: 1 | -1 }[] | null = null;
+  private readonly hu = {
+    elbow: new THREE.Vector3(),
+    grip: new THREE.Vector3(),
+    elbowW: new THREE.Vector3(),
+    gripW: new THREE.Vector3(),
+    dir: new THREE.Vector3(),
+    up: new THREE.Vector3(0, 1, 0),
+    q: new THREE.Quaternion(),
+    // Flat hand (fingers +Z, palm down) -> fingers up, palm facing away from the camera.
+    handQ: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2)),
+  };
   private ownArm: { fore: THREE.Mesh; hand: THREE.Mesh; finger: THREE.Mesh } | null = null;
 
   /**
@@ -621,6 +637,54 @@ export class World {
     fore.quaternion.copy(this.camera.quaternion).multiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirLocal));
     fore.scale.set(1, len + 0.04, 1);
     hand.position.copy(grip);
+  }
+
+  /** Surrender: both hands rise into view, palms forward (the revolver is aimed at you). Call after setOwnArm. */
+  setOwnHandsUp(on: boolean) {
+    this.handsUpTarget = on ? 1 : 0;
+    this.applyHandsUpVisibility();
+  }
+
+  /** While the hands are up the table arms are hidden; once down, the left one is back (setOwnArm owns the right). */
+  private applyHandsUpVisibility() {
+    const up = this.handsUpAmount > 0.02;
+    if (up) for (const m of this.restRightArm) m.visible = false;
+    for (const m of this.restLeftArm) m.visible = !up;
+    if (this.handsUp) for (const a of this.handsUp) a.fore.visible = a.hand.visible = up;
+  }
+
+  private updateOwnHandsUp(dt: number) {
+    this.handsUpAmount += (this.handsUpTarget - this.handsUpAmount) * (1 - Math.exp(-7 * dt));
+    if (this.handsUpAmount > 0.02 && !this.handsUp) {
+      const skin = new THREE.MeshStandardMaterial({ color: 0xc69476, roughness: 0.7 });
+      this.handsUp = ([-1, 1] as const).map((side) => {
+        const fore = new THREE.Mesh(new THREE.BoxGeometry(0.085, 1, 0.08), this.sleeve);
+        const hand = new THREE.Mesh(handGeometry('flat', -side as 1 | -1), skin); // thumb toward the midline once turned palm-out
+        this.scene.add(fore, hand);
+        return { fore, hand, side };
+      });
+    }
+    this.applyHandsUpVisibility();
+    if (!this.handsUp || this.handsUpAmount <= 0.02) return;
+    const { elbow, grip, elbowW, gripW, dir, up, q, handQ } = this.hu;
+    const a = this.handsUpAmount;
+    const e = a * a * (3 - 2 * a);
+    this.camera.updateMatrixWorld();
+    for (const { fore, hand, side } of this.handsUp) {
+      // Camera space; lowered, both joints sit below the view.
+      elbow.set(side * 0.32, -1.0 + 0.45 * e, -0.3);
+      grip.set(side * 0.26, -1.0 + 0.82 * e, -0.5);
+      elbowW.copy(elbow).applyMatrix4(this.camera.matrixWorld);
+      gripW.copy(grip).applyMatrix4(this.camera.matrixWorld);
+      fore.position.copy(elbowW).add(gripW).multiplyScalar(0.5);
+      // As setOwnArm: orient in camera space, then apply the camera rotation so the arm turns with your view.
+      dir.copy(grip).sub(elbow);
+      const len = dir.length();
+      fore.quaternion.copy(this.camera.quaternion).multiply(q.setFromUnitVectors(up, dir.divideScalar(len)));
+      fore.scale.set(1, len + 0.04, 1);
+      hand.position.copy(gripW);
+      hand.quaternion.copy(this.camera.quaternion).multiply(handQ);
+    }
   }
 
   /** True once the camera has caught up with the cursor (used by tests before clicking). */
@@ -788,6 +852,7 @@ export class World {
       if (Math.abs(p.s.position.x) > 4) p.v.x *= -1;
       if (Math.abs(p.s.position.z) > 4) p.v.z *= -1;
     }
+    this.updateOwnHandsUp(dt);
     for (const m of this.movers) m.update(dt);
   }
 

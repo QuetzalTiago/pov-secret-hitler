@@ -1103,10 +1103,11 @@ export class Game {
       // The President raises their arm; the aim drifts from player to player until the shot, then locks on.
       const c = this.chars.get(holderSeat);
       const candidates = v ? v.players.filter((p) => p.alive && p.seat !== holderSeat).map((p) => p.seat) : [];
+      const drift = candidates.length ? candidates[Math.floor(now / 1.8) % candidates.length] : null;
       const aimAt = shooting
         ? L.head(shooting.target)
-        : candidates.length
-          ? (candidates[Math.floor(now / 1.8) % candidates.length] === me ? this.world.camera.position.clone() : L.head(candidates[Math.floor(now / 1.8) % candidates.length]))
+        : drift !== null
+          ? (drift === me ? this.world.camera.position.clone() : L.head(drift))
           : this.fallbackAim;
       if (c) {
         c.setAim(aimAt);
@@ -1119,6 +1120,19 @@ export class Game {
     } else {
       this.gunMover.set(gunRest, mul(Q('y', 0.7), Q('z', Math.PI / 2)), 5);
     }
+    // Whoever the gun is aimed at puts their hands up.
+    let aimedSeat: number | null = null;
+    if (shooting) aimedSeat = shooting.target;
+    else if (holderSeat !== null && holderSeat !== undefined && holderSeat !== me) {
+      const alive = v ? v.players.filter((p) => p.alive && p.seat !== holderSeat) : [];
+      aimedSeat = alive.length ? alive[Math.floor(now / 1.8) % alive.length].seat : null;
+    } else if (holderSeat === me && v) {
+      const m = /^seat-(\d+)$/.exec(hovered ?? '');
+      const seat = m ? Number(m[1]) : -1;
+      aimedSeat = seat !== me && v.players.some((p) => p.seat === seat && p.alive) ? seat : null;
+    }
+    for (const [seat, c] of this.chars) c.setHandsUp(seat === aimedSeat);
+    this.world.setOwnHandsUp(aimedSeat === me);
 
     // Investigation: membership card slides across; the investigator holds it face-up.
     const flight = this.invFlight && now < this.invFlight.until ? this.invFlight : null;
