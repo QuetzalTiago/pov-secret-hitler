@@ -557,13 +557,13 @@ const POWER_LABEL: Record<string, string> = {
   execute: 'Execution',
 };
 
-/** Original flat ink icon for a presidential power, centred at (cx, cy) and kept within +-s. */
-function powerIcon(g: CanvasRenderingContext2D, kind: string, cx: number, cy: number, s: number) {
+/** Original flat icon for a presidential power, centred at (cx, cy) and kept within +-s. */
+function powerIcon(g: CanvasRenderingContext2D, kind: string, cx: number, cy: number, s: number, color = COLORS.stock) {
   g.save();
   g.lineCap = 'round';
   g.lineJoin = 'round';
-  g.strokeStyle = COLORS.ink;
-  g.fillStyle = COLORS.ink;
+  g.strokeStyle = color;
+  g.fillStyle = color;
   g.lineWidth = 4;
   if (kind === 'peek') {
     g.beginPath();
@@ -612,7 +612,7 @@ function powerIcon(g: CanvasRenderingContext2D, kind: string, cx: number, cy: nu
     g.closePath();
     g.fill();
     g.stroke();
-    g.strokeStyle = COLORS.fascistLight;
+    g.strokeStyle = COLORS.fascistDeep;
     g.lineWidth = 2;
     g.beginPath();
     g.moveTo(cx - hw, cy + s * 0.45);
@@ -622,51 +622,81 @@ function powerIcon(g: CanvasRenderingContext2D, kind: string, cx: number, cy: nu
   g.restore();
 }
 
-/** The central board: liberal track, fascist track with powers, election tracker. */
+/** A recessed slot: dark fill, inner shadow from the top and left, brass-ruled edge. */
+function recess(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill: string) {
+  g.fillStyle = fill;
+  g.fillRect(x, y, w, h);
+  const top = g.createLinearGradient(0, y, 0, y + 26);
+  top.addColorStop(0, 'rgba(0,0,0,0.6)');
+  top.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = top;
+  g.fillRect(x, y, w, 26);
+  const left = g.createLinearGradient(x, 0, x + 18, 0);
+  left.addColorStop(0, 'rgba(0,0,0,0.45)');
+  left.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = left;
+  g.fillRect(x, y, 18, h);
+  g.strokeStyle = COLORS.brass;
+  g.lineWidth = 2;
+  g.strokeRect(x, y, w, h);
+  g.strokeStyle = 'rgba(184,145,63,0.35)';
+  g.lineWidth = 1;
+  g.strokeRect(x + 4, y + 4, w - 8, h - 8);
+}
+
+/** The central board: liberal track, fascist track with powers, election tracker, inlaid in dark leather. */
 export function boardTexture(powers: (string | null)[]) {
   return tex(`board-${powers.join(',')}`, 1024, 640, (g, w, h) => {
-    g.fillStyle = COLORS.paper;
+    // Dark leather / walnut ground with grain streaks.
+    g.fillStyle = '#2a1a10';
     g.fillRect(0, 0, w, h);
-    inkEdge(g, w, h, 8);
-    frame(g, w, h, COLORS.ink, 16, 2);
-    // Liberal track.
-    g.fillStyle = COLORS.liberal;
+    const r = rand(77);
+    g.strokeStyle = '#120a05';
+    for (let i = 0; i < 120; i++) {
+      const y = r() * h;
+      g.globalAlpha = 0.1 + r() * 0.25;
+      g.lineWidth = 1 + r() * 3;
+      g.beginPath();
+      g.moveTo(0, y);
+      for (let x = 0; x <= w; x += 32) g.lineTo(x, y + Math.sin(x * 0.015 + i) * (2 + r() * 5));
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+    frame(g, w, h, COLORS.brass, 8, 3);
+    frame(g, w, h, COLORS.brass, 16, 1);
+    // Liberal track: a recessed navy panel.
+    g.fillStyle = COLORS.liberalDeep;
     g.fillRect(40, 40, w - 80, 230);
-    g.strokeStyle = COLORS.ink;
-    g.lineWidth = 4;
+    g.strokeStyle = COLORS.brass;
+    g.lineWidth = 2;
     g.strokeRect(40, 40, w - 80, 230);
-    centerText(g, 'LIBERAL', w / 2, 66, `800 30px ${DISPLAY}`, COLORS.paper);
+    centerText(g, 'LIBERAL', w / 2, 66, `800 30px ${DISPLAY}`, COLORS.brass);
     const lx = (i: number) => 140 + i * 186;
     for (let i = 0; i < 5; i++) {
-      g.fillStyle = COLORS.liberalLight;
-      g.fillRect(lx(i) - 60, 92, 120, 160);
-      g.strokeStyle = COLORS.liberalDeep;
-      g.lineWidth = 4;
-      g.strokeRect(lx(i) - 60, 92, 120, 160);
+      recess(g, lx(i) - 60, 92, 120, 160, '#10202f');
       if (i === 4) {
-        emblem(g, 'L', lx(i), 165, 34, 'rgba(96,140,179,0.45)', 'rgba(50,72,105,0.6)');
-        centerText(g, 'WIN', lx(i), 232, `bold 18px ${MONO}`, COLORS.liberalDeep);
+        emblem(g, 'L', lx(i), 165, 34, 'rgba(127,151,171,0.3)', 'rgba(127,151,171,0.5)');
+        centerText(g, 'WIN', lx(i), 232, `bold 18px ${MONO}`, COLORS.brass);
       }
     }
-    // Fascist track.
-    g.fillStyle = COLORS.fascist;
+    // Fascist track: a recessed oxblood panel.
+    g.fillStyle = COLORS.fascistDeep;
     g.fillRect(40, 290, w - 80, 230);
-    g.strokeStyle = COLORS.ink;
-    g.lineWidth = 4;
+    g.strokeStyle = COLORS.brass;
+    g.lineWidth = 2;
     g.strokeRect(40, 290, w - 80, 230);
-    centerText(g, 'FASCIST', w / 2, 316, `800 30px ${DISPLAY}`, COLORS.ink);
+    centerText(g, 'FASCIST', w / 2, 316, `800 30px ${DISPLAY}`, COLORS.brass);
     const fx = (i: number) => 125 + i * 155;
     for (let i = 0; i < 6; i++) {
       const x = fx(i);
-      g.fillStyle = COLORS.fascistLight;
-      g.fillRect(x - 60, 342, 120, 160);
+      recess(g, x - 60, 342, 120, 160, '#2a0a06');
       if (i >= 3) {
         // Danger hatch, clipped to the slot.
         g.save();
         g.beginPath();
         g.rect(x - 60, 342, 120, 160);
         g.clip();
-        g.strokeStyle = 'rgba(156,47,31,0.18)';
+        g.strokeStyle = 'rgba(138,42,30,0.35)';
         g.lineWidth = 3;
         g.beginPath();
         for (let k = -160; k < 120; k += 16) {
@@ -676,38 +706,35 @@ export function boardTexture(powers: (string | null)[]) {
         g.stroke();
         g.restore();
       }
-      g.strokeStyle = COLORS.fascistDeep;
-      g.lineWidth = 4;
-      g.strokeRect(x - 60, 342, 120, 160);
       const p = powers[i];
       if (i === 5) {
-        emblem(g, 'F', x, 410, 32, 'rgba(242,101,74,0.45)', 'rgba(156,47,31,0.7)');
-        centerText(g, 'WIN', x, 480, `bold 18px ${MONO}`, COLORS.fascistDeep);
+        emblem(g, 'F', x, 410, 32, 'rgba(176,128,111,0.3)', 'rgba(176,128,111,0.5)');
+        centerText(g, 'WIN', x, 480, `bold 18px ${MONO}`, COLORS.brass);
       } else if (p && POWER_LABEL[p]) {
-        powerIcon(g, p, x, 395, 20);
-        POWER_LABEL[p].split(' ').forEach((wd, j) => centerText(g, wd, x, 440 + j * 18, `bold 15px ${MONO}`, COLORS.fascistDeep));
+        powerIcon(g, p, x, 395, 20, COLORS.brass);
+        POWER_LABEL[p].split(' ').forEach((wd, j) => centerText(g, wd, x, 440 + j * 18, `bold 15px ${MONO}`, COLORS.stock));
       }
     }
-    centerText(g, 'Hitler as chancellor wins from the 4th slot on  •  Veto unlocks at 5', w / 2, 512, `bold 13px ${MONO}`, COLORS.ink);
-    // Election tracker.
-    g.fillStyle = COLORS.ochre;
+    centerText(g, 'Hitler as chancellor wins from the 4th slot on  •  Veto unlocks at 5', w / 2, 512, `bold 13px ${MONO}`, COLORS.stock);
+    // Election tracker: a dark strip with brass rings.
+    g.fillStyle = '#150d07';
     g.fillRect(40, 540, w - 80, 80);
-    g.strokeStyle = COLORS.ink;
-    g.lineWidth = 4;
+    g.strokeStyle = COLORS.brass;
+    g.lineWidth = 2;
     g.strokeRect(40, 540, w - 80, 80);
-    centerText(g, 'ELECTION TRACKER', 250, 580, `800 20px ${DISPLAY}`, COLORS.ink);
+    centerText(g, 'ELECTION TRACKER', 250, 580, `800 20px ${DISPLAY}`, COLORS.brass);
     for (let i = 0; i < 4; i++) {
-      g.fillStyle = COLORS.paper;
-      g.strokeStyle = COLORS.ink;
+      g.fillStyle = '#0c0704';
+      g.strokeStyle = COLORS.brass;
       g.lineWidth = 4;
       g.beginPath();
       g.arc(430 + i * 90, 580, 22, 0, Math.PI * 2);
       g.fill();
       g.stroke();
-      if (i === 3) centerText(g, '!', 430 + i * 90, 581, `800 22px ${DISPLAY}`, COLORS.hitler);
+      if (i === 3) centerText(g, '!', 430 + i * 90, 581, `800 22px ${DISPLAY}`, COLORS.fascist);
     }
-    centerText(g, '3 failed = top policy enacted', 860, 580, `bold 13px ${MONO}`, COLORS.ink);
-    grain(g, w, h, 10, 21);
+    centerText(g, '3 failed = top policy enacted', 860, 580, `bold 13px ${MONO}`, COLORS.stock);
+    age(g, w, h, 21);
   });
 }
 

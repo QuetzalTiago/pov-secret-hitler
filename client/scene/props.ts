@@ -160,7 +160,7 @@ export class Board {
     this.surface.receiveShadow = true;
     this.group.add(this.surface);
     const tileGeo = new THREE.BoxGeometry(0.105, 0.006, 0.145);
-    const edge = new THREE.MeshStandardMaterial({ color: 0xd8ccb0 });
+    const edge = new THREE.MeshStandardMaterial({ color: 0x9c8763 });
     for (let i = 0; i < 5; i++) {
       const m = new THREE.Mesh(tileGeo, [edge, edge, new THREE.MeshStandardMaterial({ map: policyFace('L') }), edge, edge, edge]);
       m.visible = false;
@@ -206,7 +206,7 @@ export class Pile {
   group = new THREE.Group();
   private stack: THREE.Mesh;
   constructor(label: string, public at: THREE.Vector3) {
-    const edge = new THREE.MeshStandardMaterial({ color: 0xcfc2a5, roughness: 0.9 });
+    const edge = new THREE.MeshStandardMaterial({ color: 0x9c8763, roughness: 0.9 });
     const top = new THREE.MeshStandardMaterial({ map: cardBack(label), roughness: 0.7 });
     this.stack = new THREE.Mesh(new THREE.BoxGeometry(CARD_W, 1, CARD_H), [edge, edge, top, edge, edge, edge]);
     this.stack.castShadow = true;
