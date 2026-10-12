@@ -556,16 +556,54 @@ describe('RiggedCharacter blood', () => {
   });
 });
 
+async function loadChair(): Promise<THREE.Group> {
+  (globalThis as any).self ??= globalThis;
+  (globalThis as any).createImageBitmap ??= async () => ({ width: 4, height: 4, close() {} });
+  const buf = fs.readFileSync(path.join(MODELS, 'props', 'chair_wood.glb'));
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  return chairModel({ chair_wood: (await new GLTFLoader().parseAsync(ab, '')).scene });
+}
+
 describe('seat constants', () => {
   it('match the seat measured on the real chair', async () => {
-    (globalThis as any).self ??= globalThis;
-    (globalThis as any).createImageBitmap ??= async () => ({ width: 4, height: 4, close() {} });
-    const buf = fs.readFileSync(path.join(MODELS, 'props', 'chair_wood.glb'));
-    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-    const chair = chairModel({ chair_wood: (await new GLTFLoader().parseAsync(ab, '')).scene });
-    const seat = chairSeat(chair);
+    const seat = chairSeat(await loadChair());
     expect(Math.abs(SEAT.top - seat.top)).toBeLessThan(0.01);
     expect(Math.abs(SEAT.front - seat.front)).toBeLessThan(0.01);
     expect(Math.abs(SEAT.back - seat.back)).toBeLessThan(0.01);
+  });
+
+  it("the calves clear the chair's front legs", async () => {
+    const mesh = (await loadChair()).children[0] as THREE.Mesh;
+    mesh.material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    mesh.updateMatrixWorld(true);
+    const ray = new THREE.Raycaster();
+    const dir = new THREE.Vector3(1, 0.0123, 0.0071).normalize();
+    // A point is inside the closed chair mesh when a ray from it crosses the surface an odd number of times.
+    const inside = (p: THREE.Vector3) => {
+      ray.set(p, dir);
+      return ray.intersectObject(mesh).length % 2 === 1;
+    };
+    const q = new THREE.Vector3();
+    const hits: number[] = [];
+    for (const style of [0, 1, 2, 3, 4, 5]) {
+      const c = build(style);
+      c.update(0.016, 0);
+      let n = 0;
+      let h = 0;
+      // Calves, from just above the ankle to just under the seat. The patron faces +Z, the chair's front is -Z.
+      skinnedBox(c, ['LowerLegL', 'LowerLegR'], (p) => {
+        if (p.y > 0.05 && p.y < SEAT.top - 0.03) {
+          n++;
+          if (inside(q.set(-p.x, p.y, -p.z))) h++;
+        }
+        return false;
+      });
+      expect(n).toBeGreaterThan(100);
+      hits.push(h);
+    }
+    // The outer calf edge can still graze a front leg at x of about +-0.15 (the posing is not changed), so a few vertices
+    // are allowed; the unsqueezed chair put 8 to 20 per style inside (80 in all).
+    for (const h of hits) expect(h).toBeLessThanOrEqual(8);
+    expect(hits.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(16);
   });
 });

@@ -6,7 +6,9 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 type Props = Record<string, THREE.Object3D>;
 
-export const CHAIR_HEIGHT = 0.96;
+export const CHAIR_HEIGHT = 0.91;
+/** Front-to-back squeeze of the chair, so the seated patron's calves clear the front legs. */
+export const CHAIR_DEPTH = 0.8;
 export const STOOL_HEIGHT = 0.78;
 export const LAMP_WIDTH = 0.45;
 /** Top of the back-bar counter. */
@@ -120,7 +122,7 @@ function stain(meshes: THREE.Mesh[]): void {
   }
 }
 
-/** Dining chair as one mesh, 0.96 m tall, backrest on local +Z (like the procedural chair it replaces), stained dark. */
+/** Dining chair as one mesh, 0.91 m tall, backrest on local +Z (like the procedural chair it replaces), stained dark. */
 export function chairModel(props: Props): THREE.Group {
   const meshes = mergeProp(normalizeProp(props.chair_wood, CHAIR_HEIGHT));
   stain(meshes);
@@ -131,6 +133,7 @@ export function chairModel(props: Props): THREE.Group {
     for (let i = 0; i < p.count; i++) if (p.getY(i) > CHAIR_HEIGHT * 0.6) sumZ += p.getZ(i);
   }
   if (sumZ < 0) for (const m of meshes) m.geometry.rotateY(Math.PI);
+  for (const m of meshes) m.geometry.scale(1, 1, CHAIR_DEPTH);
   return group('chair', meshes, true);
 }
 

@@ -18,7 +18,7 @@ const HEIGHT_WOMAN = 1.68;
  * The seat of client/models/props/chair_wood.glb as chairModel() builds it (see chairSeat() in roomprops.ts; a test keeps
  * these in step). Chair space: the backrest is on +Z, so the patron, which faces +Z, sits at z from -back to -front.
  */
-export const SEAT = { top: 0.4476, front: -0.2703, back: 0.2013 };
+export const SEAT = { top: 0.4253, front: -0.2050, back: 0.1527 };
 /** How far in front of the backrest the buttocks sit. */
 const BACK_GAP = 0.015;
 /** Where the Hips bone sat before the figure was placed on the measured seat. */

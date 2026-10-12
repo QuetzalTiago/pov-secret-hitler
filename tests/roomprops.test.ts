@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildBackBar, chairModel, chairSeat, lampModel, normalizeProp, stoolModel } from '../client/scene/roomprops';
+import { buildBackBar, CHAIR_HEIGHT, chairModel, chairSeat, lampModel, normalizeProp, stoolModel } from '../client/scene/roomprops';
 
 const PROPS = path.resolve(__dirname, '../client/models/props');
 const NAMES = ['chair_wood', 'stool_wood', 'lamp_pendant', 'bottle_old', 'bottle_a', 'bottle_b', 'bottle_wine', 'glass_vodka', 'glass_cognac', 'glass_wine'];
@@ -116,7 +116,7 @@ describe('chairModel', () => {
     let sum = 0;
     let n = 0;
     for (let i = 0; i < p.count; i++) {
-      if (p.getY(i) > 0.6 * 0.96) {
+      if (p.getY(i) > 0.6 * CHAIR_HEIGHT) {
         sum += p.getZ(i);
         n++;
       }
