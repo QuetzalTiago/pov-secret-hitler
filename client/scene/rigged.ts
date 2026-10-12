@@ -5,9 +5,10 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { getAssets, type CharacterTemplate, type Outfit } from './assets';
 import { PatronBadges } from './badges';
 import { paintBlood, type BloodPart } from './blood';
-import { COATS, SKINS, type Patron } from './characters';
+import { type Patron } from './characters';
 import { disposeObject } from './dispose';
 import { DEATH_DUR, REACTION_DUR, SMOKE_DUR, deathPose, isSmoker, mouthOpen, nextDragDelay, reactionPose, smokePose, type DeathPose, type Reaction, type ReactionPose, type SmokePose } from './life';
+import { type Look } from './looks';
 import { CIGARETTE_TIP, cigaretteGeometry, mergeParts, paintGeometry } from './patron';
 
 const HEIGHT = 1.75;
@@ -66,13 +67,6 @@ interface Arm {
   eff: THREE.Vector3;
   len1: number;
   len2: number;
-}
-
-function outfitFor(styleIndex: number, variant: 'normal' | 'hitler'): Outfit {
-  if (variant === 'hitler') return 'suit';
-  if (styleIndex === 2 || styleIndex === 7) return 'dress';
-  if (styleIndex === 5 || styleIndex === 8) return 'shirt';
-  return 'suit';
 }
 
 /** The patron's cloth part: the jacket on the suit (named Shirt in the glTF), the shirt, the dress. */
@@ -266,15 +260,15 @@ export class RiggedCharacter implements Patron {
    * `hitler` is only ever used when the server has revealed this seat's role to the viewer.
    * `template` is for tests; the game takes the loaded assets.
    */
-  constructor(public seat: number, styleIndex: number, public variant: 'normal' | 'hitler' = 'normal', template?: CharacterTemplate) {
+  constructor(public seat: number, look: Look, public variant: 'normal' | 'hitler' = 'normal', template?: CharacterTemplate) {
     const hitler = variant === 'hitler';
-    const outfit = template?.outfit ?? outfitFor(styleIndex, variant);
+    const outfit = look.body;
     const tpl = template ?? getAssets()?.characters[outfit];
     if (!tpl) throw new Error('rigged: assets not loaded');
-    this.smoker = isSmoker(styleIndex, variant);
+    this.smoker = isSmoker(seat, variant);
 
     const root = cloneSkinned(tpl.root);
-    const height = outfit === 'dress' || outfit === 'blouse' ? HEIGHT_WOMAN : HEIGHT;
+    const height = (outfit === 'dress' || outfit === 'blouse' ? HEIGHT_WOMAN : HEIGHT) * look.height;
     root.scale.multiplyScalar(height);
     root.position.multiplyScalar(height);
     this.group.add(root);
@@ -298,7 +292,7 @@ export class RiggedCharacter implements Patron {
     this.fingersR = bone('FingersR');
     this.thumb1R = bone('Thumb1R');
 
-    this.tint(tpl, styleIndex, outfit, hitler);
+    this.tint(tpl, look, outfit);
     this.group.updateMatrixWorld(true);
     this.addFaceAnchorAndArmband(tpl, hitler);
 
@@ -389,17 +383,18 @@ export class RiggedCharacter implements Patron {
     bone.quaternion.premultiply(this.qa).premultiply(this.qb).premultiply(this.qa.invert());
   }
 
-  /** Per-seat colours written into the vertex colours of the cloned geometry. */
-  private tint(tpl: CharacterTemplate, i: number, outfit: Outfit, hitler: boolean) {
-    const coat = hitler ? 0x7a6844 : COATS[i % COATS.length];
+  /** The look's colours written into the vertex colours of the cloned geometry. */
+  private tint(tpl: CharacterTemplate, look: Look, outfit: Outfit) {
     const colors: Record<string, number> = {
-      [CLOTH[outfit]]: coat,
-      Pants: new THREE.Color(coat).multiplyScalar(0.45).getHex(),
-      Skin: hitler ? 0xe8c4a4 : SKINS[(i * 3) % SKINS.length],
+      [CLOTH[outfit]]: look.coat,
+      Pants: new THREE.Color(look.coat).multiplyScalar(0.45).getHex(),
+      Skin: look.skin,
+      Hair: look.hair,
+      HairBase: look.hair,
     };
     if (outfit === 'suit') {
-      colors.TieTexture = hitler ? 0x14100c : i % 2 ? 0x8a1a1a : 0x1a2a4a;
-      if (hitler) colors.Details = 0x8c7450;
+      colors.TieTexture = look.tie;
+      if (this.variant === 'hitler') colors.Details = 0x8c7450;
     }
     const attr = this.mesh.geometry.getAttribute('color') as THREE.BufferAttribute;
     const c = new THREE.Color();

@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { chairModel, chairSeat } from '../client/scene/roomprops';
+import { HAIR, lookFor, seedOf } from '../client/scene/looks';
 import { prepareCharacter, type CharacterTemplate, type Outfit } from '../client/scene/assets';
 
 const MODELS = path.resolve(__dirname, '../client/models');
@@ -34,8 +35,7 @@ let SEAT: Rigged['SEAT'];
 let BUTTOCK_DEPTH: Rigged['BUTTOCK_DEPTH'];
 let chars: Chars;
 const templates = {} as Record<Outfit, CharacterTemplate>;
-// Template used for each style by the default (assets) lookup, replicated for the injected one.
-const OUTFIT = (i: number, variant: 'normal' | 'hitler'): Outfit => (variant === 'hitler' ? 'suit' : i === 2 || i === 7 ? 'dress' : i === 5 || i === 8 ? 'shirt' : 'suit');
+const SEED = seedOf('TEST');
 
 beforeAll(async () => {
   (globalThis as any).document = {
@@ -50,7 +50,17 @@ beforeAll(async () => {
   }
 });
 
-const build = (i: number, variant: 'normal' | 'hitler' = 'normal', outfit: Outfit = OUTFIT(i, variant)) => new RiggedCharacter(i, i, variant, templates[outfit]);
+const lookOf = (i: number, variant: 'normal' | 'hitler' = 'normal') => lookFor(i, SEED, variant === 'hitler');
+const build = (i: number, variant: 'normal' | 'hitler' = 'normal') => {
+  const look = lookOf(i, variant);
+  return new RiggedCharacter(i, look, variant, templates[look.body]);
+};
+/** The vertex colour of the first vertex of a template part. */
+const colorAt = (c: InstanceType<Rigged['RiggedCharacter']>, t: CharacterTemplate, part: string) => {
+  const a = (c.hitMeshes[0] as THREE.SkinnedMesh).geometry.getAttribute('color');
+  const i = t.parts[part].start;
+  return [a.getX(i), a.getY(i), a.getZ(i)];
+};
 
 function measure(c: InstanceType<Rigged['RiggedCharacter']>) {
   let visible = 0;
@@ -133,21 +143,27 @@ function skinnedBox(c: Rig, names: string[], keep?: (p: THREE.Vector3) => boolea
   return box;
 }
 
-const cases: [string, number, 'normal' | 'hitler', Outfit?][] = [
+const cases: [string, number, 'normal' | 'hitler'][] = [
   ...[...Array(10).keys()].map((i) => [`normal ${i}`, i, 'normal'] as [string, number, 'normal']),
   ['hitler 0', 0, 'hitler'],
-  ['blouse 0', 0, 'normal', 'blouse'],
 ];
 
-describe.each(cases)('RiggedCharacter %s', (_key, style, variant, outfit) => {
+describe('the cases', () => {
+  it('cover all four bodies', () => {
+    const bodies = new Set(cases.filter((c) => c[2] === 'normal').map((c) => lookOf(c[1]).body));
+    expect([...bodies].sort()).toEqual(['blouse', 'dress', 'shirt', 'suit']);
+  });
+});
+
+describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
   it('stays within the draw-call and triangle budget', () => {
-    const { visible, tris } = measure(build(style, variant, outfit));
+    const { visible, tris } = measure(build(style, variant));
     expect(visible).toBeLessThanOrEqual(3);
     expect(tris).toBeLessThanOrEqual(6000);
   });
 
   it('sits with the head above the hips', () => {
-    const c = build(style, variant, outfit);
+    const c = build(style, variant);
     c.update(0.016, 0);
     c.group.updateMatrixWorld(true);
     const head = boneY(c, 'Head');
@@ -160,7 +176,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant, outfit) => {
   });
 
   it('rests on the seat', () => {
-    const c = build(style, variant, outfit);
+    const c = build(style, variant);
     c.update(0.016, 0);
     const pelvisAndThighs = ['Body', 'Hips', 'UpperLegL', 'UpperLegR'];
     const all = skinnedBox(c, pelvisAndThighs);
@@ -175,7 +191,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant, outfit) => {
   });
 
   it('puts its feet on the floor', () => {
-    const c = build(style, variant, outfit);
+    const c = build(style, variant);
     c.update(0.016, 0);
     const feet = skinnedBox(c, ['FootL', 'FootR']);
     expect(feet.min.y).toBeGreaterThan(-0.01);
@@ -183,7 +199,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant, outfit) => {
   });
 
   it('has no hats or face details, only the cigarette and the armband besides the body', () => {
-    const c = build(style, variant, outfit);
+    const c = build(style, variant);
     let extra = 0;
     c.group.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -193,7 +209,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant, outfit) => {
   });
 
   it('has the Patron members the game uses', () => {
-    const c = build(style, variant, outfit);
+    const c = build(style, variant);
     expect(c.hitMeshes).toHaveLength(1);
     expect(c.smoker).toBe(variant !== 'hitler' && style % 3 === 0);
     if (!c.smoker) expect(c.smokeEmit(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3())).toBe(-1);
@@ -217,23 +233,29 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant, outfit) => {
 });
 
 describe('RiggedCharacter styles and disposal', () => {
-  it('styles get different coat colours', () => {
-    const colorAt = (c: InstanceType<Rigged['RiggedCharacter']>, t: CharacterTemplate, part: string) => {
-      const mesh = c.hitMeshes[0] as THREE.SkinnedMesh;
-      const a = mesh.geometry.getAttribute('color');
-      const i = t.parts[part].start;
-      return [a.getX(i), a.getY(i), a.getZ(i)];
-    };
+  it('seats get different coat colours', () => {
     const a = build(0);
     const b = build(1);
-    expect(colorAt(a, templates.suit, 'Shirt')).not.toEqual(colorAt(b, templates.suit, 'Shirt'));
-    expect(colorAt(a, templates.suit, 'Skin')).not.toEqual(colorAt(b, templates.suit, 'Skin'));
+    expect(colorAt(a, templates[lookOf(0).body], 'Skin')).not.toEqual(colorAt(b, templates[lookOf(1).body], 'Skin'));
+    const cloth = (i: number) => colorAt(build(i), templates[lookOf(i).body], lookOf(i).body === 'dress' ? 'Dress' : 'Shirt');
+    expect(cloth(0)).not.toEqual(cloth(1));
     // And the template keeps its own colours.
-    const tc = templates.suit.mesh.geometry.getAttribute('color');
-    expect([tc.getX(0), tc.getY(0), tc.getZ(0)]).not.toEqual(colorAt(a, templates.suit, 'Shirt'));
-    const dress = build(2);
-    const dress2 = build(7);
-    expect(colorAt(dress, templates.dress, 'Dress')).not.toEqual(colorAt(dress2, templates.dress, 'Dress'));
+    const t = templates[lookOf(0).body];
+    const tc = t.mesh.geometry.getAttribute('color');
+    expect([tc.getX(0), tc.getY(0), tc.getZ(0)]).not.toEqual(colorAt(a, t, 'Skin'));
+  });
+
+  it('hair takes the look hair colour; Hitler has black hair', () => {
+    const hairOf = (c: InstanceType<Rigged['RiggedCharacter']>, t: CharacterTemplate) => {
+      const part = t.parts.Hair;
+      const a = (c.hitMeshes[0] as THREE.SkinnedMesh).geometry.getAttribute('color');
+      return new THREE.Color().fromBufferAttribute(a, part.start).getHex();
+    };
+    const seats = [...Array(10).keys()];
+    const hairs = seats.map((i) => hairOf(build(i), templates[lookOf(i).body]));
+    seats.forEach((i, k) => expect(hairs[k]).toBe(new THREE.Color(lookOf(i).hair).getHex()));
+    expect(new Set(hairs).size).toBeGreaterThan(1);
+    expect(hairOf(build(0, 'hitler'), templates.suit)).toBe(new THREE.Color(HAIR.black).getHex());
   });
 
   it('dispose leaves the template geometry intact', () => {
@@ -248,7 +270,7 @@ describe('RiggedCharacter styles and disposal', () => {
   });
 
   it('createCharacter falls back to the procedural patron without assets', () => {
-    const p = chars.createCharacter(0, 0, 'normal');
+    const p = chars.createCharacter(0, SEED, 'normal');
     expect(p).toBeInstanceOf(chars.Character);
     p.dispose();
   });

@@ -15,6 +15,7 @@ import type { Interactable, Interactor } from './interact';
 import { bloodSeed, pickAnchor, type AnchorRect } from './scene/blood';
 import { Bloodshed, type BloodShot, type ResolveAnchor } from './scene/bloodfx';
 import { createCharacter, type Patron } from './scene/characters';
+import { seedOf } from './scene/looks';
 import { disposeObject } from './scene/dispose';
 import { ActingRings, Board, CARD_H, CARD_W, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
 import { COLORS, ballotFace, bloodAtlas, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
@@ -66,6 +67,7 @@ export class Game {
   private marksCode: string | null = null;
   view: GameView | null = null;
   private chars = new Map<number, Patron>();
+  private lookSeed = 0;
   private board = new Board();
   private drawPile: Pile;
   private discardPile: Pile;
@@ -630,7 +632,7 @@ export class Game {
 
   private newCharacter(seat: number, variant: 'normal' | 'hitler'): Patron {
     const L = this.world.layout;
-    const c = createCharacter(seat, seat, variant);
+    const c = createCharacter(seat, this.lookSeed, variant);
     c.group.position.copy(L.chair(seat));
     c.group.rotation.y = L.yaw(seat) + Math.PI;
     this.world.scene.add(c.group);
@@ -649,8 +651,15 @@ export class Game {
     const L = this.world.layout;
     const v = this.view;
     const seats = v ? v.players.map((p) => p.seat) : room.seats.map((s) => s.seat);
+    // A new room deals a new line-up: every patron is rebuilt.
+    const seed = seedOf(room.code);
+    const redeal = seed !== this.lookSeed;
+    if (redeal) {
+      this.lookSeed = seed;
+      this.world.setLookSeed(seed);
+    }
     for (const [seat, c] of this.chars) {
-      if (!seats.includes(seat) || seat === room.you) {
+      if (redeal || !seats.includes(seat) || seat === room.you) {
         this.world.scene.remove(c.group);
         c.dispose();
         this.chars.delete(seat);

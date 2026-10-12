@@ -13,7 +13,7 @@ import { handGeometry } from './hands';
 import { riggedHandGeometry } from './ownhands';
 import { cuffGeometry, pointingFingerGeometry, sleeveGeometry, unitSleeveGeometry } from './ownbody';
 import { cylinderBetween, limbGeometry, mergeParts } from './patron';
-import { seatColors } from './palette';
+import { lookFor } from './looks';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
 import { buildBackBar, chairModel, lampModel, stoolModel } from './roomprops';
 import { CigaretteSmoke } from './smoke';
@@ -170,6 +170,7 @@ export class World {
   private ownBlood = 0;
   private armband: THREE.Mesh | null = null;
   private hitlerOutfit = false;
+  private lookSeed = 0;
   private smoke: { s: THREE.Sprite; v: THREE.Vector3; spin: number }[] = [];
   private yaw = 0;
   private pitch = 0;
@@ -869,9 +870,16 @@ export class World {
     if (this.armband) this.armband.visible = hitler;
   }
 
+  /** Which cast line-up this room deals (seedOf the room code); your own arms follow it. */
+  setLookSeed(seed: number) {
+    if (seed === this.lookSeed) return;
+    this.lookSeed = seed;
+    this.applyOwnColors();
+  }
+
   /** Sleeves and hands match the patron other players see in your seat. */
   private applyOwnColors() {
-    const { coat, skin } = seatColors(this.layout.me, this.hitlerOutfit);
+    const { coat, skin } = lookFor(this.layout.me, this.lookSeed, this.hitlerOutfit);
     this.sleeve.color.set(coat).lerp(BLOOD_TINT, this.ownBlood);
     this.cuff.color.set(CUFF_HEX).lerp(BLOOD_TINT, this.ownBlood);
     this.skinMat.color.set(skin);

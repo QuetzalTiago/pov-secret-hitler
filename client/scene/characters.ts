@@ -7,6 +7,7 @@ import { DEATH_DUR, REACTION_DUR, SMOKE_DUR, blinkScale, deathPose, isSmoker, mo
 import { PatronBadges } from './badges';
 import type { BloodPart } from './blood';
 import { getAssets } from './assets';
+import { lookFor } from './looks';
 import { RiggedCharacter } from './rigged';
 import { glossy } from './world';
 import { handGeometry } from './hands';
@@ -127,9 +128,9 @@ export interface Patron {
 }
 
 /** The rigged glTF patron once the assets are loaded (`?chars=old` forces the procedural one), else the procedural patron. */
-export function createCharacter(seat: number, styleIndex: number, variant: 'normal' | 'hitler'): Patron {
+export function createCharacter(seat: number, seed: number, variant: 'normal' | 'hitler'): Patron {
   const old = typeof location !== 'undefined' && new URLSearchParams(location.search).get('chars') === 'old';
-  return getAssets() && !old ? new RiggedCharacter(seat, styleIndex, variant) : new Character(seat, styleIndex, variant);
+  return getAssets() && !old ? new RiggedCharacter(seat, lookFor(seat, seed, variant === 'hitler'), variant) : new Character(seat, seat, variant);
 }
 
 export class Character implements Patron {

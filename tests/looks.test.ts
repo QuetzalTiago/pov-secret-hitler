@@ -53,6 +53,12 @@ describe('looks', () => {
     for (const s of SEEDS) expect(Number.isInteger(s) && s >= 0 && s <= 0xffffffff).toBe(true);
   });
 
+  it('wraps seats past the table and is stable per seat and seed (own arms use the same look)', () => {
+    expect(lookFor(12, 7)).toEqual(lookFor(2, 7));
+    expect(lookFor(-1, 7)).toEqual(lookFor(9, 7));
+    expect(lookFor(3, 7)).toEqual(lookFor(3, 7));
+  });
+
   it('hitler override', () => {
     expect(lookFor(4, 123, true)).toEqual({ body: 'suit', skin: 0xe8c4a4, hair: HAIR.black, coat: 0x7a6844, tie: 0x14100c, height: 1 });
   });
