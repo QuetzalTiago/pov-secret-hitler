@@ -87,6 +87,8 @@ export class Room {
   private moodTimer: NodeJS.Timeout | null = null;
   /** Written lines this game, against config.llm.maxCallsPerGame. */
   private written = 0;
+  /** Written lines over the room's whole life (all deals, not reset by resetTalk), against config.llm.maxCallsPerRoom. */
+  private writtenTotal = 0;
   botStats = { jev: 0, heuristic: 0, trivial: 0, talk: { jev: 0, heuristic: 0 }, written: 0 };
 
   constructor(public code: string, private onEmpty: (room: Room) => void) {}
@@ -302,6 +304,7 @@ export class Room {
       series: this.series,
       options: this.options,
       ready: [...this.ready],
+      llmCalls: this.writtenTotal,
     };
   }
 
@@ -329,6 +332,7 @@ export class Room {
       const tokens = new Set(room.seats.filter((s) => !s.bot).map((s) => s.token));
       for (const t of snap.ready) if (typeof t === 'string' && tokens.has(t)) room.ready.add(t);
     }
+    room.writtenTotal = Number.isFinite(snap.llmCalls) && snap.llmCalls! >= 0 ? snap.llmCalls! : 0;
     room.lastActivity = now;
     room.resetTimerIfNeeded(); // fresh phase timer
     if (room.stage === 'game') room.startMoodTimer();
@@ -712,8 +716,15 @@ export class Room {
 
   /** A bot may write a generated line only while the per-game budget lasts. */
   private canWrite(): boolean {
-    return llmEnabled() && this.written < config.llm.maxCallsPerGame;
+    return llmEnabled() && this.written < config.llm.maxCallsPerGame && this.writtenTotal < config.llm.maxCallsPerRoom;
   }
+
+  /** Counted when a request is really sent, not when a bot merely decides to write. */
+  private noteSent = () => {
+    this.written++;
+    this.writtenTotal++;
+    this.botStats.written++;
+  };
 
   private talkContext(seat: number) {
     return {
@@ -724,6 +735,7 @@ export class Room {
       name: (x: number) => this.seatName(x),
       transcript: this.transcript,
       lang: config.llm.lang,
+      onSent: this.noteSent,
     };
   }
 
@@ -803,8 +815,6 @@ export class Room {
     }
     if (!line) return false; // chose to stay quiet
     if (this.game && this.canWrite()) {
-      this.written++;
-      this.botStats.written++;
       try {
         line = await writeIntent(this.talkContext(seat), plan.situation, intent ?? line, line);
       } catch (e) {
@@ -971,8 +981,6 @@ export class Room {
   }
 
   private async reply(seat: number, from: number, text: string, trigger: Trigger) {
-    this.written++;
-    this.botStats.written++;
     const started = Date.now();
     const line = await writeReply(this.talkContext(seat), from, text, trigger);
     if (!line) {
@@ -1040,8 +1048,6 @@ export class Room {
     mood.complainedAt = now;
     offend(mood, waiting.seat, 0.12 + persona.temper * 0.12);
     this.lastBotChat.set(seat, now);
-    this.written++;
-    this.botStats.written++;
     writeIgnored(this.talkContext(seat), waiting.seat)
       .then((line) => (line ? this.sayLater(seat, line, 400 + Math.random() * 900) : this.lastBotChat.delete(seat)))
       .catch((e) => {
@@ -1075,8 +1081,6 @@ export class Room {
       mood.recanted.add(p.seat);
       warmTo(mood, p.seat, 0.45);
       this.lastBotChat.set(seat, now);
-      this.written++;
-      this.botStats.written++;
       const why = `en la ronda ${last.round} puso una liberal ${last.chancellor === p.seat ? 'como canciller' : 'como presidente'}`;
       writeReconsider(this.talkContext(seat), p.seat, why)
         .then((line) => (line ? this.sayLater(seat, line, 500 + Math.random() * 1200) : this.lastBotChat.delete(seat)))
@@ -1129,8 +1133,6 @@ export class Room {
     const chance = kind === 'accusation' ? 0.06 + persona.paranoia * 0.15 : 0.04 + persona.chattiness * 0.11;
     if (Math.random() > chance) return;
     this.lastBotChat.set(seat, now);
-    this.written++;
-    this.botStats.written++;
     writeAccusation(this.talkContext(seat), target_, prof[target_].proof, kind)
       .then((line) => (line ? this.sayLater(seat, line, 500 + Math.random() * 1500) : this.lastBotChat.delete(seat)))
       .catch((e) => {
@@ -1232,6 +1234,8 @@ export interface RoomSnapshot {
   series?: Series;
   options?: TableOptions;
   ready?: string[];
+  /** Generated lines over the room's life, so a restart does not reset the budget. */
+  llmCalls?: number;
 }
 
 const isCount = (n: unknown) => typeof n === 'number' && Number.isFinite(n);

@@ -162,7 +162,7 @@ const ADAPTERS: Record<string, Adapter> = { gemini, openai, anthropic };
  * many requests are already in flight. A bot that cannot find its words types the scripted line instead;
  * it never blocks the game.
  */
-export async function write(req: LlmRequest, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+export async function write(req: LlmRequest, fetchImpl: typeof fetch = fetch, onSent?: () => void): Promise<string | null> {
   if (!llmEnabled() || inflight >= config.llm.maxInflight) return null;
   const adapter = ADAPTERS[config.llm.provider];
   if (!adapter) {
@@ -173,6 +173,7 @@ export async function write(req: LlmRequest, fetchImpl: typeof fetch = fetch): P
   const { url, model } = llmEndpoint();
   inflight++;
   llmStats.calls++;
+  onSent?.();
   try {
     const call = adapter(req, url.replace(/\/$/, ''), model, config.llm.key);
     // Free tiers answer 503 now and then. One quick retry turns most of those into a line instead of a

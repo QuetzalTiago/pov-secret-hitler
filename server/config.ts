@@ -64,6 +64,8 @@ export const config = {
     maxInflight: num(process.env.SH_LLM_MAX_INFLIGHT, 4),
     /** Hard ceiling on generated lines per game, so a long table can never run up a surprise bill. */
     maxCallsPerGame: num(process.env.SH_LLM_MAX_CALLS, 400),
+    /** Hard ceiling on generated lines over a room's whole life (all deals), so re-dealing cannot reset the bill. */
+    maxCallsPerRoom: num(process.env.SH_LLM_MAX_CALLS_ROOM, 1200),
   },
 };
 

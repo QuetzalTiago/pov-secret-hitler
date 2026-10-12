@@ -185,6 +185,8 @@ export interface TalkContext {
   name: (seat: number) => string;
   transcript: ChatLine[];
   lang: BotLang;
+  /** Called when a request really goes out to the provider (not when the write is skipped). */
+  onSent?: () => void;
 }
 
 /** `toward` is the player this line is aimed at, which is what decides how hard the bot comes out. */
@@ -362,7 +364,7 @@ async function compose(ctx: TalkContext, situation: string, task: string, temper
     user: `${situationBlock(ctx, situation, toward)}\n\n${task}`,
     maxTokens: 90,
     temperature,
-  });
+  }, undefined, ctx.onSent);
   if (raw === null) return null;
   const live = ctx.view.phase !== 'gameOver';
   const teammates =
