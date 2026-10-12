@@ -15,6 +15,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 
 export interface UIHandlers {
   create(name: string): void;
+  quickStart(name: string): void;
   join(code: string, name: string): void;
   addBot(): void;
   removeBot(): void;
@@ -103,6 +104,10 @@ export class UI {
     $('create').onclick = () => {
       const n = name();
       if (n) h.create(n);
+    };
+    $('quick-start').onclick = () => {
+      const n = name();
+      if (n) h.quickStart(n);
     };
     $('join').onclick = () => {
       const n = name();
@@ -275,6 +280,7 @@ export class UI {
     $('create').classList.remove('primary');
     $('create').classList.add('link');
     $('create').textContent = 'or open your own table';
+    $('quick-start').classList.add('link');
     // Invited layout: name, one big Join button, then the option to start your own table.
     const join = $('join');
     const row = join.parentElement!;

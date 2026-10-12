@@ -3,6 +3,7 @@
 // get angry at being ignored, and start accusations of their own. See bottalk.ts for how a line is written.
 import { randomBytes, randomInt } from 'node:crypto';
 import { RuleError, createGame, legalActions, pendingActors, reduce } from '../shared/engine';
+import { QUICK_START_SEATS } from '../shared/protocol';
 import type { RoomView, SeatInfo, ServerMsg, Series } from '../shared/protocol';
 import { MAX_PLAYERS, MIN_PLAYERS } from '../shared/rules';
 import type { ActionBody, GameEvent, GameState, Phase } from '../shared/types';
@@ -363,6 +364,16 @@ export class Room {
     this.ready.clear();
     this.deal();
     return null;
+  }
+
+  // Fills the table to QUICK_START_SEATS with bots and deals.
+  quickStart(conn: Conn): string | null {
+    if (this.stage !== 'lobby') return 'The game has started.';
+    while (this.seats.length < QUICK_START_SEATS) {
+      const err = this.addBot(conn);
+      if (err) return err;
+    }
+    return this.start(conn);
   }
 
   private deal() {

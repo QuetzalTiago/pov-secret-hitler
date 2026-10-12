@@ -5,10 +5,12 @@ import type { GameView } from './view';
 export const MAX_MESSAGE_BYTES = 2048;
 export const MAX_NAME = 16;
 export const MAX_CHAT = 200;
+export const QUICK_START_SEATS = 7;
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 
 export type ClientMsg =
   | { t: 'create'; name: string }
+  | { t: 'quickStart'; name: string }
   | { t: 'join'; code: string; name: string }
   | { t: 'resume'; code: string; token: string }
   | { t: 'addBot' }
@@ -125,6 +127,10 @@ export function parseClientMsg(raw: string): ClientMsg | null {
     case 'create': {
       const name = cleanName(m.name);
       return name ? { t: 'create', name } : null;
+    }
+    case 'quickStart': {
+      const name = cleanName(m.name);
+      return name ? { t: 'quickStart', name } : null;
     }
     case 'join': {
       const name = cleanName(m.name);

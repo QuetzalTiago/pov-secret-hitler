@@ -193,6 +193,14 @@ export function startServer(port = config.port): Promise<RunningServer> {
     ws.on('error', () => ws.terminate());
   }
 
+  function openRoom(current: Room | null): Room | string {
+    if (current) return 'Leave your current room first.';
+    if (rooms.size >= config.maxRooms) return 'The bar is packed: too many rooms right now. Try later.';
+    const code = newCode();
+    if (!code) return 'Could not allocate a room.';
+    return track(new Room(code, ended));
+  }
+
   function handle(conn: Conn, msg: ClientMsg, chatBucket: TokenBucket): string | null {
     const room = conn.room;
     switch (msg.t) {
@@ -200,12 +208,14 @@ export function startServer(port = config.port): Promise<RunningServer> {
         conn.send({ t: 'pong' });
         return null;
       case 'create': {
-        if (room) return 'Leave your current room first.';
-        if (rooms.size >= config.maxRooms) return 'The bar is packed: too many rooms right now. Try later.';
-        const code = newCode();
-        if (!code) return 'Could not allocate a room.';
-        const r = track(new Room(code, ended));
-        return r.join(conn, msg.name);
+        const r = openRoom(room);
+        return typeof r === 'string' ? r : r.join(conn, msg.name);
+      }
+      case 'quickStart': {
+        const r = openRoom(room);
+        if (typeof r === 'string') return r;
+        const err = r.join(conn, msg.name);
+        return err ?? r.quickStart(conn);
       }
       case 'join': {
         if (room) return 'Leave your current room first.';

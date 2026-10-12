@@ -107,6 +107,8 @@ describe('protocol validation', () => {
       a: { type: 'vote', ja: true },
     });
     expect(parseClientMsg('{"t":"create","name":"  Al\\u0000ice\\u202e  "}')).toEqual({ t: 'create', name: 'Alice' });
+    expect(parseClientMsg(JSON.stringify({ t: 'quickStart', name: ' Rosa ' }))).toEqual({ t: 'quickStart', name: 'Rosa' });
+    expect(parseClientMsg(JSON.stringify({ t: 'quickStart' }))).toBeNull();
     expect(parseClientMsg('{"t":"join","code":"abcd","name":"' + 'n'.repeat(40) + '"}')).toEqual({
       t: 'join',
       code: 'ABCD',
