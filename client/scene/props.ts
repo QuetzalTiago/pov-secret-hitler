@@ -144,7 +144,8 @@ export class Envelope {
 /** Central board with both tracks and the election tracker. */
 export class Board {
   group = new THREE.Group();
-  readonly w = 1.0;
+  /** Big enough that the official art reads from your seat (it was 1.0 m and blurred into a strip). */
+  readonly w = 1.3;
   readonly h = this.w / BOARD_ASPECT;
   /** Uniform scale for policy tiles: the official slots are bigger than the procedural ones. A Mover drives tile scale, so game.ts applies this to it. */
   tileScale = 1;
@@ -161,7 +162,14 @@ export class Board {
       new THREE.MeshStandardMaterial({ color: 0x2b1d12, roughness: 0.6 }),
     );
     this.surface.receiveShadow = true;
-    this.group.add(this.surface);
+    // A dark backing a little larger than the art, so it reads as a board lying on the felt rather than a decal.
+    const backing = new THREE.Mesh(
+      new THREE.BoxGeometry(this.w + 0.035, 0.008, this.h + 0.035),
+      new THREE.MeshStandardMaterial({ color: 0x140d08, roughness: 0.8 }),
+    );
+    backing.position.y = -0.003;
+    backing.receiveShadow = true;
+    this.group.add(backing, this.surface);
     const tileGeo = new THREE.BoxGeometry(0.105, 0.006, 0.145);
     const edge = new THREE.MeshStandardMaterial({ color: 0x9c8763 });
     for (let i = 0; i < 5; i++) {
@@ -179,7 +187,7 @@ export class Board {
       this.group.add(m);
     }
     this.token = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.022, 0.022, 0.016, 16),
+      new THREE.CylinderGeometry(0.026, 0.026, 0.016, 24), // fills the election tracker circles on the 1.3 m board
       new THREE.MeshStandardMaterial({ color: 0xd6a84a, metalness: 0.8, roughness: 0.3, emissive: 0x3a2a0a }),
     );
     this.token.castShadow = true;
@@ -194,16 +202,21 @@ export class Board {
     if (key !== this.powersKey) {
       this.powersKey = key;
       const t = boardTexture(powers);
+      // Seen at a shallow angle from every seat: full anisotropic filtering keeps the printed text sharp (three clamps to the GPU max).
+      t.anisotropy = 16;
       const side = new THREE.MeshStandardMaterial({ color: 0x1c130c });
       for (const m of new Set([this.surface.material].flat())) m.dispose();
-      this.surface.material = [side, side, new THREE.MeshStandardMaterial({ map: t, roughness: 0.6 }), side, side, side];
+      // Matte printed card, slightly darkened: the art is bright and flat, and under the hot lamp plus ACES it washed out pale.
+      const face = new THREE.MeshStandardMaterial({ map: t, color: 0xd0d0d0, roughness: 0.9, metalness: 0, envMapIntensity: 0.2 });
+      this.surface.material = [side, side, face, side, side, side];
     }
     this.refreshArt();
   }
 
   /** Sizes the policy tiles for whichever board art is showing; call again once the official art loads. */
   refreshArt() {
-    this.tileScale = officialBoard(this.powers) ? 1.25 : 1;
+    // Slots scale with the board width, so the tiles do too.
+    this.tileScale = (officialBoard(this.powers) ? 1.25 : 1) * this.w;
     for (const t of [...this.liberalTiles, ...this.fascistTiles]) t.scale.set(this.tileScale, 1, this.tileScale);
   }
 
