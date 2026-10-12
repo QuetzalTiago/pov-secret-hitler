@@ -140,6 +140,7 @@ export class CigaretteSmoke {
   /** Emission multiplier (1 normally; lowered on the low-quality step). */
   rate = 1;
   private material: THREE.ShaderMaterial;
+  private dirV = new THREE.Vector3();
   private acc = new Map<number, number>();
 
   constructor(capacity = 192) {
@@ -198,7 +199,7 @@ export class CigaretteSmoke {
       return;
     }
     const n = this.take(id, 30 * amount * this.rate * dt);
-    const d = dir.clone().normalize();
+    const d = this.dirV.copy(dir).normalize();
     const speed = 0.35 * amount;
     for (let i = 0; i < n; i++) {
       const j = () => (Math.random() - 0.5) * 0.08;

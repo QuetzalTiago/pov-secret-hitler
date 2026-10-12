@@ -219,8 +219,8 @@ export class Pile {
     this.stack.position.y = h / 2;
     this.stack.visible = n > 0;
   }
-  topPosition(): THREE.Vector3 {
-    return this.group.position.clone().setY(this.group.position.y + this.stack.scale.y + 0.004);
+  topPosition(out = new THREE.Vector3()): THREE.Vector3 {
+    return out.copy(this.group.position).setY(this.group.position.y + this.stack.scale.y + 0.004);
   }
 }
 

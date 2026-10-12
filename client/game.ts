@@ -752,7 +752,7 @@ export class Game {
         let muzzle = new THREE.Vector3(0, 0, -0.2).applyMatrix4(this.gun.matrixWorld);
         let dir = new THREE.Vector3(0, 0, -1).transformDirection(this.gun.matrixWorld);
         if (shooter && e.by !== me) {
-          muzzle = shooter.gunPose().pos;
+          muzzle = shooter.gunPose().pos.clone();
           dir = this.world.layout.head(e.target).sub(muzzle).normalize();
         }
         this.world.flash(muzzle, dir);

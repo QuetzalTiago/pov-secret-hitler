@@ -78,23 +78,22 @@ export class Layout {
   yaw(seat: number): number {
     return Math.PI / 2 - this.angle(seat);
   }
-  chair(seat: number): THREE.Vector3 {
+  chair(seat: number, out = new THREE.Vector3()): THREE.Vector3 {
     const a = this.angle(seat);
-    return new THREE.Vector3((this.rx + 0.42) * Math.cos(a), 0, (this.rz + 0.42) * Math.sin(a));
+    return out.set((this.rx + 0.42) * Math.cos(a), 0, (this.rz + 0.42) * Math.sin(a));
   }
   /** A point on the table in front of a seat; `right` and `fwd` are in that player's frame. */
-  front(seat: number, right = 0, fwd = 0, inset = 0.8): THREE.Vector3 {
+  front(seat: number, right = 0, fwd = 0, inset = 0.8, out = new THREE.Vector3()): THREE.Vector3 {
     const a = this.angle(seat);
-    const base = new THREE.Vector3(this.rx * inset * Math.cos(a), TABLE_Y + 0.004, this.rz * inset * Math.sin(a));
-    const f = new THREE.Vector3(-Math.cos(a), 0, -Math.sin(a));
-    const r = new THREE.Vector3(Math.sin(a), 0, -Math.cos(a));
-    return base.addScaledVector(r, right).addScaledVector(f, fwd);
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    return out.set(this.rx * inset * c + s * right + -c * fwd, TABLE_Y + 0.004, this.rz * inset * s + -c * right + -s * fwd);
   }
-  head(seat: number): THREE.Vector3 {
-    return this.chair(seat).setY(1.32);
+  head(seat: number, out = new THREE.Vector3()): THREE.Vector3 {
+    return this.chair(seat, out).setY(1.32);
   }
-  eye(): THREE.Vector3 {
-    return new THREE.Vector3(0, EYE_Y, this.rz + 0.36);
+  eye(out = new THREE.Vector3()): THREE.Vector3 {
+    return out.set(0, EYE_Y, this.rz + 0.36);
   }
 }
 
@@ -148,6 +147,7 @@ export class World {
   scene = new THREE.Scene();
   camera: THREE.PerspectiveCamera;
   layout = new Layout(5, 0);
+  private eyeV = new THREE.Vector3();
   movers = new Set<Mover>();
   lamp: THREE.SpotLight;
   lampBulb: THREE.Mesh;
@@ -964,7 +964,7 @@ export class World {
     const k = 1 - Math.exp(-6 * dt);
     this.yaw += (this.targetYaw - this.yaw) * k;
     this.pitch += (this.targetPitch - this.pitch) * k;
-    const eye = this.layout.eye();
+    const eye = this.layout.eye(this.eyeV);
     const baseYaw = 0;
     const basePitch = BASE_PITCH;
     this.shake = Math.max(0, this.shake - dt * 1.6);

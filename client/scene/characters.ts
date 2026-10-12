@@ -61,6 +61,7 @@ const ELBOW_HINT = new THREE.Vector3(0.6, -1, -0.2).normalize();
 /** Cigarette in the hand: filter end between the fingers, lit end pointing back and outward (hand space). */
 const CIG_AXIS = new THREE.Vector3(0.5, 0.3, -0.8).normalize();
 const Y_UP = new THREE.Vector3(0, 1, 0);
+const FLIP_Y_Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 
 /** Two-bone left arm of a smoker, solved analytically each frame (body space; shoulder fixed). */
 interface SmokeRig {
@@ -106,6 +107,7 @@ export interface Patron {
   /** 0..1: 1 while hovered, a soft pulse while the seat is your move. */
   setHighlight(v: number): void;
   setAim(target: THREE.Vector3 | null, mode?: 'gun' | 'point', snap?: boolean): void;
+  /** World pose of the held revolver; the returned objects are reused (overwritten on the next call), so copy what you keep. */
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion };
   setHandsUp(on: boolean): void;
   die(): void;
@@ -132,6 +134,10 @@ export class Character implements Patron {
   private badges: PatronBadges;
   private phase = Math.random() * 10;
   private lookTarget: THREE.Vector3 | null = null;
+  private lookV = new THREE.Vector3();
+  private aimV = new THREE.Vector3();
+  private gunOut = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
+  private headScratch = new THREE.Vector3();
   private headYaw = 0;
   private headPitch = 0;
   /** Seconds since the shot (DEATH_DUR = fully dead); null while alive. */
@@ -342,7 +348,7 @@ export class Character implements Patron {
   }
 
   lookAt(target: THREE.Vector3 | null) {
-    this.lookTarget = target;
+    this.lookTarget = target ? this.lookV.copy(target) : null;
   }
 
   setHighlight(v: number) {
@@ -453,17 +459,18 @@ export class Character implements Patron {
     if (target) this.aimMode = mode;
     if (target && (snap || !this.aimTarget)) this.smoothAim.copy(target); // start where they first look
     if (target && snap) this.aimAmount = 1; // arm fully raised and on target now
-    this.aimTarget = target ? target.clone() : null;
+    this.aimTarget = target ? this.aimV.copy(target) : null;
   }
 
   /** The point the arm actually tracks: eases toward aimTarget so the arm swings instead of snapping. */
   private smoothAim = new THREE.Vector3();
 
-  /** World pose for a revolver held in the aiming hand (the revolver model points along -Z). */
+  /** World pose for a revolver held in the aiming hand (the revolver model points along -Z).
+   * Returns objects owned by this character, overwritten on the next call; copy what you keep. */
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion } {
-    const pos = this.handAnchor.getWorldPosition(new THREE.Vector3());
-    const quat = this.handAnchor.getWorldQuaternion(new THREE.Quaternion()).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI));
-    return { pos, quat };
+    this.handAnchor.getWorldPosition(this.gunOut.pos);
+    this.handAnchor.getWorldQuaternion(this.gunOut.quat).multiply(FLIP_Y_Q);
+    return this.gunOut;
   }
 
   /** Start the animated death (a room snapshot that merely shows them dead skips straight to the final pose). */
@@ -625,7 +632,7 @@ export class Character implements Patron {
     let yaw = Math.sin(t * 0.3) * 0.15;
     let pitch = -0.08;
     if (this.lookTarget && !this.dead) {
-      const local = this.group.worldToLocal(this.lookTarget.clone());
+      const local = this.group.worldToLocal(this.headScratch.copy(this.lookTarget));
       local.y -= 1.4;
       yaw = Math.max(-1.2, Math.min(1.2, Math.atan2(local.x, local.z)));
       pitch = Math.max(-0.5, Math.min(0.4, -Math.atan2(local.y, Math.hypot(local.x, local.z))));

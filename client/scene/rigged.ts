@@ -245,6 +245,14 @@ export class RiggedCharacter implements Patron {
   private v4 = new THREE.Vector3();
   private v5 = new THREE.Vector3();
   private pv = new THREE.Vector3();
+  private lookV = new THREE.Vector3();
+  private aimV = new THREE.Vector3();
+  private gunPos = new THREE.Vector3();
+  private gunZ = new THREE.Vector3();
+  private gunX = new THREE.Vector3();
+  private gunY = new THREE.Vector3();
+  private gunMat = new THREE.Matrix4();
+  private gunOut = { pos: this.gunPos, quat: new THREE.Quaternion() };
   private pw = new THREE.Vector3();
   private euler = new THREE.Euler();
 
@@ -457,7 +465,7 @@ export class RiggedCharacter implements Patron {
 
 
   lookAt(target: THREE.Vector3 | null) {
-    this.lookTarget = target;
+    this.lookTarget = target ? this.lookV.copy(target) : null;
   }
 
   setHighlight(v: number) {
@@ -468,18 +476,20 @@ export class RiggedCharacter implements Patron {
     if (target) this.aimMode = mode;
     if (target && (snap || !this.aimTarget)) this.smoothAim.copy(target); // start where they first look
     if (target && snap) this.aimAmount = 1; // arm fully raised and on target now
-    this.aimTarget = target ? target.clone() : null;
+    this.aimTarget = target ? this.aimV.copy(target) : null;
   }
 
-  /** World pose of the hand holding the revolver: the barrel (-Z) runs along the arm, the top (+Y) is up. */
+  /** World pose of the hand holding the revolver: the barrel (-Z) runs along the arm, the top (+Y) is up.
+   * Returns objects owned by this character, overwritten on the next call; copy what you keep. */
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion } {
-    const pos = this.armR.mid.getWorldPosition(new THREE.Vector3());
-    const z = this.armR.upper.getWorldPosition(new THREE.Vector3()).sub(pos).normalize();
-    const x = new THREE.Vector3().crossVectors(Y_UP, z);
+    const pos = this.armR.mid.getWorldPosition(this.gunPos);
+    const z = this.armR.upper.getWorldPosition(this.gunZ).sub(pos).normalize();
+    const x = this.gunX.crossVectors(Y_UP, z);
     if (x.lengthSq() < 1e-8) x.set(1, 0, 0);
     x.normalize();
-    const y = new THREE.Vector3().crossVectors(z, x);
-    return { pos, quat: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z)) };
+    const y = this.gunY.crossVectors(z, x);
+    this.gunOut.quat.setFromRotationMatrix(this.gunMat.makeBasis(x, y, z));
+    return this.gunOut;
   }
 
   setHandsUp(on: boolean) {
