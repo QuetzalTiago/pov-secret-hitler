@@ -18,6 +18,7 @@ Method: three read-only reviews at commit 38477ad (server and shared; client gam
 - S6 (verified) The series score uses a plain object: a player named `constructor` or `toString` makes `wins[name] ?? 0` (`room.ts:494`) read an inherited function and store a string, and `validSeries` (`room.ts:1212-1216`) then wipes the whole series on restore. Also: `ready` is not saved in `snapshot()` (`room.ts:292-302`), and restore accepts `stage:'game'` with `game:null` (`room.ts:308-309`).
 - S7 (suspected) Abuse: there is no per-IP limit on connections or creates (`server/index.ts:140-143`, `196-201`), so one client can fill `maxRooms=50` (`server/config.ts:29`) in under a second; the LLM budget `written` resets every deal (`room.ts:669`, `950-952`), so quick start, chat and leave in a loop has no spend ceiling.
 - S8 (suspected) Prompt injection: `writeReply` puts raw human chat into the prompt (`server/bottalk.ts:387`) while a Fascist bot's prompt lists its teammates (`bottalk.ts:217-224`); `sanitize` (`bottalk.ts:321-338`) only blocks the bot revealing its own role.
+  - Verified and fixed (#219): a fake LLM answering "my partner Eve is fascist" got through `writeReply` unchanged. `sanitize` now takes the bot's known teammates and drops any line that names one next to team wording (`TEAM_WORDING`, English and Spanish); see `tests/bot-talk-sanitize.test.ts`.
 
 ### Client bugs
 

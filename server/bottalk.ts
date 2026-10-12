@@ -292,6 +292,12 @@ const SELF_REVEAL = [
   /\bi'?m\s+(?:a\s+|the\s+)?(?:fascist|hitler)\b/i,
   /\bi\s+am\s+(?:a\s+|the\s+)?(?:fascist|hitler)\b/i,
 ];
+/**
+ * Wording that names a side or a partner. A Fascist bot's line that pairs one of these with a known teammate's
+ * name ("my partner Bob is fascist", "Bob es mi compañero") outs the team, whoever put the idea in its head.
+ */
+const TEAM_WORDING =
+  /\b(?:fascists?|hitler|partner|teammates?|team|allys?|allies|side|fascistas?|fach[oa]s?|compa(?:ñer[oa]s?)?|soci[oa]s?|equipo|aliad[oa]s?|mismo\s+bando)\b/i;
 const NEGATED = /\b(no|nunca|jamas|jamás|not|never|n'?t)\b[^.!?]{0,14}$/i;
 const AI_META = /\b(soy\s+(?:una?\s+)?(?:ia|inteligencia artificial|modelo|bot)|como\s+(?:una?\s+)?(?:ia|modelo)|as an ai|language model|i'?m an ai|i am an ai|chatbot)\b/i;
 
@@ -319,8 +325,12 @@ const QUOTES = /^[\s"'`“”‘’]+/;
  * `guardRole` drops any literal claim of being a Fascist or Hitler. For the Fascist team that is the line
  * that loses the game; for a Liberal it is a claim no real player ever makes, so it just reads as broken.
  * It is lifted once the game is over and every role is public, where owning up to it is normal table banter.
+ *
+ * `teammates` is the names of the other players this bot knows to be on the Fascist team. A line that names
+ * one of them next to team wording (see TEAM_WORDING) is dropped: a human can talk the model into "my
+ * partner Bob is fascist", and that loses the game for the whole team. Naming them otherwise is fine.
  */
-export function sanitize(raw: string, names: string[], guardRole: boolean): string | null {
+export function sanitize(raw: string, names: string[], guardRole: boolean, teammates: string[] = []): string | null {
   let t = raw.trim();
   t = t.split('\n').find((l) => l.trim().length > 0) ?? ''; // first non-empty line only
   t = t.replace(/\*[^*]*\*/g, ' '); // *narrator asides*
@@ -336,6 +346,10 @@ export function sanitize(raw: string, names: string[], guardRole: boolean): stri
   if (!t) return null;
   if (AI_META.test(t)) return null;
   if (guardRole && revealsOwnRole(t)) return null;
+  if (teammates.length && TEAM_WORDING.test(t)) {
+    const named = new RegExp(`(?<![\\p{L}\\p{N}_])(?:${teammates.map(escape).join('|')})(?![\\p{L}\\p{N}_])`, 'iu');
+    if (named.test(t)) return null;
+  }
   return t;
 }
 
@@ -350,7 +364,12 @@ async function compose(ctx: TalkContext, situation: string, task: string, temper
     temperature,
   });
   if (raw === null) return null;
-  return sanitize(raw, ctx.view.players.map((p) => p.name), ctx.view.phase !== 'gameOver');
+  const live = ctx.view.phase !== 'gameOver';
+  const teammates =
+    live && ctx.view.yourRole !== 'liberal'
+      ? ctx.view.players.filter((p) => p.seat !== ctx.view.you && p.role && p.role !== 'liberal').map((p) => p.name)
+      : [];
+  return sanitize(raw, ctx.view.players.map((p) => p.name), live, teammates);
 }
 
 /**
