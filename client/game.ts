@@ -4,7 +4,7 @@ import type { RoomView } from '../shared/protocol';
 import type { ActionBody, GameEvent, Policy } from '../shared/types';
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
-import { edgeMarker, hudModel } from './hudmodel';
+import { cardConfirmCopy, edgeMarker, hudModel } from './hudmodel';
 import type { Interactable, Interactor } from './interact';
 import { Character } from './scene/characters';
 import { disposeObject } from './scene/dispose';
@@ -85,6 +85,8 @@ export class Game {
   private envelopeOpen = false;
   /** Set when you click a card, so the mouse can be recaptured before the server replies. */
   private cardsDone = false;
+  /** Index of the held card picked for discard/enact, awaiting the confirm panel. */
+  private selectedCard: number | null = null;
   /** Set when you pick a player, so your pointing arm drops immediately instead of waiting for the server. */
   private pickedPlayer = false;
   /** The action we sent and are waiting on; blocks re-sends until the view moves on, the server rejects it, or it times out. */
@@ -713,6 +715,7 @@ export class Game {
 
   private act(a: ActionBody, index?: number) {
     if (this.inFlight) return;
+    this.clearCardSelection();
     if (a.type === 'presDiscard' || a.type === 'chancEnact' || a.type === 'peekDone') this.cardsDone = true;
     if (a.type === 'nominate' || a.type === 'investigate' || a.type === 'specialElect') this.pickedPlayer = true;
     if (index !== undefined) this.pendingIndex = index;
@@ -724,6 +727,35 @@ export class Game {
     const key = this.flightKey();
     if (key !== null) this.inFlight = { key, at: this.now };
     this.send(a);
+    this.refreshInteractables();
+  }
+
+  private clearCardSelection() {
+    this.selectedCard = null;
+    this.ui.hideCardConfirm();
+  }
+
+  /** First click selects a card and asks for confirmation; clicking it again cancels. */
+  private pickCard(a: ActionBody & { type: 'presDiscard' | 'chancEnact' }, face: 'L' | 'F', handSize: number) {
+    if (this.selectedCard === a.index) this.clearCardSelection();
+    else {
+      this.selectedCard = a.index;
+      const copy = cardConfirmCopy(a.type === 'presDiscard' ? 'discard' : 'enact', face, handSize);
+      this.ui.showCardConfirm(
+        copy,
+        () => {
+          // Re-check the live legal actions: the pick may be stale.
+          const index = this.selectedCard;
+          const cur = this.view && !this.inFlight ? legalFromView(this.view).find((l) => l.type === a.type && l.index === index) : undefined;
+          if (cur && index !== null) this.act(cur, index);
+          else this.clearCardSelection();
+        },
+        () => {
+          this.clearCardSelection();
+          this.refreshInteractables();
+        },
+      );
+    }
     this.refreshInteractables();
   }
 
@@ -784,6 +816,7 @@ export class Game {
       });
     }
     const legal = this.inFlight ? [] : legalFromView(v);
+    if (!legal.some((a) => a.type === 'presDiscard' || a.type === 'chancEnact')) this.clearCardSelection();
     for (const a of legal) {
       switch (a.type) {
         case 'nominate':
@@ -829,9 +862,9 @@ export class Game {
             list.push({
               id: `hand-${a.index}`,
               objects: [p.card.mesh],
-              label: `Discard this ${p.face === 'L' ? 'Liberal' : 'Fascist'} policy`,
+              label: `Select this ${p.face === 'L' ? 'Liberal' : 'Fascist'} policy to discard`,
               action: true,
-              onClick: () => this.act(a, a.index),
+              onClick: () => p.face && this.pickCard(a, p.face, held.length),
             });
           } else {
             // Click the card you want to ENACT; the other one is discarded.
@@ -840,9 +873,9 @@ export class Game {
             list.push({
               id: `hand-${a.index}`,
               objects: [p.card.mesh],
-              label: `Enact this ${p.face === 'L' ? 'Liberal' : 'Fascist'} policy (the other is discarded)`,
+              label: `Select this ${p.face === 'L' ? 'Liberal' : 'Fascist'} policy to enact`,
               action: true,
-              onClick: () => this.act(a, a.index),
+              onClick: () => p.face && this.pickCard(a, p.face, held.length),
             });
           }
           break;
@@ -950,7 +983,7 @@ export class Game {
     this.discardPile.setCount(v?.discardCount ?? 0);
     const held = this.pool.filter((p) => p.where === 'held');
     held.forEach((p, i) => {
-      const hover = hovered === `hand-${i}` || hovered === `peek-${i}`;
+      const hover = hovered === `hand-${i}` || hovered === `peek-${i}` || this.selectedCard === i;
       if (p.holder === me) {
         // Held high enough to be fully visible; hovering brings the card toward you.
         const [pos, q] = this.handPose(i, held.length, hover ? -0.36 : -0.42, hover ? -0.045 : -0.07);

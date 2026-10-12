@@ -2,7 +2,7 @@
 import type { RoomView } from '../shared/protocol';
 import type { Power } from '../shared/types';
 import type { GameView } from '../shared/view';
-import type { Badge, HudModel } from './hudmodel';
+import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
 import { isMuted, setMuted } from './audio';
 import { enactBanner } from './enact';
 
@@ -93,6 +93,20 @@ export class UI {
       h.leave();
     };
     $('confirm-no').onclick = () => $('confirm-leave').classList.add('hidden');
+    // Enter confirms and Esc cancels the policy pick (unless typing in chat).
+    window.addEventListener('keydown', (e) => {
+      if (!this.cardConfirm) return;
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.key === 'Enter') this.cardConfirm.confirm();
+      else if (e.key === 'Escape') this.cardConfirm.cancel();
+      else return;
+      // Registered before the chat handler: keep Enter from also opening chat.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    });
+    $('cc-confirm').onclick = () => this.cardConfirm?.confirm();
+    $('cc-cancel').onclick = () => this.cardConfirm?.cancel();
     $('rematch').onclick = () => h.rematch();
     $('gameover-leave').onclick = () => h.leave();
     for (const id of ['credits-btn', 'home-credits']) $(id).onclick = () => $('credits').classList.remove('hidden');
@@ -204,8 +218,28 @@ export class UI {
     $<HTMLInputElement>('name').focus();
   }
 
+  private cardConfirm: { confirm: () => void; cancel: () => void } | null = null;
+
+  showCardConfirm(copy: CardConfirmCopy, onConfirm: () => void, onCancel: () => void) {
+    this.cardConfirm = { confirm: onConfirm, cancel: onCancel };
+    const verb = $('cc-verb');
+    verb.textContent = copy.verb;
+    verb.className = `verb ${copy.verb === 'DISCARD' ? 'discard' : 'enact'}`;
+    $('cc-policy-row').className = `policy ${copy.face}`;
+    $('cc-policy').textContent = copy.policy;
+    $('cc-detail').textContent = copy.detail;
+    $('cc-confirm').textContent = copy.confirm;
+    $('confirm-card').classList.remove('hidden');
+  }
+
+  hideCardConfirm() {
+    this.cardConfirm = null;
+    $('confirm-card').classList.add('hidden');
+  }
+
   showHome() {
     this.room = null;
+    this.hideCardConfirm();
     $('lobby').classList.remove('hidden');
     $('home').classList.remove('hidden');
     $('room').classList.add('hidden');
@@ -217,6 +251,7 @@ export class UI {
     $('chat-log').replaceChildren();
     $('lobby-chat').replaceChildren();
     $('confirm-leave').classList.add('hidden');
+    this.hideCardConfirm();
     this.hideGameOver();
     this.setTimer(null, false);
     const input = $<HTMLInputElement>('chat-input');
@@ -541,6 +576,7 @@ export class UI {
   }
 
   showGameOver(v: GameView, room: RoomView) {
+    this.hideCardConfirm();
     const el = $('gameover');
     el.classList.remove('hidden');
     const title = $('gameover-title');

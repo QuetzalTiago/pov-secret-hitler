@@ -285,6 +285,17 @@ body.low-fx #status-bar, body.low-fx #prompt, body.low-fx #stepper, body.low-fx 
 #chat-input { background: var(--glass-strong); font-size: 14px; }
 #chat-input:disabled { opacity: 0.5; }
 #gameover, #confirm-leave { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+/* Policy pick confirmation: sits above the hand so the cards stay visible. */
+#confirm-card { position: absolute; left: 50%; bottom: 28%; transform: translateX(-50%); align-items: center; text-align: center; gap: var(--space-2); }
+#confirm-card .verb { font-family: var(--font-display); font-size: 40px; font-weight: 700; letter-spacing: 0.14em; line-height: 1.1; }
+#confirm-card .verb.discard { color: var(--danger); }
+#confirm-card .verb.enact { color: var(--ok); }
+#confirm-card .policy { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; letter-spacing: 0.16em; }
+#confirm-card .policy.L { color: var(--lib); }
+#confirm-card .policy.F { color: var(--fas); }
+#confirm-card .pip { width: 14px; height: 14px; border-radius: 3px; background: currentColor; }
+#confirm-card p { margin: 0; color: var(--ink-faint); }
+#confirm-card .row { display: flex; gap: var(--space-3); }
 #gameover-title.liberal { color: var(--lib); }
 #gameover-title.fascist { color: var(--fas); }
 #gameover-roles { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }

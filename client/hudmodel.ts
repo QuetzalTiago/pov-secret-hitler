@@ -6,6 +6,22 @@ import { actingSeats, type GameView } from '../shared/view';
 export type Verb =
   | 'discard' | 'enact' | 'vote' | 'nominate' | 'shoot' | 'investigate' | 'elect' | 'peek' | 'role' | 'veto'
   | null;
+export interface CardConfirmCopy {
+  verb: 'DISCARD' | 'ENACT';
+  policy: 'LIBERAL POLICY' | 'FASCIST POLICY';
+  face: 'L' | 'F';
+  detail: string;
+  confirm: string;
+}
+
+/** Copy for the "are you sure?" panel shown after selecting a policy card. */
+export function cardConfirmCopy(verb: 'discard' | 'enact', face: 'L' | 'F', handSize: number): CardConfirmCopy {
+  const policy = face === 'L' ? 'LIBERAL POLICY' : 'FASCIST POLICY';
+  return verb === 'discard'
+    ? { verb: 'DISCARD', policy, face, detail: `The other ${handSize - 1} go to the Chancellor.`, confirm: 'Discard it' }
+    : { verb: 'ENACT', policy, face, detail: 'It goes on the board. The other policy is discarded.', confirm: 'Enact it' };
+}
+
 export type Badge = 'president' | 'chancellor' | 'nominee' | 'termLimited' | 'voted' | 'acting';
 
 export interface HudOpts {

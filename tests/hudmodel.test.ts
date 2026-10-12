@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { edgeMarker, hudModel, type HudOpts } from '../client/hudmodel';
+import { cardConfirmCopy, edgeMarker, hudModel, type HudOpts } from '../client/hudmodel';
 import type { RoomView } from '../shared/protocol';
 import type { GameView } from '../shared/view';
 
@@ -142,5 +142,23 @@ describe('edgeMarker', () => {
   it('flips a point behind the camera', () => {
     const m = edgeMarker({ x: 0.5, y: 0, z: 1.5 })!;
     expect(m.x).toBeLessThan(0);
+  });
+});
+
+describe('cardConfirmCopy', () => {
+  it('names the discard verb and the policy', () => {
+    const c = cardConfirmCopy('discard', 'F', 3);
+    expect(c.verb).toBe('DISCARD');
+    expect(c.policy).toBe('FASCIST POLICY');
+    expect(c.face).toBe('F');
+    expect(c.detail).toContain('2');
+    expect(c.confirm).toBe('Discard it');
+  });
+
+  it('names the enact verb and the policy', () => {
+    const c = cardConfirmCopy('enact', 'L', 2);
+    expect(c.verb).toBe('ENACT');
+    expect(c.policy).toBe('LIBERAL POLICY');
+    expect(c.confirm).toBe('Enact it');
   });
 });
