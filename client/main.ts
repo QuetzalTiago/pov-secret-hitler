@@ -2,6 +2,7 @@ import './style.css';
 import type { RoomView, ServerMsg } from '../shared/protocol';
 import { initAudio, isMusicOn, setMusicOn, startMusic } from './audio';
 import { Game } from './game';
+import { goreEnabled, setGore } from './gore';
 import { applyStatic, lang, onLangChange, setLang, tr } from './i18n';
 import { Interactor } from './interact';
 import { Net } from './net';
@@ -257,6 +258,28 @@ musicButtons.forEach((b) =>
   }),
 );
 
+// Blood toggle (?gore=0 forces it off for this visit; the choice is remembered as sh-gore).
+const store = (() => {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+})();
+let goreOn = goreEnabled(location.search, store);
+game.setGore(goreOn);
+const goreButtons = [...document.querySelectorAll<HTMLButtonElement>('.gore-toggle')];
+const showGore = () => goreButtons.forEach((b) => (b.textContent = `${tr({ en: 'Blood', es: 'Sangre' })}: ${goreOn ? tr({ en: 'on', es: 'sí' }) : tr({ en: 'off', es: 'no' })}`));
+showGore();
+goreButtons.forEach((b) =>
+  b.addEventListener('click', () => {
+    goreOn = !goreOn;
+    setGore(goreOn, store);
+    game.setGore(goreOn);
+    showGore();
+  }),
+);
+
 // Language toggle (lobby and in-game buttons): the label names the other language; static markup is swapped live.
 const langButtons = [...document.querySelectorAll<HTMLButtonElement>('.lang-toggle')];
 const showLang = () => langButtons.forEach((b) => (b.textContent = lang() === 'en' ? 'Español' : 'English'));
@@ -269,6 +292,7 @@ onLangChange(() => {
   // applyStatic reset every data-es element: redo the text that JS sets itself.
   showGraphics();
   showMusic();
+  showGore();
   ui.relang();
   game.relang();
 });

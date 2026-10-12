@@ -171,6 +171,8 @@ export class Bloodshed {
   private drippers: Dripper[] = [];
   /** Optional sound hooks, driven by sim time: splat on a spray's first landing, drip on each head-drip landing. */
   sound: BloodSound | null = null;
+  /** Off by the player's Blood setting: execute and settle do nothing. */
+  enabled = true;
 
   constructor(private readonly parent: THREE.Object3D, map: THREE.Texture | null = null) {
     this.splats = new BloodSplats(map);
@@ -181,6 +183,7 @@ export class Bloodshed {
 
   /** Sprays droplets that splat on landing, grows a pool under the chair and, given a head, drips for POOL_GROW seconds. */
   execute(shot: BloodShot, head?: () => THREE.Vector3 | null): void {
+    if (!this.enabled) return;
     let first = true;
     this.each(shot, (d, tile) =>
       this.drops.launch(d, () => {
@@ -197,6 +200,7 @@ export class Bloodshed {
 
   /** Rebuilds the finished state at once: every splat fully grown, the pool full, no flight or drip. */
   settle(shot: BloodShot): void {
+    if (!this.enabled) return;
     this.each(shot, (d, tile) => this.place(shot, d, tile, -Infinity));
     this.addPool(shot, -Infinity);
   }

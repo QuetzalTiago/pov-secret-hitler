@@ -172,6 +172,7 @@ export class Game {
   private blood: Bloodshed;
   /** Seats whose execution already has blood, so a snapshot does not rebuild it twice. */
   private bloodied = new Set<number>();
+  private gore = true;
   /** Heaviest blood tint on your sleeves this game (0 clean). */
   private ownBlood = 0;
   /** Identity anchor (never in the scene) for blood that lands on the table or floor. */
@@ -383,6 +384,7 @@ export class Game {
 
   /** Splashes the victim's chest and face, the neighbours and the shooter's gun arm (the local seat has no patron). */
   private bloodOnPatrons(by: number, target: number) {
+    if (!this.gore) return;
     const n = this.view?.players.length ?? 0;
     if (n === 0) return;
     const seed = bloodSeed(target, 0); // a seat dies once per game and a snapshot cannot tell the kill order
@@ -401,10 +403,20 @@ export class Game {
 
   /** Tints your own sleeves for a hit on you or a neighbour, keeping any heavier earlier stain. */
   private stainSleeves(kind: ScreenBlood) {
+    if (!this.gore) return;
     const amount = sleeveBlood(kind);
     if (amount <= this.ownBlood) return;
     this.ownBlood = amount;
     this.world.setOwnBlood(amount);
+  }
+
+  /** The Blood setting: turning it off also wipes the blood already on the table and the patrons. */
+  setGore(on: boolean) {
+    this.gore = on;
+    this.blood.enabled = on;
+    if (on) return;
+    for (const c of this.chars.values()) c.clearBlood();
+    this.clearBloodshed();
   }
 
   private clearBloodshed() {
@@ -903,7 +915,7 @@ export class Game {
         if (!this.bloodied.has(e.target)) {
           this.bloodied.add(e.target);
           const sb = screenBlood(me ?? null, e.target, v?.players.length ?? 0);
-          this.ui.bloodScreen(sb, bloodSeed(e.target, 0));
+          if (this.gore) this.ui.bloodScreen(sb, bloodSeed(e.target, 0));
           this.stainSleeves(sb);
           this.blood.execute(this.bloodShot(e.by, e.target), () => this.chars.get(e.target)?.headWorld(this.bloodHead) ?? null);
         }
