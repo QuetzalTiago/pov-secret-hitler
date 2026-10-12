@@ -56,9 +56,6 @@ const EYE_Y = 1.27;
 const OWN_HAND_SCALE = 1.2;
 /** Sleeve radii of your own arms: shoulder, elbow, wrist. */
 const SLEEVE_R = { shoulder: 0.055, elbow: 0.05, wrist: 0.04 };
-/** With a free cursor the view turns toward it: yaw/pitch (rad) at the screen edge, around this resting pitch. */
-const FOLLOW_YAW = 1.05;
-const FOLLOW_PITCH = 0.32;
 /** Captured mouse: radians turned per pixel of movement (the clamped range lives in look.ts). */
 const LOOK_SENS = 0.0022;
 /** Keyboard look speed (rad/s). */
@@ -315,9 +312,6 @@ export class World {
       }
       this.mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
       if (real) this.cancelGlance();
-      if (this.freezeLook || this.stillView || this.glanceUntil > 0) return;
-      this.targetYaw = -this.mouse.x * FOLLOW_YAW;
-      this.targetPitch = this.mouse.y * FOLLOW_PITCH;
     });
     window.addEventListener('keydown', (e) => {
       const k = this.lookKey(e);
@@ -371,9 +365,9 @@ export class World {
   /** Disable capture with ?nolock (tests) or in browsers without pointer lock. */
   lockAllowed = !new URLSearchParams(location.search).has('nolock') && 'requestPointerLock' in HTMLElement.prototype;
   onLockChange: (locked: boolean) => void = () => {};
-  /** Holds the view completely still (no cursor follow, look keys, glances or head bob) while a card is picked. */
+  /** Holds the view completely still (no look keys, glances or head bob) while a card is picked. */
   freezeLook = false;
-  /** Holds the view at rest, centred (no cursor follow, look keys or glances), on the home screen and in the lobby. */
+  /** Holds the view at rest, centred (no look keys or glances), on the home screen and in the lobby. */
   stillView = true;
 
   requestLock() {
@@ -388,23 +382,6 @@ export class World {
 
   releaseLock() {
     if (this.locked) document.exitPointerLock();
-  }
-
-  /** True while the view turns toward a free cursor, so where an object appears depends on where the cursor is. */
-  get followsCursor(): boolean {
-    return !this.locked && !this.freezeLook && !this.stillView;
-  }
-
-  private probeCam = new THREE.PerspectiveCamera();
-
-  /** Projects `p` into `out` (NDC) as seen once the view has settled on a free cursor at `ndc`; no shake. */
-  projectFollowing(p: THREE.Vector3, ndc: THREE.Vector2, out: THREE.Vector3): THREE.Vector3 {
-    const cam = this.probeCam;
-    cam.projectionMatrix.copy(this.camera.projectionMatrix);
-    cam.position.copy(this.camera.position);
-    cam.rotation.set(BASE_PITCH + ndc.y * FOLLOW_PITCH, -ndc.x * FOLLOW_YAW, 0, 'YXZ');
-    cam.updateMatrixWorld();
-    return out.copy(p).project(cam);
   }
 
   /** Mouse movement (px) that, while the mouse is captured, turns the view until `p` is under the crosshair. */
