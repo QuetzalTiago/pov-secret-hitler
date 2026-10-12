@@ -6,8 +6,12 @@ import { Interactor } from './interact';
 import { Net } from './net';
 import { createPerfHud } from './perf';
 import { GRAPHICS_MODES, saveGraphicsPref } from './scene/quality';
+import { redrawTextures } from './scene/textures';
 import { World } from './scene/world';
 import { UI } from './ui';
+
+// Canvas textures drawn before the webfonts arrived used the fallback font: redraw them once fonts land.
+if ('fonts' in document) document.fonts.addEventListener('loadingdone', () => redrawTextures());
 
 interface Session {
   code: string;
