@@ -541,6 +541,8 @@ export class UI {
   enact(policy: 'L' | 'F', count: number, chaos: boolean) {
     const el = $('enact');
     const b = enactBanner(policy, count, chaos);
+    $('enact-masthead').textContent = b.masthead;
+    $('enact-dateline').textContent = b.dateline;
     $('enact-kicker').textContent = b.kicker;
     $('enact-title').textContent = b.title;
     $('enact-sub').textContent = b.subtitle;
@@ -566,7 +568,9 @@ export class UI {
   victory(b: VictoryBanner, onDone: () => void) {
     this.cancelVictory();
     const el = $('victory');
-    $('victory-title').textContent = b.title;
+    $('victory-masthead').textContent = b.masthead;
+    $('victory-dateline').textContent = b.dateline;
+    $('victory-title').textContent = b.headline;
     $('victory-reason').textContent = b.reason;
     const stamp = $('victory-stamp');
     stamp.textContent = b.stamp;

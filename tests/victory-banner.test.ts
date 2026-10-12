@@ -11,6 +11,18 @@ describe('victoryBanner', () => {
     expect(f.cls).toBe('fascist');
   });
 
+  it('newspaper masthead, dateline and headline per winner', () => {
+    const l = victoryBanner('liberal', 'liberalPolicies', 'liberal');
+    expect(l.masthead).toBe('Der Abend');
+    expect(l.dateline).toBe('BERLIN · LETZTE AUSGABE');
+    expect(l.headline).toBe('LIBERALS TRIUMPH');
+    const f = victoryBanner('fascist', 'hitlerElected', null);
+    expect(f.masthead).toBe('Der Abend');
+    expect(f.dateline).toBe('BERLIN · LETZTE AUSGABE');
+    expect(f.headline).toBe('FASCISTS SEIZE POWER');
+    expect(f.title).toBe('FASCISTS WIN');
+  });
+
   it('stamp: victory, defeat, spectator', () => {
     expect(victoryBanner('liberal', null, 'liberal').stamp).toBe('VICTORY');
     expect(victoryBanner('liberal', null, 'fascist').stamp).toBe('DEFEAT');

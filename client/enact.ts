@@ -3,6 +3,8 @@ export interface EnactBanner {
   title: string;
   subtitle: string;
   kicker: string;
+  masthead: string;
+  dateline: string;
   cls: 'liberal' | 'fascist';
   pips: boolean[];
 }
@@ -15,6 +17,8 @@ export function enactBanner(policy: 'L' | 'F', count: number, chaos: boolean): E
     title: lib ? 'LIBERAL POLICY' : 'FASCIST POLICY',
     subtitle: 'ENACTED',
     kicker: chaos ? 'CHAOS' : '',
+    masthead: 'Extrablatt',
+    dateline: 'BERLIN · SONDERAUSGABE · 10 PFENNIG',
     cls: lib ? 'liberal' : 'fascist',
     pips: Array.from({ length: len }, (_, i) => i < filled),
   };

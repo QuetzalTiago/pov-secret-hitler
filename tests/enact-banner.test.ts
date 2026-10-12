@@ -29,6 +29,15 @@ describe('enactBanner', () => {
     expect(enactBanner('F', 99, false).pips).toHaveLength(6);
   });
 
+  it('newspaper masthead and dateline for both parties', () => {
+    for (const p of ['L', 'F'] as const) {
+      const b = enactBanner(p, 1, false);
+      expect(b.masthead).toBe('Extrablatt');
+      expect(b.dateline).toBe('BERLIN · SONDERAUSGABE · 10 PFENNIG');
+    }
+    expect(enactBanner('F', 2, true).masthead).toBe('Extrablatt');
+  });
+
   it('kicker only on chaos', () => {
     expect(enactBanner('F', 2, true).kicker).toBe('CHAOS');
     expect(enactBanner('F', 2, false).kicker).toBe('');

@@ -10,6 +10,9 @@ export const REASONS: Record<string, string> = {
 
 export interface VictoryBanner {
   title: string;
+  masthead: string;
+  dateline: string;
+  headline: string;
   reason: string;
   stamp: 'VICTORY' | 'DEFEAT' | '';
   cls: 'liberal' | 'fascist';
@@ -18,6 +21,9 @@ export interface VictoryBanner {
 export function victoryBanner(winner: Party, reason: WinReason | null, mine: Party | null): VictoryBanner {
   return {
     title: winner === 'liberal' ? 'LIBERALS WIN' : 'FASCISTS WIN',
+    masthead: 'Der Abend',
+    dateline: 'BERLIN · LETZTE AUSGABE',
+    headline: winner === 'liberal' ? 'LIBERALS TRIUMPH' : 'FASCISTS SEIZE POWER',
     reason: REASONS[reason ?? ''] ?? '',
     stamp: mine === null ? '' : mine === winner ? 'VICTORY' : 'DEFEAT',
     cls: winner,
