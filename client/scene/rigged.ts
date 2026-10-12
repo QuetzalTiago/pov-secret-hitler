@@ -464,9 +464,10 @@ export class RiggedCharacter implements Patron {
     this.highlightTarget = Math.min(1, Math.max(0, v));
   }
 
-  setAim(target: THREE.Vector3 | null, mode: 'gun' | 'point' = 'gun') {
+  setAim(target: THREE.Vector3 | null, mode: 'gun' | 'point' = 'gun', snap = false) {
     if (target) this.aimMode = mode;
-    if (target && !this.aimTarget) this.smoothAim.copy(target); // start where they first look
+    if (target && (snap || !this.aimTarget)) this.smoothAim.copy(target); // start where they first look
+    if (target && snap) this.aimAmount = 1; // arm fully raised and on target now
     this.aimTarget = target ? target.clone() : null;
   }
 

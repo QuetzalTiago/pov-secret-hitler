@@ -105,7 +105,7 @@ export interface Patron {
   lookAt(target: THREE.Vector3 | null): void;
   /** 0..1: 1 while hovered, a soft pulse while the seat is your move. */
   setHighlight(v: number): void;
-  setAim(target: THREE.Vector3 | null, mode?: 'gun' | 'point'): void;
+  setAim(target: THREE.Vector3 | null, mode?: 'gun' | 'point', snap?: boolean): void;
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion };
   setHandsUp(on: boolean): void;
   die(): void;
@@ -449,9 +449,10 @@ export class Character implements Patron {
   private finger!: THREE.Mesh;
   private aimMode: 'gun' | 'point' = 'gun';
 
-  setAim(target: THREE.Vector3 | null, mode: 'gun' | 'point' = 'gun') {
+  setAim(target: THREE.Vector3 | null, mode: 'gun' | 'point' = 'gun', snap = false) {
     if (target) this.aimMode = mode;
-    if (target && !this.aimTarget) this.smoothAim.copy(target); // start where they first look
+    if (target && (snap || !this.aimTarget)) this.smoothAim.copy(target); // start where they first look
+    if (target && snap) this.aimAmount = 1; // arm fully raised and on target now
     this.aimTarget = target ? target.clone() : null;
   }
 

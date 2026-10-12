@@ -83,6 +83,7 @@ export class Game {
   private vetoMover: Mover;
   private gun = revolver();
   private gunMover: Mover;
+  private gunSnapFrames = 0; // frames the revolver is pinned to the shooter's hand after a shot
   private invCard: Card;
   private invMover: Mover;
   private reveals = new Map<number, { card: Card; mover: Mover }>();
@@ -740,13 +741,20 @@ export class Game {
         break;
       case 'executed': {
         this.shot = { by: e.by, target: e.target, until: this.now + 2.8 };
-        this.chars.get(e.by)?.recoil();
+        const shooter = this.chars.get(e.by);
+        shooter?.setAim(this.world.layout.head(e.target), 'gun', true); // the arm may still be drifting to the last target
+        if (e.by !== me) this.gunSnapFrames = 2;
+        shooter?.recoil();
         this.chars.get(e.target)?.die();
         voice.gunshot();
         voice.death();
         this.world.addShake(e.target === me ? 1.5 : 1.0);
-        const muzzle = new THREE.Vector3(0, 0, -0.2).applyMatrix4(this.gun.matrixWorld);
-        const dir = new THREE.Vector3(0, 0, -1).transformDirection(this.gun.matrixWorld);
+        let muzzle = new THREE.Vector3(0, 0, -0.2).applyMatrix4(this.gun.matrixWorld);
+        let dir = new THREE.Vector3(0, 0, -1).transformDirection(this.gun.matrixWorld);
+        if (shooter && e.by !== me) {
+          muzzle = shooter.gunPose().pos;
+          dir = this.world.layout.head(e.target).sub(muzzle).normalize();
+        }
         this.world.flash(muzzle, dir);
         this.slowmoClock = 0;
         this.ui.flash();
@@ -1300,6 +1308,10 @@ export class Game {
         c.setAim(aimAt);
         const { pos, quat } = c.gunPose(); // the gun sits in the hand and points wherever the arm points
         this.gunMover.set(pos, quat, 16);
+        if (this.gunSnapFrames > 0) {
+          this.gunMover.snap();
+          this.gunSnapFrames--;
+        }
       } else {
         const pos = L.front(holderSeat, 0.12, -0.05, 0.92).setY(TABLE_Y + 0.28);
         this.gunMover.set(pos, this.gunQ.setFromRotationMatrix(this.gunMat.lookAt(pos, aimAt, this.gunUp)), 16);

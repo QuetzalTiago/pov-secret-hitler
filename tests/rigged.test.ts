@@ -274,6 +274,16 @@ describe('RiggedCharacter motion', () => {
     expect(bonePos(c, 'PalmR').distanceTo(rest)).toBeLessThan(0.03);
   });
 
+  it('snaps the arm onto a new target when asked, instead of swinging from the old one', () => {
+    const c = build(1);
+    const OTHER = new THREE.Vector3(-1.5, 1.25, 1.5);
+    c.setAim(OTHER);
+    run(c, 1.5);
+    c.setAim(TARGET, 'gun', true);
+    c.update(1 / 60, 2);
+    expect(lineDistance(bonePos(c, 'PalmR'), bonePos(c, 'ShoulderR'), TARGET)).toBeLessThan(0.12);
+  });
+
   it('kicks the aim arm up on recoil and settles back', () => {
     const c = build(1);
     c.setAim(TARGET);
