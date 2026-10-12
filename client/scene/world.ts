@@ -9,6 +9,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { disposeObject } from './dispose';
 import { handGeometry } from './hands';
 import { AdaptiveQuality, readGraphicsPref, type GraphicsMode, type QualityStep } from './quality';
+import { CigaretteSmoke } from './smoke';
 import { ease, sequence, tween, type Tween } from './tween';
 import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles } from './look';
 import {
@@ -177,6 +178,8 @@ export class World {
   private time = 0;
   private quality = new AdaptiveQuality(window.devicePixelRatio, readGraphicsPref());
   mouse = new THREE.Vector2(0, 0);
+  /** All cigarette smoke: one Points draw call. */
+  readonly cigaretteSmoke = new CigaretteSmoke();
 
   constructor(container: HTMLElement) {
     // No preserveDrawingBuffer: nothing reads the canvas back, and keeping it forces an extra copy per frame.
@@ -271,6 +274,9 @@ export class World {
     this.buildRoom();
     this.scene.add(this.tableGroup);
     this.buildSmoke();
+    this.scene.add(this.cigaretteSmoke.points);
+    this.cigaretteSmoke.rate = this.quality.current.shadows ? 1 : 0.5;
+    this.updateSmokeViewport();
     this.setLayout(5, 0);
 
     window.addEventListener('resize', () => this.resize());
@@ -395,6 +401,12 @@ export class World {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.composer?.setPixelRatio(this.renderer.getPixelRatio());
     this.composer?.setSize(window.innerWidth, window.innerHeight);
+    this.updateSmokeViewport();
+  }
+
+  /** Point sprites are sized in device pixels. */
+  private updateSmokeViewport() {
+    this.cigaretteSmoke.setViewport(window.innerHeight * this.renderer.getPixelRatio(), this.camera.fov);
   }
 
   private buildComposer() {
@@ -908,6 +920,7 @@ export class World {
       if (Math.abs(p.s.position.z) > 4) p.v.z *= -1;
     }
     this.updateOwnHandsUp(dt);
+    this.cigaretteSmoke.update(dt);
     for (const m of this.movers) m.update(dt);
   }
 
@@ -922,6 +935,8 @@ export class World {
   private applyQuality(step: QualityStep) {
     this.renderer.setPixelRatio(step.pixelRatio);
     this.composer?.setPixelRatio(step.pixelRatio);
+    this.updateSmokeViewport();
+    this.cigaretteSmoke.rate = step.shadows ? 1 : 0.5;
     // Turning the light's shadow off changes the light state, so lit materials recompile without it.
     this.lamp.castShadow = step.shadows;
     this.renderer.shadowMap.enabled = step.shadows;
