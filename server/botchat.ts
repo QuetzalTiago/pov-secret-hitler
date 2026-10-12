@@ -76,7 +76,7 @@ export type TalkPlan =
 
 function honesty(fasc: boolean): string {
   return fasc
-    ? 'You are secretly on the Fascist team, so you may lie. Protect your teammates and Hitler, cast doubt on Liberals, and keep your story believable: a claim your government partner knows is false can expose you, unless your partner is a teammate.'
+    ? 'You are secretly on the Fascist team, so you may lie. Protect your teammates and Hitler, cast doubt on Liberals, and keep your story believable: a claim your government partner knows is false can expose you, unless your partner is a teammate. Never admit to discarding or burying a Liberal policy.'
     : 'You are a Liberal. Liberals win by sharing accurate information, so tell the truth; accuse only when you have real evidence.';
 }
 
@@ -111,16 +111,28 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
         const partner = name(g.chancellor);
         const teammate = role(g.chancellor) && role(g.chancellor) !== 'liberal';
         const drew = p.drew ? `You drew ${cardsEn(p.drew)} and passed ${cardsEn(p.gave)}` : `You passed ${cardsEn(p.gave)}`;
-        const options: Record<string, TalkOption> = {
-          truth: {
+        // A Fascist who threw away a Liberal card must not say so: that exposes them.
+        const discardedLiberal = !!p.drew && p.drew.filter((c) => c === 'L').length > p.gave.filter((c) => c === 'L').length;
+        const hide = fasc && discardedLiberal;
+        const options: Record<string, TalkOption> = {};
+        if (!hide) {
+          options.truth = {
             line: p.drew
               ? say(`me tocaron ${cards(p.drew)} y pasé ${cards(p.gave)}.`, `I drew ${cards(p.drew)} and passed ${cards(p.gave)}.`)
               : say(`pasé ${cards(p.gave)}.`, `I passed ${cards(p.gave)}.`),
             description: 'Tell the truth about the cards you drew and passed',
             score: fasc ? 0.5 : 2,
-          },
-          silent: { line: null, description: 'Say nothing', score: 0.3 },
-        };
+          };
+        } else if (p.gave.includes('L')) {
+          // Claim the passed cards plus one Fascist that was "discarded".
+          const claimed: Policy[] = [...p.gave, 'F'];
+          options.cover = {
+            line: say(`me tocaron ${cards(claimed)} y pasé ${cards(p.gave)}.`, `I drew ${cards(claimed)} and passed ${cards(p.gave)}.`),
+            description: `Claim you drew ${cardsEn(claimed)} and passed ${cardsEn(p.gave)} (hides that you discarded a Liberal)`,
+            score: 2,
+          };
+        }
+        options.silent = { line: null, description: 'Say nothing', score: 0.3 };
         if (e.policy === 'F') {
           options.three_fascists = {
             line: pick(say('es', 'en') === 'es'
@@ -135,17 +147,28 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
             score: !fasc && p.gave.includes('L') ? 3 : fasc && !teammate ? 1.5 : -2,
           };
         }
-        return choice(`You were President with Chancellor ${partner}${teammate ? ' (your teammate)' : ''}. ${drew}. A ${policy} policy was enacted.`, options);
+        return choice(`You were President with Chancellor ${partner}${teammate ? ' (your teammate)' : ''}. ${drew}. A ${policy} policy was enacted.${hide ? ' Admitting you discarded a Liberal would expose you as a Fascist.' : ''}`, options);
       }
       if (g.chancellor === me) {
         const r = m.received.find((x) => x.round === g.round);
         if (!r) return null;
         const partner = name(g.president);
         const teammate = role(g.president) && role(g.president) !== 'liberal';
-        const options: Record<string, TalkOption> = {
-          truth: { line: say(`me llegaron ${cards(r.got)}.`, `I got ${cards(r.got)}.`), description: 'Tell the truth about the two cards you received', score: fasc ? 0.5 : 2 },
-          silent: { line: null, description: 'Say nothing', score: 0.4 },
-        };
+        // A Fascist who was handed a Liberal and still enacted Fascist must not say so: that exposes them.
+        const hide = fasc && r.got.includes('L') && e.policy === 'F';
+        const options: Record<string, TalkOption> = {};
+        if (!hide) {
+          options.truth = { line: say(`me llegaron ${cards(r.got)}.`, `I got ${cards(r.got)}.`), description: 'Tell the truth about the two cards you received', score: fasc ? 0.5 : 2 };
+        } else {
+          options.two_fascists = {
+            line: pick(say('es', 'en') === 'es'
+              ? ['me llegaron dos fachas, no podía hacer nada.', 'dos fachas. ¿Qué querían que haga?']
+              : ['I got two Fascists. Nothing I could do.', 'Two Fascists. What was I supposed to do?'], rand),
+            description: 'Claim you received two Fascist policies, so you had no choice (does not accuse the President)',
+            score: teammate ? 2.5 : 1.5,
+          };
+        }
+        options.silent = { line: null, description: 'Say nothing', score: 0.4 };
         if (e.policy === 'F') {
           options.blame_partner = {
             line: pick(say('es', 'en') === 'es'
@@ -155,7 +178,7 @@ export function planTalk(e: GameEvent, v: GameView, m: Memory, name: (s: number)
             score: !fasc && r.got.every((c) => c === 'F') ? 3 : fasc && !teammate ? 2 : -2,
           };
         }
-        return choice(`You were Chancellor with President ${partner}${teammate ? ' (your teammate)' : ''}. You received ${cardsEn(r.got)} and a ${policy} policy was enacted.`, options);
+        return choice(`You were Chancellor with President ${partner}${teammate ? ' (your teammate)' : ''}. You received ${cardsEn(r.got)} and a ${policy} policy was enacted.${hide ? ' Admitting you received a Liberal would expose you as a Fascist.' : ''}`, options);
       }
       return null;
     }

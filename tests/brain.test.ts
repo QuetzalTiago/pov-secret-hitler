@@ -6,7 +6,7 @@ import { legalActions, reduce } from '../shared/engine';
 import * as smartbot from '../shared/smartbot';
 import { buildDecision, heuristicChoice } from '../shared/smartbot';
 import { newMemory, noteMyAction, noteMyHand, observe, profiles } from '../shared/tracker';
-import type { GameState } from '../shared/types';
+import type { GameState, Policy } from '../shared/types';
 import { viewFor } from '../shared/view';
 import { act, elect, roles, setup, voteAll } from './helpers';
 
@@ -227,6 +227,68 @@ describe('Jev client', () => {
     } finally {
       config.jev.key = '';
     }
+  });
+});
+
+describe('Fascist card claims', () => {
+  const load = () => import('../server/botchat');
+  beforeEach(() => {
+    config.llm.lang = 'en';
+  });
+  afterEach(() => {
+    config.llm.lang = 'es-AR';
+  });
+  const fascistPresident = async (drew: Policy[], gave: Policy[]) => {
+    const { planTalk, heuristicTalk } = await load();
+    const m = newMemory(0, 5);
+    m.governments.push({ round: 1, president: 0, chancellor: 3, result: 'F' });
+    m.passed.push({ round: 1, to: 3, gave, drew });
+    const s = setup(5, { president: 1, roles: roles(5, 4, [0, 3]) });
+    const plan = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 0), m, name, () => 0.5)!;
+    if (plan.kind !== 'choice') throw new Error('expected a choice');
+    return { plan, heuristicTalk };
+  };
+  const fascistChancellor = async (got: Policy[]) => {
+    const { planTalk, heuristicTalk } = await load();
+    const m = newMemory(3, 5);
+    m.governments.push({ round: 1, president: 0, chancellor: 3, result: 'F' });
+    m.received.push({ round: 1, from: 0, got });
+    const s = setup(5, { president: 1, roles: roles(5, 4, [0, 3]) });
+    const plan = planTalk({ k: 'enacted', policy: 'F', chaos: false }, viewFor(s, 3), m, name, () => 0.5)!;
+    if (plan.kind !== 'choice') throw new Error('expected a choice');
+    return { plan, heuristicTalk };
+  };
+
+  it('a Fascist President who discarded a Liberal never admits it and claims three Fascists', async () => {
+    const { plan, heuristicTalk } = await fascistPresident(['F', 'F', 'L'], ['F', 'F']);
+    expect(plan.options.truth).toBeUndefined();
+    expect(plan.situation).toMatch(/expose/);
+    for (let i = 0; i < 20; i++) expect(heuristicTalk(plan.options, Math.random)).toBe('three_fascists');
+  });
+
+  it('a Fascist President who passed a Liberal covers with a made-up hand', async () => {
+    const { plan } = await fascistPresident(['L', 'L', 'F'], ['L', 'F']);
+    expect(plan.options.truth).toBeUndefined();
+    expect(plan.options.cover.line).toBe('I drew 1 Liberal and 2 Fascists and passed a Liberal and a Fascist.');
+  });
+
+  it('a Fascist President with nothing to hide still tells the truth', async () => {
+    const { plan } = await fascistPresident(['F', 'F', 'F'], ['F', 'F']);
+    expect(plan.options.truth).toBeDefined();
+    expect(plan.options.cover).toBeUndefined();
+  });
+
+  it('a Fascist Chancellor who received a Liberal claims two Fascists', async () => {
+    const { plan, heuristicTalk } = await fascistChancellor(['L', 'F']);
+    expect(plan.options.truth).toBeUndefined();
+    expect(plan.situation).toMatch(/expose/);
+    for (let i = 0; i < 20; i++) expect(heuristicTalk(plan.options, Math.random)).toBe('two_fascists');
+  });
+
+  it('a Fascist Chancellor who received two Fascists still tells the truth', async () => {
+    const { plan } = await fascistChancellor(['F', 'F']);
+    expect(plan.options.truth).toBeDefined();
+    expect(plan.options.two_fascists).toBeUndefined();
   });
 });
 
