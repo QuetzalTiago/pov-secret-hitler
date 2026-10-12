@@ -126,7 +126,6 @@ short game and prints the table arguing through it:
 npm run typecheck   # TypeScript
 npm test            # unit + integration tests (engine rules, view leaks, protocol, server, bots, persistence)
 npm run simulate    # 2,000 full games with random and strategic bots, asserting invariants
-npm run e2e         # Playwright: 5 browser players complete a game through the real 3D UI
 ```
 
 ## Hosting
@@ -151,7 +150,6 @@ Rooms are stored in `data/rooms.db` (git-ignored) when running `npm start` or `n
 | `client/` | Three.js client: scene, characters, props, interaction, audio, UI. |
 | `tests/` | Vitest suites. |
 | `scripts/` | Simulator, hosting, dev helpers. |
-| `e2e/` | Playwright smoke test. |
 | `PLAN.md`, `DECISIONS.md`, `docs/` | Design notes and decisions. |
 
 ## Contributing

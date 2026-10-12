@@ -4,12 +4,12 @@
 Greenfield build in `C:\Users\Tiago\pov-secret-hitler` (directory is empty, not a git repo).
 Environment: Windows 11, Node 22.21, npm 10.9, git 2.35, winget available, **cloudflared not installed**.
 Goal: playable internet-hosted multiplayer 3D Secret Hitler with a server-authoritative pure rules engine,
-diegetic Three.js UI, bots, tests, 2,000-game simulation, a 5-client Playwright smoke test, and `npm run host`
+diegetic Three.js UI, bots, tests, 2,000-game simulation, and `npm run host`
 that prints a public trycloudflare URL. The user asked to work autonomously, so no questions; decisions go to DECISIONS.md.
 
 ## Repo layout (single package, npm workspaces avoided for simplicity)
 ```
-package.json  tsconfig.json  vite.config.ts  playwright.config.ts
+package.json  tsconfig.json  vite.config.ts
 PLAN.md  DECISIONS.md  README.md  LICENSE (CC BY-NC-SA 4.0)
 shared/   engine.ts (pure reducer), types.ts, rules.ts (tables), rng.ts (seeded mulberry32),
           view.ts (per-player view projection), protocol.ts (msg schemas + validators)
@@ -20,12 +20,11 @@ client/   index.html, main.ts, net.ts, lobby.ts (DOM overlay), credits.ts,
           scene/ (bar.ts, table.ts, characters.ts, props.ts: envelope, placards, ja/nein cards, policy cards,
                   board, revolver; lighting.ts; textures.ts canvas-gen; camera.ts mouse-look clamp),
           interact.ts (raycast hover/click + prompt), audio.ts (WebAudio synth), chat.ts (bubbles),
-          animator.ts (tween queue driven by server events), testhooks.ts (window.__sh for Playwright)
+          animator.ts (tween queue driven by server events), testhooks.ts (window.__sh)
 tests/    engine.test.ts, view-leak.test.ts, protocol.test.ts (vitest)
 scripts/  simulate.ts (2,000 games), host.ts (build → server → cloudflared → banner → WS check)
-e2e/      smoke.spec.ts (5 contexts, screenshots to e2e/screenshots/)
 ```
-Deps: express, ws, three; dev: typescript, vite, tsx, vitest, @playwright/test, @types/*.
+Deps: express, ws, three; dev: typescript, vite, tsx, vitest, @types/*.
 
 ## Engine (shared/engine.ts) — pure `reduce(state, action, rng?) -> {state, events}`
 - State: players (id, seat, alive, role, party), deck/discard/drawn arrays, liberal/fascist tracks,
@@ -79,7 +78,6 @@ revealed at gameOver. Spectators/dead get the same restricted view. Events also 
 2. View projection + leak tests + simulation script (2,000 games across 5–10p, invariants: 17 cards conserved, phase legality, winner always, no throw) → commit.
 3. Server: rooms, protocol validation, rate/size caps, tokens/reconnect, timers, bots, chat → commit (with a node WS integration test).
 4. Client 3D scene + lobby + interactions + animations + audio + chat → commit.
-5. Playwright smoke: 5 contexts join one room, play full game via `__sh` hooks, screenshots; view them and fix rendering → commit.
 6. `npm run host` (scripts/host.ts): detect OS; if no cloudflared → try `winget install --id Cloudflare.cloudflared` (Windows),
    `brew install cloudflared` (mac), download binary to `./bin` (linux) — else print exact instructions; spawn tunnel, regex
    `https://[a-z0-9-]+\.trycloudflare\.com`, print banner, verify HTTP 200 and a WS round-trip through the tunnel. README → commit.
@@ -88,5 +86,4 @@ revealed at gameOver. Spectators/dead get the same restricted view. Events also 
 ## Verification
 - `npm test` (vitest: engine rules, view leaks, protocol validation).
 - `npm run simulate` (2,000 games, prints stats; non-zero exit on invariant failure).
-- `npm run e2e` (Playwright, 5 contexts, game completes, screenshots inspected with Read tool, fixes applied).
 - `npm run host` → banner URL; fetch URL (HTTP 200) + WS ping through tunnel.

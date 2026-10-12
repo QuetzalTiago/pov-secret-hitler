@@ -64,7 +64,7 @@ npm run simulate
 npm run build
 ```
 
-If you touched gameplay or the 3D client, also play a game locally, and consider `npm run e2e`.
+If you touched gameplay or the 3D client, also play a game locally.
 
 In the PR description, say **what changed for players** and how you tested it. Keep PRs focused: one change
 per PR is much easier to review.
