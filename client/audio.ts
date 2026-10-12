@@ -287,6 +287,45 @@ export const sfx = {
     tone({ freq: 1175, dur: 0.7, gain: 0.12, type: 'triangle', delay: 0.14, wet: 0.6 });
     tone({ freq: 2350, dur: 0.5, gain: 0.03, type: 'sine', delay: 0.14, wet: 0.6 });
   },
+  /** Chaos: a reverberant boom, a sawtooth tritone and minor-second cluster sliding down, and a falling noise sweep. */
+  chaos() {
+    tone({ freq: 60, dur: 1.0, gain: 1.2, slideTo: 28, wet: 0.8 }); // boom
+    noise({ dur: 0.3, freq: 1500, type: 'lowpass', sweepTo: 200, gain: 1.0, attack: 0.002, wet: 0.6 }); // impact
+    [147, 208, 156, 220].forEach((f, i) => tone({ freq: f, dur: 1.2, gain: i < 2 ? 0.16 : 0.1, type: 'sawtooth', slideTo: f * 0.5, delay: 0.05, wet: 0.7 })); // tritone + minor seconds
+    noise({ dur: 1.2, freq: 3500, sweepTo: 150, q: 1.5, gain: 0.35, attack: 0.1, delay: 0.05, wet: 0.8 }); // falling howl
+  },
+  /** Veto power unlocked: two deep official stamps, then a low brass-like rising fifth. */
+  vetoUnlocked() {
+    [0, 0.3].forEach((d) => {
+      tone({ freq: 55, dur: 0.35, gain: 1.0, slideTo: 32, delay: d, wet: 0.3 });
+      noise({ dur: 0.15, freq: 600, type: 'lowpass', gain: 0.7, delay: d, wet: 0.3 });
+    });
+    tone({ freq: 110, dur: 0.6, gain: 0.14, type: 'sawtooth', slideTo: 112, delay: 0.55, wet: 0.7 });
+    tone({ freq: 165, dur: 0.6, gain: 0.12, type: 'triangle', delay: 0.75, wet: 0.7 });
+    tone({ freq: 165, dur: 0.6, gain: 0.07, type: 'sawtooth', delay: 0.75, wet: 0.7 });
+  },
+  /** Election tracker advances: a heavy metal coin clack with a small thud. */
+  trackerAdvance() {
+    noise({ dur: 0.35, freq: 3200, q: 12, gain: 0.35, attack: 0.001, wet: 0.3 }); // metallic ping
+    noise({ dur: 0.03, freq: 5500, q: 3, gain: 0.3, attack: 0.001 }); // click edge
+    tone({ freq: 620, dur: 0.25, gain: 0.12, slideTo: 540, type: 'triangle', wet: 0.3 });
+    tone({ freq: 95, dur: 0.12, gain: 0.7, slideTo: 55 }); // thud
+  },
+  /** A Chancellor is nominated: a wooden knock, then a short rising two-note motif. */
+  nominate() {
+    noise({ dur: 0.08, freq: 700, type: 'lowpass', gain: 0.7, attack: 0.001 });
+    tone({ freq: 160, dur: 0.1, gain: 0.6, slideTo: 90 });
+    tone({ freq: 523, dur: 0.18, gain: 0.14, type: 'triangle', delay: 0.14, wet: 0.4 });
+    tone({ freq: 784, dur: 0.3, gain: 0.14, type: 'triangle', delay: 0.26, wet: 0.5 });
+  },
+  /** "X was Hitler": a reverberant sub thump under a dark minor chord that swells, then sinks. */
+  hitlerReveal() {
+    tone({ freq: 50, dur: 0.9, gain: 1.2, slideTo: 28, wet: 0.7 });
+    noise({ dur: 0.3, freq: 800, type: 'lowpass', sweepTo: 150, gain: 0.8, attack: 0.002, wet: 0.6 });
+    [[110, 'sawtooth'], [131, 'sawtooth'], [165, 'triangle'], [220, 'triangle'], [55, 'sawtooth']].forEach(([f, type], i) =>
+      tone({ freq: f as number, dur: 1.4, gain: i === 4 ? 0.12 : 0.1, type: type as OscillatorType, slideTo: (f as number) * 0.9, delay: 0.1, wet: 0.8 }),
+    );
+  },
 };
 
 
