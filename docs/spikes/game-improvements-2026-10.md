@@ -108,7 +108,7 @@ The 8 dimensions are re-scored from #145, plus one new dimension.
   2. In parallel, FLT-0004's independent items (#178 bug pack and #179 quick start), which touch different files.
   3. Then the rest of both tasks.
 
-  FLT-0002 #133 (your-turn chime and tab title) is cheap and helps with the passive time, so it is worth doing early.
+  FLT-0002 #133 (your-turn chime and tab title) and #135 (idle pulse and edge arrow) landed while this spike ran, and they help with the passive time. Of FLT-0002, #136 (opt-in notifications) and #137 (pacing playtest) are still open.
 - **Rejected: more visual polish now.** Atmosphere is already the highest-scoring dimension, so more of it adds the least.
 - **Rejected: accounts and server-side stats.** A localStorage record gives most of the "reason to come back" at almost no cost.
 - **Rejected for now: full touch controls.** It is a large change, and the pointer-lock interaction model would need a redesign. It is in the Fleet backlog.
@@ -151,4 +151,4 @@ Task **FLT-0004** "Game loop: quick start, play again, table options and big mom
 | #184 | 5. Personal record | #180 |
 
 - **Fleet backlog:** touch play (tap to act, drag to look), and quick-chat reactions with a lobby chat input.
-- **Still the top priority:** FLT-0003 (#146–#161) and FLT-0002 #133.
+- **Still the top priority:** FLT-0003 (#146–#161).
