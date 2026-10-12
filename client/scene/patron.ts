@@ -153,21 +153,103 @@ export function neckGeometry(): THREE.BufferGeometry {
   return mergeParts([new THREE.CylinderGeometry(0.06, 0.07, 0.1, 14).translate(0, 1.22, 0)]);
 }
 
-/** Shirt V showing between the lapels. */
+/** Shirt V showing between the lapels (its apex at y 0.82). */
 export function shirtGeometry(): THREE.BufferGeometry {
-  const g = new THREE.ConeGeometry(0.08, 0.26, 14);
+  const g = new THREE.ConeGeometry(0.08, 0.3, 14);
   g.scale(1, 1, 0.3);
   g.rotateX(Math.PI - 0.12);
-  g.translate(0, 0.98, torsoFront(0.98));
+  g.translate(0, 0.97, torsoFront(0.97));
   return mergeParts([smooth(g)]);
 }
 
+/** Half width of the shirt V at height y. */
+const shirtHalfWidth = (y: number) => (0.08 * Math.max(0, y - 0.82)) / 0.3;
+
+const polygon = (pts: [number, number][]) => new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+
+/**
+ * A thin bevelled slab from a 2D outline (thickness depth + 2 bevel, centred on z = 0), with z then bent per vertex
+ * by `lift(x, y)` so it lies on the coat. Smooth normals, like every builder here.
+ */
+function slab(pts: [number, number][], depth: number, bevel: number, lift: (x: number, y: number) => number): THREE.BufferGeometry {
+  const g = new THREE.ExtrudeGeometry(polygon(pts), { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 4 });
+  const pos = g.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, pos.getZ(i) - depth / 2 + lift(pos.getX(i), pos.getY(i)));
+  return smooth(g);
+}
+
+/** Necktie: a small tapered knot at the collar over a flat blade that widens (0.022 -> 0.05) to a pointed tip, y 1.14 -> 0.86. */
 export function tieGeometry(): THREE.BufferGeometry {
-  const g = new THREE.CapsuleGeometry(0.0145, 0.14, 4, 8);
-  g.scale(1, 1, 0.5);
-  g.rotateX(-0.12);
-  g.translate(0, 0.99, torsoFront(0.99) + 0.026);
-  return mergeParts([smooth(g)]);
+  const top = 1.14;
+  const widest = 0.885;
+  const tip = 0.86;
+  const left: [number, number][] = [];
+  const right: [number, number][] = [];
+  const steps = 8;
+  for (let i = 0; i <= steps; i++) {
+    const y = top - ((top - widest) * i) / steps;
+    const hw = 0.011 + 0.014 * (i / steps);
+    left.push([-hw, y]);
+    right.unshift([hw, y]);
+  }
+  const blade = slab([...left, [0, tip], ...right], 0.004, 0.001, (_x, y) => torsoFront(y) + 0.02);
+  // Knot: 0.03 wide at the top, 0.02 at the bottom, 0.03 tall, 0.015 deep (bevels included).
+  const knot = slab(
+    [
+      [-0.007, 1.133],
+      [0.007, 1.133],
+      [0.012, 1.157],
+      [-0.012, 1.157],
+    ],
+    0.007,
+    0.004,
+    (_x, y) => torsoFront(y) + 0.016,
+  );
+  return mergeParts([blade, knot]);
+}
+
+/** Shirt collar: two thin flaps flanking the knot, pointing down and out. */
+export function collarGeometry(): THREE.BufferGeometry {
+  const flaps = [-1, 1].map((s) =>
+    slab(
+      [
+        [s * 0.016, 1.168],
+        [s * 0.07, 1.158],
+        [s * 0.052, 1.1],
+      ],
+      0.003,
+      0.001,
+      (_x, y) => torsoFront(y) + 0.014,
+    ),
+  );
+  return mergeParts(flaps);
+}
+
+/** Notched jacket lapels along both edges of the shirt V; the inner edges ride over the tie blade's outer edges. */
+export function lapelGeometry(): THREE.BufferGeometry {
+  const bottom = 0.84;
+  const topY = 1.12;
+  const xIn = (y: number) => shirtHalfWidth(y) + 0.008;
+  const width = (y: number) => 0.03 + (0.017 * (y - bottom)) / (topY - bottom);
+  const xOut = (y: number) => xIn(y) + width(y);
+  const sides = [-1, 1].map((s) => {
+    const inner: [number, number][] = [];
+    const outer: [number, number][] = [];
+    for (const y of [bottom, 0.9, 0.97, 1.04, topY]) inner.push([s * xIn(y), y]);
+    for (const y of [bottom, 0.9, 0.97, 1.04]) outer.push([s * xOut(y), y]);
+    // Notch near the top of the outer edge, then up to the shoulder line.
+    outer.push([s * xOut(1.05), 1.05], [s * (xOut(1.062) - 0.014), 1.062], [s * xOut(1.075), 1.075], [s * xOut(topY), topY]);
+    return slab([...inner, ...outer.reverse()], 0.006, 0.001, (x, y) => {
+      const t = Math.min(1, Math.max(0, (xOut(y) - Math.abs(x)) / width(y)));
+      return torsoFront(y) + 0.006 + 0.024 * t;
+    });
+  });
+  return mergeParts(sides);
+}
+
+/** Two small flat coat buttons below the V. */
+export function coatButtonsGeometry(): THREE.BufferGeometry {
+  return mergeParts([0.79, 0.72].map((y) => ellipsoid(0.012, 0.012, 0.004, 0, y, torsoFront(y) + 0.0045, 12, 8)));
 }
 
 // ---- Hitler uniform ----

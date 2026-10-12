@@ -6,11 +6,14 @@ import {
   armbandGeometry,
   CIGARETTE_TIP,
   cigaretteGeometry,
+  coatButtonsGeometry,
+  collarGeometry,
   eyesGeometry,
   faceDetailGeometry,
   fingerGeometry,
   hatGeometry,
   headSkinGeometry,
+  lapelGeometry,
   limbGeometry,
   mouthGeometry,
   neckGeometry,
@@ -94,6 +97,44 @@ describe('body geometry', () => {
       expectSmoothMesh(g);
       expect(stats(g).size.x).toBeLessThan(0.2);
     }
+  });
+
+  it('tie has a knot, a blade widening to a pointed tip, and lies in front of the coat', () => {
+    const g = tieGeometry();
+    expectSmoothMesh(g);
+    const p = g.getAttribute('position');
+    const { box } = stats(g);
+    expect(box.max.y).toBeGreaterThan(1.12);
+    expect(box.min.y).toBeLessThan(0.87);
+    let tipX = 0;
+    let lowest = Infinity;
+    const widthIn = (lo: number, hi: number) => {
+      let w = 0;
+      for (let i = 0; i < p.count; i++) if (p.getY(i) >= lo && p.getY(i) <= hi) w = Math.max(w, Math.abs(p.getX(i)));
+      return 2 * w;
+    };
+    for (let i = 0; i < p.count; i++) {
+      if (p.getY(i) < lowest) {
+        lowest = p.getY(i);
+        tipX = p.getX(i);
+      }
+      expect(p.getZ(i)).toBeGreaterThanOrEqual(torsoFront(p.getY(i)));
+    }
+    expect(Math.abs(tipX)).toBeLessThan(0.005);
+    expect(widthIn(0.87, 0.92)).toBeGreaterThan(widthIn(1.095, 1.125) + 0.015);
+  });
+
+  it('collar, lapels and buttons are mirrored smooth pieces lying on the coat', () => {
+    for (const g of [collarGeometry(), lapelGeometry(), coatButtonsGeometry()]) {
+      expectSmoothMesh(g);
+      const { box } = stats(g);
+      expect(box.min.x).toBeCloseTo(-box.max.x, 3);
+      const p = g.getAttribute('position');
+      for (let i = 0; i < p.count; i++) expect(p.getZ(i)).toBeGreaterThanOrEqual(torsoFront(p.getY(i)));
+    }
+    const lapel = stats(lapelGeometry()).box;
+    expect(lapel.max.y).toBeGreaterThan(1.1);
+    expect(lapel.min.y).toBeLessThan(0.86);
   });
 
   it('paintGeometry adds a per-vertex colour', () => {

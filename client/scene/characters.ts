@@ -14,11 +14,14 @@ import {
   CIGARETTE_TIP,
   armbandGeometry,
   cigaretteGeometry,
+  coatButtonsGeometry,
+  collarGeometry,
   eyesGeometry,
   faceDetailGeometry,
   fingerGeometry,
   hatGeometry,
   headSkinGeometry,
+  lapelGeometry,
   limbGeometry,
   mergeParts,
   mouthGeometry,
@@ -143,13 +146,16 @@ export class Character {
     this.mats.push(outfit, skin, dark);
     const paint = paintGeometry;
 
-    // Body: coat torso with rounded shoulders, the left arm and hand, neck, shirt V and tie in a single mesh.
+    // Body: coat torso with rounded shoulders, the left arm and hand, neck, shirt V, collar, tie, lapels and buttons in a single mesh.
     const parts = [
       paint(torsoGeometry(), coatHex),
       paint(neckGeometry(), skinHex),
       paint(shirtGeometry(), shirtHex),
       paint(tieGeometry(), tieHex),
+      paint(collarGeometry(), shirtHex),
     ];
+    // Normal patrons wear a suit (lapels, buttons); the Hitler tunic has its own belt, strap and brass buttons.
+    if (!hitler) parts.push(paint(lapelGeometry(), new THREE.Color(coatHex).multiplyScalar(0.85).getHex()), paint(coatButtonsGeometry(), 0x1a1410));
     // The resting left arm (with the Hitler armband) is its own mesh so it can be hidden while the hands are up.
     const bandParts: THREE.BufferGeometry[] = [];
     if (hitler) {
