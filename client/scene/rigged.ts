@@ -364,8 +364,8 @@ export class RiggedCharacter implements Patron {
     this.lookTarget = target;
   }
 
-  setHighlight(on: boolean) {
-    this.highlightTarget = on ? 1 : 0;
+  setHighlight(v: number) {
+    this.highlightTarget = Math.min(1, Math.max(0, v));
   }
 
   setAim(target: THREE.Vector3 | null, mode: 'gun' | 'point' = 'gun') {

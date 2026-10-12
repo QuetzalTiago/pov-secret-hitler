@@ -103,7 +103,8 @@ export interface Patron {
   setLabel(text: string, color?: string): void;
   say(text: string, now: number): void;
   lookAt(target: THREE.Vector3 | null): void;
-  setHighlight(on: boolean): void;
+  /** 0..1: 1 while hovered, a soft pulse while the seat is your move. */
+  setHighlight(v: number): void;
   setAim(target: THREE.Vector3 | null, mode?: 'gun' | 'point'): void;
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion };
   setHandsUp(on: boolean): void;

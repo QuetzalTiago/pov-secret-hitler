@@ -128,7 +128,7 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
     if (!c.smoker) expect(c.smokeEmit(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3())).toBe(-1);
     c.setLabel('Seat', '#fff');
     c.say('hello', 0);
-    c.setHighlight(true);
+    c.setHighlight(1);
     c.setTeamGlow(true);
     c.lookAt(new THREE.Vector3(0, 1, 2));
     c.setAim(new THREE.Vector3(1, 1, 1));
