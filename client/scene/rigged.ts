@@ -4,17 +4,31 @@ import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { getAssets, type CharacterTemplate, type Outfit } from './assets';
 import { PatronBadges } from './badges';
-import { COATS, HATS, SKINS, type Patron } from './characters';
+import { COATS, SKINS, type Patron } from './characters';
 import { disposeObject } from './dispose';
 import { DEATH_DUR, REACTION_DUR, SMOKE_DUR, deathPose, isSmoker, mouthOpen, nextDragDelay, reactionPose, smokePose, type DeathPose, type Reaction, type ReactionPose, type SmokePose } from './life';
-import { CIGARETTE_TIP, cigaretteGeometry, faceDetailGeometry, hatGeometry, mergeParts, paintGeometry, peakedCapGeometry } from './patron';
+import { CIGARETTE_TIP, cigaretteGeometry, mergeParts, paintGeometry } from './patron';
 
 const HEIGHT = 1.75;
 const HEIGHT_WOMAN = 1.68;
-/** Hips in the patron's local space: seat top 0.48 plus the pelvis, a little forward of the backrest. */
-const HIPS_AT = new THREE.Vector3(0, 0.56, -0.05);
-const DARK = 0x1a1410;
-const HAT_COLORS = [0x1d1a18, 0x3a2a1a, 0x22252a, 0x4a1a1a];
+/**
+ * The seat of client/models/props/chair_wood.glb as chairModel() builds it (see chairSeat() in roomprops.ts; a test keeps
+ * these in step). Chair space: the backrest is on +Z, so the patron, which faces +Z, sits at z from -back to -front.
+ */
+export const SEAT = { top: 0.4476, front: -0.2703, back: 0.2013 };
+/** How far in front of the backrest the buttocks sit. */
+const BACK_GAP = 0.015;
+/** Where the Hips bone sat before the figure was placed on the measured seat. */
+const BADGE_HIPS_Y = 0.56;
+/** The buttocks sink this far into the seat. */
+const BUTTOCK_SINK = 0.01;
+/** The bones carrying the pelvis and thighs, and how far from the backmost of their vertices the buttocks reach. */
+const BUTTOCK_BONES = ['Body', 'Hips', 'UpperLegL', 'UpperLegR'];
+export const BUTTOCK_DEPTH = 0.15;
+/** Where the soles should end up above the floor. */
+const FOOT_CLEARANCE = 0.02;
+/** The most the thighs are tipped forward-down at the hip to bring the soles to the floor, radians. */
+const MAX_THIGH_TIP = 0.4;
 /** The accessory geometry in patron.ts assumes a head of this diameter, centred on its origin, eyes at y 0.03, face at z 0.15. */
 const HEAD_DIAMETER = 0.3;
 const Y_UP = new THREE.Vector3(0, 1, 0);
@@ -132,6 +146,28 @@ function boxOf(mesh: THREE.SkinnedMesh, bone: THREE.Bone, range?: { start: numbe
   return box;
 }
 
+/**
+ * The buttocks at the current pose (world space): the pelvis and the rear of the thighs, up to BUTTOCK_DEPTH from the
+ * backmost point. The thighs' fronts are left out, they slope down toward the knees.
+ */
+function buttocksOf(mesh: THREE.SkinnedMesh, bones: THREE.Bone[]): { minY: number; minZ: number; centreX: number } {
+  const set = BUTTOCK_BONES.map((n) => bones.find((b) => b.name === n)!);
+  let minZ = Infinity;
+  for (const b of set) eachDominated(mesh, b, (p) => (minZ = Math.min(minZ, p.z)));
+  let minY = Infinity;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (const b of set) {
+    eachDominated(mesh, b, (p) => {
+      if (p.z > minZ + BUTTOCK_DEPTH) return;
+      minY = Math.min(minY, p.y);
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+    });
+  }
+  return { minY, minZ, centreX: (minX + maxX) / 2 };
+}
+
 export class RiggedCharacter implements Patron {
   readonly group = new THREE.Group();
   readonly smoker: boolean;
@@ -142,8 +178,8 @@ export class RiggedCharacter implements Patron {
 
   private mesh: THREE.SkinnedMesh;
   private bones: THREE.Bone[];
-  private basePos: THREE.Vector3[];
-  private baseQuat: THREE.Quaternion[];
+  private basePos!: THREE.Vector3[];
+  private baseQuat!: THREE.Quaternion[];
   private torso: THREE.Bone;
   private abdomen: THREE.Bone;
   private neck: THREE.Bone;
@@ -241,26 +277,93 @@ export class RiggedCharacter implements Patron {
 
     this.tint(tpl, styleIndex, outfit, hitler);
     this.group.updateMatrixWorld(true);
-    this.addAccessories(tpl, styleIndex, hitler);
+    this.addFaceAnchorAndArmband(tpl, hitler);
 
-    // Seat: bake the sitting pose, then slide the whole figure so the hips land on the chair.
-    const seated = seatedPose(tpl);
-    this.bones.forEach((b, i) => {
-      b.position.copy(seated.pos[i]);
-      b.quaternion.copy(seated.quat[i]);
-    });
-    this.basePos = seated.pos;
-    this.baseQuat = seated.quat;
-    this.group.updateMatrixWorld(true);
-    const hips = this.group.worldToLocal(bone('Hips').getWorldPosition(new THREE.Vector3()));
-    root.position.add(HIPS_AT).sub(hips);
-    this.group.updateMatrixWorld(true);
+    this.seatOn(root, tpl);
     this.ws = this.torso.getWorldScale(this.v0).x;
     this.armL = this.makeArm('L', CIG_FILTER);
     this.armR = this.makeArm('R', this.v1.set(0, 0, 0));
     if (this.smoker) this.addCigarette();
 
-    this.badges = new PatronBadges(this.group, { tag: 1.86, bubble: 2.0, glow: new THREE.Vector3(0, 1.3, -0.05), glowScale: 1.4 });
+    // The badge heights were chosen for hips at BADGE_HIPS_Y; the seat is lower, so the whole figure sits lower.
+    const sunk = bone('Hips').getWorldPosition(this.v0).y - BADGE_HIPS_Y;
+    this.badges = new PatronBadges(this.group, { tag: 1.86 + sunk, bubble: 2.0 + sunk, glow: new THREE.Vector3(0, 1.3 + sunk, -0.05), glowScale: 1.4 });
+  }
+
+  /**
+   * Bakes the sitting pose, slides the figure so the buttocks rest on the seat just in front of the backrest, and tips
+   * the thighs (shins hanging vertical) just far enough for the soles to reach the floor. The bones are driven from this
+   * pose every frame, so none of it costs anything at runtime. The group is at the origin here, so group space is world space.
+   */
+  private seatOn(root: THREE.Object3D, tpl: CharacterTemplate) {
+    const seated = seatedPose(tpl);
+    // The cached pose is shared by every patron of this template.
+    this.basePos = seated.pos.map((p) => p.clone());
+    this.baseQuat = seated.quat.map((q) => q.clone());
+    const bone = (name: string) => this.bones.find((b) => b.name === name)!;
+    const setPose = () =>
+      this.bones.forEach((b, i) => {
+        b.position.copy(this.basePos[i]);
+        b.quaternion.copy(this.baseQuat[i]);
+      });
+    const boxOfAll = (names: string[]) => {
+      this.group.updateMatrixWorld(true);
+      const box = new THREE.Box3();
+      for (const n of names) box.union(boxOf(this.mesh, bone(n)));
+      return box;
+    };
+    /** Moves the figure onto the seat; returns the lowest sole vertex. */
+    const place = () => {
+      this.group.updateMatrixWorld(true);
+      const { minY, minZ, centreX } = buttocksOf(this.mesh, this.bones);
+      root.position.x -= centreX;
+      root.position.y += SEAT.top - BUTTOCK_SINK - minY;
+      root.position.z += BACK_GAP - SEAT.back - minZ;
+      return boxOfAll(['FootL', 'FootR']).min.y;
+    };
+    /** Tips both thighs forward-down by `phi` at the hip and hangs the shins vertical from the knees. */
+    const bend = (phi: number) => {
+      setPose();
+      for (const side of ['L', 'R']) {
+        const upper = bone(`UpperLeg${side}`);
+        const lower = bone(`LowerLeg${side}`);
+        const foot = bone(`Foot${side}`);
+        // The foot bone hangs off the armature root, not the shin: it follows the shin's end by hand and keeps its orientation.
+        this.group.updateMatrixWorld(true);
+        const ankle = lower.worldToLocal(foot.getWorldPosition(new THREE.Vector3()));
+        this.turnAboutX(upper, phi);
+        this.group.updateMatrixWorld(true);
+        const shin = lower.localToWorld(ankle.clone()).sub(lower.getWorldPosition(new THREE.Vector3()));
+        this.turnAboutX(lower, Math.atan2(shin.z, -shin.y));
+        this.group.updateMatrixWorld(true);
+        foot.position.copy(foot.parent!.worldToLocal(lower.localToWorld(ankle.clone())));
+      }
+      return place();
+    };
+    if (bend(0) > FOOT_CLEARANCE) {
+      // Bisect for the smallest tip that brings the soles down (the sole height falls as the thighs tip).
+      let lo = 0;
+      let hi = MAX_THIGH_TIP;
+      if (bend(hi) > FOOT_CLEARANCE) lo = hi;
+      for (let k = 0; k < 24 && lo < hi; k++) {
+        const mid = (lo + hi) / 2;
+        if (bend(mid) > FOOT_CLEARANCE) lo = mid;
+        else hi = mid;
+      }
+      bend(hi);
+    }
+    this.bones.forEach((b, i) => {
+      this.basePos[i].copy(b.position);
+      this.baseQuat[i].copy(b.quaternion);
+    });
+    this.group.updateMatrixWorld(true);
+  }
+
+  /** Rotates `bone` about the group's X axis (thigh forward-down is positive), whatever its parent's orientation. */
+  private turnAboutX(bone: THREE.Bone, angle: number) {
+    bone.parent!.getWorldQuaternion(this.qa);
+    this.qb.setFromAxisAngle(this.xAxis, angle);
+    bone.quaternion.premultiply(this.qa).premultiply(this.qb).premultiply(this.qa.invert());
   }
 
   /** Per-seat colours written into the vertex colours of the cloned geometry. */
@@ -287,32 +390,16 @@ export class RiggedCharacter implements Patron {
   }
 
   /**
-   * Hat, moustache and beard ride the Head bone as one mesh, the Hitler armband the upper arm.
-   * Fitted to the model's own head at rest (world space, metres), then baked into bone space so the bone's scale cancels.
+   * Fits the face anchor (the mouth and smoke position) to the model's own head at rest (world space, metres),
+   * and ties the Hitler armband to the upper arm. The glTF models have their own hair and faces: no hats or face props.
    */
-  private addAccessories(tpl: CharacterTemplate, i: number, hitler: boolean) {
+  private addFaceAnchorAndArmband(tpl: CharacterTemplate, hitler: boolean) {
     const head = this.bones.find((b) => b.name === 'Head')!;
     const skin = boxOf(this.mesh, head, tpl.parts.Skin);
     const eyes = boxOf(this.mesh, head, tpl.parts.Eyes);
     const f = (skin.max.x - skin.min.x) / HEAD_DIAMETER;
-    const parts: THREE.BufferGeometry[] = [];
-    if (hitler) {
-      const cap = peakedCapGeometry();
-      parts.push(paintGeometry(cap.cloth, 0x6e5c3c), paintGeometry(cap.trim, DARK), paintGeometry(cap.badge, 0xc8a050));
-    } else {
-      const hat = HATS[i % HATS.length];
-      if (hat !== 'none') parts.push(paintGeometry(hatGeometry(hat), HAT_COLORS[i % 4]));
-    }
-    // The model has its own hair and eyes: only brows, moustache and beard.
-    parts.push(
-      paintGeometry(
-        faceDetailGeometry({ browTilt: i % 3 === 0 ? 0.25 : -0.08, mustache: hitler ? 'toothbrush' : i % 4 === 1 ? 'wide' : 'none', beard: !hitler && i % 5 === 2, hair: false, fringe: false }),
-        DARK,
-      ),
-    );
     const eyeY = (eyes.min.y + eyes.max.y) / 2;
     const origin = new THREE.Vector3((skin.min.x + skin.max.x) / 2, eyeY - 0.03 * f, eyes.max.z - 0.15 * f + 0.012);
-    this.attach(head, mergeParts(parts).scale(f, f, f).translate(origin.x, origin.y, origin.z));
     this.faceCenter.copy(head.worldToLocal(origin.clone()));
     this.faceScale = f;
 

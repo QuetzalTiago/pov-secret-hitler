@@ -105,9 +105,21 @@ function group(name: string, meshes: THREE.Mesh[], castShadow: boolean): THREE.G
   return g;
 }
 
-/** Dining chair as one mesh, 0.96 m tall, backrest on local +Z (like the procedural chair it replaces). */
+/** Dark walnut multiplier: the chair texture is mostly white paint, which this turns into stained brown wood. */
+const CHAIR_STAIN = 0x5a3a26;
+
+/** Dining chair as one mesh, 0.96 m tall, backrest on local +Z (like the procedural chair it replaces), stained dark. */
 export function chairModel(props: Props): THREE.Group {
   const meshes = mergeProp(normalizeProp(props.chair_wood, CHAIR_HEIGHT));
+  // Own material: the GLB's is shared with the source scene.
+  for (const m of meshes) {
+    const mat = (m.material as THREE.MeshStandardMaterial).clone();
+    if (mat.map) {
+      mat.color.setHex(CHAIR_STAIN);
+      mat.envMapIntensity = 0.7;
+    }
+    m.material = mat;
+  }
   // Backrest side: where the vertices in the top 40% sit along z.
   let sumZ = 0;
   for (const m of meshes) {
@@ -116,6 +128,56 @@ export function chairModel(props: Props): THREE.Group {
   }
   if (sumZ < 0) for (const m of meshes) m.geometry.rotateY(Math.PI);
   return group('chair', meshes, true);
+}
+
+/**
+ * The seat surface of a chair from chairModel, in chair space: `top` is the height with the most upward-facing
+ * area between 0.3 and 0.7 m, `front` and `back` the seat's z-extent there (the backrest is on +Z, so front < back).
+ */
+export function chairSeat(chair: THREE.Object3D): { top: number; front: number; back: number } {
+  const BIN = 0.01;
+  const LO = 0.3;
+  const bins = new Float64Array(40);
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+  const flat: { y: number; area: number; minZ: number; maxZ: number }[] = [];
+  chair.updateMatrixWorld(true);
+  chair.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const pos = m.geometry.getAttribute('position');
+    const index = m.geometry.index;
+    const n = index ? index.count : pos.count;
+    const at = (v: THREE.Vector3, i: number) => v.fromBufferAttribute(pos, index ? index.getX(i) : i).applyMatrix4(m.matrixWorld);
+    for (let i = 0; i < n; i += 3) {
+      at(a, i);
+      at(b, i + 1);
+      at(c, i + 2);
+      normal.subVectors(b, a).cross(c.clone().sub(a));
+      const area = normal.length() / 2;
+      const y = (a.y + b.y + c.y) / 3;
+      if (area === 0 || normal.y / (2 * area) < 0.95 || y < LO || y >= LO + bins.length * BIN) continue;
+      bins[Math.floor((y - LO) / BIN)] += area;
+      flat.push({ y, area, minZ: Math.min(a.z, b.z, c.z), maxZ: Math.max(a.z, b.z, c.z) });
+    }
+  });
+  let best = 0;
+  for (let i = 1; i < bins.length; i++) if (bins[i] > bins[best]) best = i;
+  const centre = LO + (best + 0.5) * BIN;
+  let sumY = 0;
+  let sumA = 0;
+  let front = Infinity;
+  let back = -Infinity;
+  for (const t of flat) {
+    if (Math.abs(t.y - centre) > BIN) continue;
+    sumY += t.y * t.area;
+    sumA += t.area;
+    front = Math.min(front, t.minZ);
+    back = Math.max(back, t.maxZ);
+  }
+  return { top: sumY / sumA, front, back };
 }
 
 /** Bar stool as one mesh with the seat at 0.78 m. */

@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildBackBar, chairModel, lampModel, normalizeProp, stoolModel } from '../client/scene/roomprops';
+import { buildBackBar, chairModel, chairSeat, lampModel, normalizeProp, stoolModel } from '../client/scene/roomprops';
 
 const PROPS = path.resolve(__dirname, '../client/models/props');
 const NAMES = ['chair_wood', 'stool_wood', 'lamp_pendant', 'bottle_old', 'bottle_a', 'bottle_b', 'bottle_wine', 'glass_vodka', 'glass_cognac', 'glass_wine'];
@@ -80,6 +80,24 @@ describe('chairModel', () => {
     const b = bounds(chair);
     expect(Math.abs(b.max.y - b.min.y - 0.9)).toBeLessThan(0.1);
     expect(Math.abs(b.min.y)).toBeLessThan(1e-3);
+  });
+
+  it('is tinted dark, not white', () => {
+    const mat = meshes(chairModel(props))[0].material as THREE.MeshStandardMaterial;
+    expect(mat.map).toBeTruthy();
+    const source = meshes(props.chair_wood).map((m) => m.material);
+    expect(source).not.toContain(mat);
+    const { r, g, b } = mat.color;
+    expect(0.2126 * r + 0.7152 * g + 0.0722 * b).toBeLessThanOrEqual(0.4);
+    // The shared GLB material is left alone.
+    for (const s of source as THREE.MeshStandardMaterial[]) expect(s.color.getHex()).not.toBe(mat.color.getHex());
+  });
+
+  it('reports its seat top and depth', () => {
+    const seat = chairSeat(chairModel(props));
+    expect(seat.top).toBeGreaterThan(0.4);
+    expect(seat.top).toBeLessThan(0.55);
+    expect(seat.front).toBeLessThan(seat.back);
   });
 
   function backrestZ(chair: THREE.Group): number {

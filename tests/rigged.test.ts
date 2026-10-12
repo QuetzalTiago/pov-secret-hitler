@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { chairModel, chairSeat } from '../client/scene/roomprops';
 import { prepareCharacter, type CharacterTemplate, type Outfit } from '../client/scene/assets';
 
 const MODELS = path.resolve(__dirname, '../client/models');
@@ -29,6 +30,8 @@ function fakeCtx() {
 type Rigged = typeof import('../client/scene/rigged');
 type Chars = typeof import('../client/scene/characters');
 let RiggedCharacter: Rigged['RiggedCharacter'];
+let SEAT: Rigged['SEAT'];
+let BUTTOCK_DEPTH: Rigged['BUTTOCK_DEPTH'];
 let chars: Chars;
 const templates = {} as Record<Outfit, CharacterTemplate>;
 // Template used for each style by the default (assets) lookup, replicated for the injected one.
@@ -38,7 +41,7 @@ beforeAll(async () => {
   (globalThis as any).document = {
     createElement: () => ({ width: 0, height: 0, getContext: () => fakeCtx() }),
   };
-  ({ RiggedCharacter } = await import('../client/scene/rigged'));
+  ({ RiggedCharacter, SEAT, BUTTOCK_DEPTH } = await import('../client/scene/rigged'));
   chars = await import('../client/scene/characters');
   for (const o of Object.keys(FILES) as Outfit[]) {
     const buf = fs.readFileSync(path.join(MODELS, 'chars', `${FILES[o]}.glb`));
@@ -97,6 +100,39 @@ function lineDistance(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): num
   return v.addScaledVector(d, -v.dot(d)).length();
 }
 
+/** Box (group space, current pose) of the vertices whose strongest skin weight is one of the named bones. */
+function skinnedBox(c: Rig, names: string[], keep?: (p: THREE.Vector3) => boolean): THREE.Box3 {
+  c.group.updateMatrixWorld(true);
+  let mesh!: THREE.SkinnedMesh;
+  c.group.traverse((o) => {
+    if ((o as THREE.SkinnedMesh).isSkinnedMesh) mesh = o as THREE.SkinnedMesh;
+  });
+  const { bones, boneInverses } = mesh.skeleton;
+  const g = mesh.geometry;
+  const pos = g.getAttribute('position');
+  const si = g.getAttribute('skinIndex');
+  const sw = g.getAttribute('skinWeight');
+  // Skinning as the renderer does it: the bone's world matrix times its inverse bind matrix, for the strongest bone.
+  const toWorld = bones.map((b, i) => new THREE.Matrix4().multiplyMatrices(b.matrixWorld, boneInverses[i]).multiply(mesh.bindMatrix));
+  const want = new Set(names.map((n) => bones.findIndex((b) => b.name === n)));
+  const box = new THREE.Box3();
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    let w = 0;
+    let top = -1;
+    for (let k = 0; k < 4; k++) {
+      if (sw.getComponent(i, k) > w) {
+        w = sw.getComponent(i, k);
+        top = si.getComponent(i, k);
+      }
+    }
+    if (!want.has(top)) continue;
+    v.fromBufferAttribute(pos, i).applyMatrix4(toWorld[top]);
+    if (!keep || keep(v)) box.expandByPoint(v);
+  }
+  return box;
+}
+
 const cases: [string, number, 'normal' | 'hitler'][] = [
   ...[...Array(10).keys()].map((i) => [`normal ${i}`, i, 'normal'] as [string, number, 'normal']),
   ['hitler 0', 0, 'hitler'],
@@ -117,8 +153,42 @@ describe.each(cases)('RiggedCharacter %s', (_key, style, variant) => {
     const hips = boneY(c, 'Hips');
     expect(head).toBeGreaterThanOrEqual(1.1);
     expect(head).toBeLessThanOrEqual(1.5);
-    expect(hips).toBeGreaterThanOrEqual(0.5);
-    expect(hips).toBeLessThanOrEqual(0.65);
+    // The hips bone sits in the pelvis, just above the seat top.
+    expect(hips).toBeGreaterThanOrEqual(0.4);
+    expect(hips).toBeLessThanOrEqual(0.55);
+  });
+
+  it('rests on the seat', () => {
+    const c = build(style, variant);
+    c.update(0.016, 0);
+    const pelvisAndThighs = ['Body', 'Hips', 'UpperLegL', 'UpperLegR'];
+    const all = skinnedBox(c, pelvisAndThighs);
+    // The buttocks are the rear of the pelvis and thighs; the thighs slope down toward the knees.
+    const buttocks = skinnedBox(c, pelvisAndThighs, (p) => p.z <= all.min.z + BUTTOCK_DEPTH);
+    expect(Math.abs(buttocks.min.y - SEAT.top)).toBeLessThan(0.025);
+    // Just in front of the backrest, not through it.
+    expect(all.min.z).toBeGreaterThan(-SEAT.back - 0.005);
+    expect(all.min.z).toBeLessThan(-SEAT.back + 0.05);
+    // The thighs may sag toward the knees, but not far into the seat.
+    expect(all.min.y).toBeGreaterThan(SEAT.top - 0.1);
+  });
+
+  it('puts its feet on the floor', () => {
+    const c = build(style, variant);
+    c.update(0.016, 0);
+    const feet = skinnedBox(c, ['FootL', 'FootR']);
+    expect(feet.min.y).toBeGreaterThan(-0.01);
+    expect(feet.min.y).toBeLessThan(0.04);
+  });
+
+  it('has no hats or face details, only the cigarette and the armband besides the body', () => {
+    const c = build(style, variant);
+    let extra = 0;
+    c.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && !(m as THREE.SkinnedMesh).isSkinnedMesh) extra++;
+    });
+    expect(extra).toBe((c.smoker ? 1 : 0) + (variant === 'hitler' ? 1 : 0));
   });
 
   it('has the Patron members the game uses', () => {
@@ -284,10 +354,10 @@ describe('RiggedCharacter motion', () => {
 
   it('the cigarette hides while the hands are up', () => {
     const c = build(0);
-    expect(measure(c).visible).toBe(3);
+    expect(measure(c).visible).toBe(2);
     c.setHandsUp(true);
     run(c, 1);
-    expect(measure(c).visible).toBe(2);
+    expect(measure(c).visible).toBe(1);
   });
 
   it('dies into a slump, and a patron that is already dead starts in it', () => {
@@ -346,5 +416,19 @@ describe('RiggedCharacter motion', () => {
       widest = Math.max(widest, Math.abs(forwardX()));
     }
     expect(widest).toBeGreaterThan(0.15);
+  });
+});
+
+describe('seat constants', () => {
+  it('match the seat measured on the real chair', async () => {
+    (globalThis as any).self ??= globalThis;
+    (globalThis as any).createImageBitmap ??= async () => ({ width: 4, height: 4, close() {} });
+    const buf = fs.readFileSync(path.join(MODELS, 'props', 'chair_wood.glb'));
+    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+    const chair = chairModel({ chair_wood: (await new GLTFLoader().parseAsync(ab, '')).scene });
+    const seat = chairSeat(chair);
+    expect(Math.abs(SEAT.top - seat.top)).toBeLessThan(0.01);
+    expect(Math.abs(SEAT.front - seat.front)).toBeLessThan(0.01);
+    expect(Math.abs(SEAT.back - seat.back)).toBeLessThan(0.01);
   });
 });
