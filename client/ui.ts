@@ -85,6 +85,22 @@ export class UI {
     for (const id of ['credits-btn', 'home-credits']) $(id).onclick = () => $('credits').classList.remove('hidden');
     $('credits-close').onclick = () => $('credits').classList.add('hidden');
     $('rules-btn').onclick = () => $('rules').classList.remove('hidden');
+    // Settings popover: the toggles keep it open so their label change is visible; any other row closes it.
+    const settings = $('settings');
+    const settingsBtn = $('settings-btn');
+    const setSettings = (open: boolean) => {
+      settings.classList.toggle('hidden', !open);
+      settingsBtn.setAttribute('aria-expanded', String(open));
+    };
+    settingsBtn.onclick = () => setSettings(settings.classList.contains('hidden'));
+    settings.addEventListener('click', (e) => {
+      const row = (e.target as HTMLElement).closest('button');
+      if (row && !row.matches('.graphics-toggle, .music-toggle, #sound')) setSettings(false);
+    });
+    window.addEventListener('click', (e) => {
+      const t = e.target as Node;
+      if (!settings.contains(t) && !settingsBtn.contains(t)) setSettings(false);
+    });
     $('rules-close').onclick = () => $('rules').classList.add('hidden');
     $('sound').onclick = () => {
       setMuted(!isMuted());
@@ -103,6 +119,7 @@ export class UI {
         this.chatOpen = true;
       } else if (e.key === 'Escape') {
         input.blur();
+        setSettings(false);
         $('credits').classList.add('hidden');
         $('rules').classList.add('hidden');
       }
@@ -120,6 +137,13 @@ export class UI {
   }
 
   private invite: string | null = null;
+
+  /** Deterministic avatar hue (0-359) from a name. */
+  private static hue(name: string): number {
+    let h = 0;
+    for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) % 360;
+    return h;
+  }
 
   static inviteLink(code: string): string {
     return `${location.origin}/?join=${code}`;
@@ -202,17 +226,29 @@ export class UI {
       list.replaceChildren();
       room.seats.forEach((s) => {
         const li = document.createElement('li');
-        li.textContent = s.name;
+        const avatar = document.createElement('span');
+        avatar.className = 'avatar';
+        avatar.style.setProperty('--hue', String(UI.hue(s.name)));
+        avatar.textContent = [...s.name][0] ?? '?';
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = s.name;
+        li.append(avatar, name);
         const tags: string[] = [];
         if (s.seat === room.host) tags.push('host');
         if (s.seat === room.you) tags.push('you');
         if (s.bot) tags.push('bot');
         if (!s.connected) tags.push('away');
         if (tags.length) {
-          const span = document.createElement('span');
-          span.className = 'tag';
-          span.textContent = tags.join(' · ');
-          li.appendChild(span);
+          const box = document.createElement('span');
+          box.className = 'tags';
+          for (const t of tags) {
+            const pill = document.createElement('span');
+            pill.className = `pill ${t}`;
+            pill.textContent = t;
+            box.appendChild(pill);
+          }
+          li.appendChild(box);
         }
         list.appendChild(li);
       });
