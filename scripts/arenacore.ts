@@ -1,17 +1,16 @@
 // Bot arena: seeded games where each team plays its own strategy.
-import { randomChooser, oldSmartChooser, runGame, type Chooser, type GameResult } from './gameloop';
+import { newSmartChooser, oldSmartChooser, randomChooser, runGame, type Chooser, type GameResult } from './gameloop';
 
-export type StrategyName = 'old' | 'random';
+export type StrategyName = 'old' | 'new' | 'random';
 
-// 'new' will be added here later.
-export const STRATEGIES: Record<StrategyName, Chooser> = { old: oldSmartChooser, random: randomChooser };
+export const STRATEGIES: Record<StrategyName, Chooser> = { old: oldSmartChooser, new: newSmartChooser, random: randomChooser };
 
 export function playMatch(n: number, seed: number, lib: StrategyName, fas: StrategyName): GameResult {
   return runGame(
     n,
     seed,
     (seat, s) => (s.players[seat].role === 'liberal' ? STRATEGIES[lib] : STRATEGIES[fas]),
-    { trackMemory: lib === 'old' || fas === 'old' },
+    { trackMemory: lib !== 'random' || fas !== 'random' },
   );
 }
 

@@ -1,4 +1,4 @@
-// Bot arena CLI: tsx scripts/arena.ts [gamesPerCount] [--lib old|random] [--fas old|random]
+// Bot arena CLI: tsx scripts/arena.ts [gamesPerCount] [--lib old|new|random] [--fas old|new|random]
 import { formatTable, runArena, STRATEGIES, type StrategyName } from './arenacore';
 
 const args = process.argv.slice(2);

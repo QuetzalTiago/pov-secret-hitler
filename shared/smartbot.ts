@@ -1,5 +1,6 @@
 // Turns a bot's decision into labelled options (for the Jev classifier) and a built-in strategy fallback.
 // Everything here is derived from the bot's own GameView + Memory only.
+import { beliefs } from './belief';
 import { describeHistory, policyRecord, profiles, type Memory, type PlayerProfile } from './tracker';
 import type { ActionBody } from './types';
 import type { GameView } from './view';
@@ -19,6 +20,62 @@ export interface Decision {
 }
 
 export type Rand = () => number;
+
+/** 'old' scores from suspicion heuristics; 'new' scores Liberal choices from the belief model. */
+export type Strategy = 'old' | 'new';
+
+/** Tunable weights for the belief-based Liberal strategy. */
+export const LIB = {
+  nomFas: 4, // nominate / special election: penalty per P(Fascist)
+  nomHitler: 12, // in the zone: penalty per P(Hitler)
+  nomSafe: 0.5, // in the zone: bonus for a confirmed non-Hitler
+  voteBase: 1, // ja baseline
+  voteTracker: 0.8, // ja bonus per failed election
+  voteBad: 5, // ja penalty per excess P(government has a Fascist)
+  voteHitler: 15, // in the zone: ja penalty per P(Hitler chancellor)
+  invUncertain: 0.5, // investigate: bonus for uncertain suspects
+  invKnown: -5, // investigate: already investigated
+  exeHitler: 3, // execute: weight on P(Hitler)
+  exeFas: 1, // execute: weight on P(Fascist)
+  vetoFas: 4, // veto agree: penalty per P(Fascist) of the Chancellor
+  vetoLiberal: -5, // veto agree: I passed a Liberal, so the Chancellor lied
+};
+
+/** Overwrites the Liberal option scores with ones derived from the belief model. */
+function scoreLiberal(d: Decision, v: GameView, m: Memory): void {
+  const { pFascist: pF, pHitler: pH } = beliefs(m, v);
+  const zone = v.fascist >= 3;
+  const target = (score: (s: number) => number) => {
+    for (const o of Object.values(d.options)) if ('target' in o.action) o.score = score(o.action.target);
+  };
+  switch (d.kind) {
+    case 'nominate':
+      target((s) => -LIB.nomFas * pF[s] - (zone ? LIB.nomHitler * pH[s] + (pH[s] === 0 && v.tracker !== 2 ? LIB.nomSafe : 0) : 0));
+      break;
+    case 'specialElect':
+      target((s) => -LIB.nomFas * pF[s]);
+      break;
+    case 'investigate':
+      target((s) => (m.known.has(s) ? LIB.invKnown : pF[s] + LIB.invUncertain * pF[s] * (1 - pF[s])));
+      break;
+    case 'execute':
+      target((s) => LIB.exeHitler * pH[s] + LIB.exeFas * pF[s]);
+      break;
+    case 'vote': {
+      const p = v.president;
+      const c = v.nominee!;
+      const others = v.players.filter((x) => x.alive && x.seat !== v.you).map((x) => pF[x.seat]);
+      const avg = others.reduce((a, b) => a + b, 0) / Math.max(1, others.length);
+      const bad = 1 - (1 - pF[p]) * (1 - pF[c]);
+      const baseline = 1 - (1 - avg) ** 2;
+      d.options.ja.score = LIB.voteBase + LIB.voteTracker * v.tracker - LIB.voteBad * (bad - baseline) - (zone ? LIB.voteHitler * pH[c] : 0);
+      break;
+    }
+    case 'vetoResponse':
+      d.options.agree.score = m.passed.some((x) => x.round === v.round && x.gave.includes('L')) ? LIB.vetoLiberal : 1 - LIB.vetoFas * pF[v.chancellor!];
+      break;
+  }
+}
 
 const isFascistTeam = (v: GameView) => v.yourRole === 'fascist' || v.yourRole === 'hitler';
 
@@ -89,7 +146,7 @@ function trust(v: GameView, pr: PlayerProfile): number {
   return -pr.suspicion;
 }
 
-export function buildDecision(v: GameView, legal: ActionBody[], m: Memory, name: (s: number) => string): Decision {
+export function buildDecision(v: GameView, legal: ActionBody[], m: Memory, name: (s: number) => string, opts: { strategy?: Strategy } = {}): Decision {
   const prof = profiles(m, v);
   const state = buildState(v, m, prof, name);
   const kind = legal[0].type;
@@ -204,7 +261,9 @@ export function buildDecision(v: GameView, legal: ActionBody[], m: Memory, name:
     default:
       for (const [i, a] of legal.entries()) options[`o${i}`] = { action: a, description: a.type, score: 0 };
   }
-  return { kind, instructions, options, state };
+  const d: Decision = { kind, instructions, options, state };
+  if ((opts.strategy ?? 'new') === 'new' && v.yourRole === 'liberal') scoreLiberal(d, v, m);
+  return d;
 }
 
 /** Built-in strategy: best-scoring option, with a little noise so bots are not robotic. */
