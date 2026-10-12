@@ -6,6 +6,7 @@ import type { Badge, CardConfirmCopy, HudModel } from './hudmodel';
 import { portraitUrl, sealUrl } from './art';
 import { isMuted, setMuted } from './audio';
 import { ENACT_BANNER_MS, enactBanner } from './enact';
+import { loadRecord, recordGame, recordLine, saveRecord } from './record';
 import { REASONS, VICTORY_MS, victoryParticles, type VictoryBanner } from './victory';
 
 export { enactBanner };
@@ -384,6 +385,9 @@ export class UI {
       const line = seriesLine(room.series, room.seats.map((s) => s.name));
       $('lobby-series').textContent = line;
       $('lobby-series').classList.toggle('hidden', !line);
+      const recLine = recordLine(loadRecord());
+      $('lobby-record').textContent = recLine;
+      $('lobby-record').classList.toggle('hidden', !recLine);
     } else {
       $('lobby').classList.add('hidden');
       $('hud').classList.remove('hidden');
@@ -764,6 +768,12 @@ export class UI {
     const names = room.seats.map((s) => s.name);
     $('gameover-series').textContent = seriesLine(room.series, names);
     $('gameover-series').classList.toggle('hidden', !room.series.liberal && !room.series.fascist);
+    const loaded = loadRecord();
+    const rec = recordGame(loaded, v, `${room.code}:${room.series.liberal + room.series.fascist}`);
+    if (rec !== loaded) saveRecord(rec);
+    const recLine = recordLine(rec);
+    $('gameover-record').textContent = recLine;
+    $('gameover-record').classList.toggle('hidden', !recLine);
     $('play-again').textContent = room.seats[room.you]?.ready ? 'Ready ✓ (click to cancel)' : 'Play again';
     const humans = room.seats.filter((s) => !s.bot && s.connected);
     $('ready-note').textContent = `${humans.filter((s) => s.ready).length} of ${humans.length} ready`;
