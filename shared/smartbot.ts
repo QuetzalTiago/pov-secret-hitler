@@ -28,11 +28,11 @@ export type Strategy = 'old' | 'new';
 
 export type { BotLevel };
 
-/** Difficulty: which strategy scores the options and how much noise blurs the pick (0 = always the best). */
-export const LEVELS: Record<BotLevel, { strategy: Strategy; noise: number }> = {
+/** Difficulty: which strategy scores the options and how much noise blurs the pick (0 = always the best). Sharp is also far stricter about electing a possible Hitler Chancellor in the zone. */
+export const LEVELS: Record<BotLevel, { strategy: Strategy; noise: number; lib?: Partial<typeof LIB> }> = {
   casual: { strategy: 'old', noise: 1.5 },
   normal: { strategy: 'new', noise: 0.6 },
-  sharp: { strategy: 'new', noise: 0 },
+  sharp: { strategy: 'new', noise: 0, lib: { voteHitler: 200, nomHitler: 200 } },
 };
 
 /** Tunable weights for the belief-based Liberal strategy. */
@@ -53,7 +53,7 @@ export const LIB = {
 };
 
 /** Overwrites the Liberal option scores with ones derived from the belief model. */
-function scoreLiberal(d: Decision, v: GameView, m: Memory): void {
+function scoreLiberal(d: Decision, v: GameView, m: Memory, w: typeof LIB): void {
   const { pFascist: pF, pHitler: pH } = beliefs(m, v);
   const zone = v.fascist >= 3;
   const target = (score: (s: number) => number) => {
@@ -61,16 +61,16 @@ function scoreLiberal(d: Decision, v: GameView, m: Memory): void {
   };
   switch (d.kind) {
     case 'nominate':
-      target((s) => -LIB.nomFas * pF[s] - (zone ? LIB.nomHitler * pH[s] + (pH[s] === 0 && v.tracker !== 2 ? LIB.nomSafe : 0) : 0));
+      target((s) => -w.nomFas * pF[s] - (zone ? w.nomHitler * pH[s] + (pH[s] === 0 && v.tracker !== 2 ? w.nomSafe : 0) : 0));
       break;
     case 'specialElect':
-      target((s) => -LIB.nomFas * pF[s]);
+      target((s) => -w.nomFas * pF[s]);
       break;
     case 'investigate':
-      target((s) => (m.known.has(s) ? LIB.invKnown : pF[s] + LIB.invUncertain * pF[s] * (1 - pF[s])));
+      target((s) => (m.known.has(s) ? w.invKnown : pF[s] + w.invUncertain * pF[s] * (1 - pF[s])));
       break;
     case 'execute':
-      target((s) => LIB.exeHitler * pH[s] + LIB.exeFas * pF[s]);
+      target((s) => w.exeHitler * pH[s] + w.exeFas * pF[s]);
       break;
     case 'vote': {
       const p = v.president;
@@ -79,11 +79,11 @@ function scoreLiberal(d: Decision, v: GameView, m: Memory): void {
       const avg = others.reduce((a, b) => a + b, 0) / Math.max(1, others.length);
       const bad = 1 - (1 - pF[p]) * (1 - pF[c]);
       const baseline = 1 - (1 - avg) ** 2;
-      d.options.ja.score = LIB.voteBase + LIB.voteTracker * v.tracker - LIB.voteBad * (bad - baseline) - (zone ? LIB.voteHitler * pH[c] : 0);
+      d.options.ja.score = w.voteBase + w.voteTracker * v.tracker - w.voteBad * (bad - baseline) - (zone ? w.voteHitler * pH[c] : 0);
       break;
     }
     case 'vetoResponse':
-      d.options.agree.score = m.passed.some((x) => x.round === v.round && x.gave.includes('L')) ? LIB.vetoLiberal : 1 - LIB.vetoFas * pF[v.chancellor!];
+      d.options.agree.score = m.passed.some((x) => x.round === v.round && x.gave.includes('L')) ? w.vetoLiberal : 1 - w.vetoFas * pF[v.chancellor!];
       break;
   }
 }
@@ -248,7 +248,7 @@ function trust(v: GameView, pr: PlayerProfile): number {
   return -pr.suspicion;
 }
 
-export function buildDecision(v: GameView, legal: ActionBody[], m: Memory, name: (s: number) => string, opts: { strategy?: Strategy } = {}): Decision {
+export function buildDecision(v: GameView, legal: ActionBody[], m: Memory, name: (s: number) => string, opts: { strategy?: Strategy; lib?: Partial<typeof LIB> } = {}): Decision {
   const prof = profiles(m, v);
   const state = buildState(v, m, prof, name);
   const kind = legal[0].type;
@@ -365,7 +365,7 @@ export function buildDecision(v: GameView, legal: ActionBody[], m: Memory, name:
   }
   const d: Decision = { kind, instructions, options, state };
   if ((opts.strategy ?? 'new') === 'new') {
-    if (v.yourRole === 'liberal') scoreLiberal(d, v, m);
+    if (v.yourRole === 'liberal') scoreLiberal(d, v, m, opts.lib ? { ...LIB, ...opts.lib } : LIB);
     else if (fasc) scoreFascist(d, v, m);
   }
   return d;

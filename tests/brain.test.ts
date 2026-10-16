@@ -404,7 +404,7 @@ describe('bot levels', () => {
       expect(spy.mock.calls.at(-1)![4]).toEqual({ strategy: 'old' });
       expect(r.action).toEqual(decideNow(v, legal, m, name, seeded(9), 'casual'));
       await decide(v, legal, m, name, seeded(9), async () => null, 'sharp');
-      expect(spy.mock.calls.at(-1)![4]).toEqual({ strategy: 'new' });
+      expect(spy.mock.calls.at(-1)![4]).toEqual({ strategy: 'new', lib: smartbot.LEVELS.sharp.lib });
       await decide(v, legal, m, name, seeded(9), async () => null);
       expect(spy.mock.calls.at(-1)![4]).toEqual({ strategy: 'new' });
     } finally {

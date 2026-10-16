@@ -2,7 +2,7 @@
 import { botAction, randomAction, type Rand } from '../shared/bot';
 import { createGame, legalActions, pendingActors, reduce } from '../shared/engine';
 import { nextRandom } from '../shared/rng';
-import { buildDecision, heuristicChoice, LEVELS, type BotLevel, type Strategy } from '../shared/smartbot';
+import { buildDecision, heuristicChoice, LEVELS, type BotLevel, type LIB, type Strategy } from '../shared/smartbot';
 import { newMemory, noteMyAction, observe, type Memory } from '../shared/tracker';
 import type { ActionBody, GameEvent, GameState } from '../shared/types';
 import { viewFor } from '../shared/view';
@@ -32,17 +32,17 @@ export const heuristicChooser: Chooser = ({ s, seat, legal, rand }) => botAction
 
 // Same strategy + memory the server bots use when Jev is unavailable.
 export const smartChooser =
-  (strategy: Strategy, noise = 0.6): Chooser =>
+  (strategy: Strategy, noise = 0.6, lib?: Partial<typeof LIB>): Chooser =>
   ({ s, seat, legal, rand, memory, names }) => {
     const v = viewFor(s, seat);
-    const d = buildDecision(v, legal, memory, (x) => names[x], { strategy });
+    const d = buildDecision(v, legal, memory, (x) => names[x], { strategy, lib });
     const body = d.options[heuristicChoice(d, rand, noise)].action;
     return body;
   };
 
 export const oldSmartChooser = smartChooser('old');
 export const newSmartChooser = smartChooser('new');
-export const levelChooser = (level: BotLevel): Chooser => smartChooser(LEVELS[level].strategy, LEVELS[level].noise);
+export const levelChooser = (level: BotLevel): Chooser => smartChooser(LEVELS[level].strategy, LEVELS[level].noise, LEVELS[level].lib);
 
 export function runGame(
   n: number,

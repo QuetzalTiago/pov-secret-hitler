@@ -27,7 +27,7 @@ export async function decide(
   level: BotLevel = 'normal',
 ): Promise<BrainResult> {
   if (legal.length === 1 || TRIVIAL.has(legal[0].type)) return { action: legal[0], source: 'trivial' };
-  const d = buildDecision(view, legal, memory, name, { strategy: LEVELS[level].strategy });
+  const d = buildDecision(view, legal, memory, name, { strategy: LEVELS[level].strategy, lib: LEVELS[level].lib });
   let key = '';
   let source: BrainResult['source'] = 'heuristic';
   const entries = Object.entries(d.options);
@@ -54,7 +54,7 @@ export async function decide(
 /** Synchronous version for timeouts and the simulator: built-in strategy only. */
 export function decideNow(view: GameView, legal: ActionBody[], memory: Memory, name: (s: number) => string, rand: Rand = Math.random, level: BotLevel = 'normal'): ActionBody {
   if (legal.length === 1 || TRIVIAL.has(legal[0].type)) return legal[0];
-  const d = buildDecision(view, legal, memory, name, { strategy: LEVELS[level].strategy });
+  const d = buildDecision(view, legal, memory, name, { strategy: LEVELS[level].strategy, lib: LEVELS[level].lib });
   const action = d.options[heuristicChoice(d, rand, LEVELS[level].noise)].action;
   return action;
 }
