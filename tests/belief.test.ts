@@ -17,8 +17,8 @@ function view(n: number, me: number, yourRole: Role | null, roles: (Role | null)
 }
 
 /** Pushes a passed election and (optionally) its government. */
-function gov(m: Memory, round: number, president: number, chancellor: number, result: Policy | null, ja: number[] = []): void {
-  const votes = Array.from({ length: m.n }, (_, s) => ja.includes(s));
+function gov(m: Memory, round: number, president: number, chancellor: number, result: Policy | null, ja?: number[]): void {
+  const votes = Array.from({ length: m.n }, (_, s) => (ja ? ja.includes(s) : null));
   m.elections.push({ round, president, nominee: chancellor, votes, passed: true });
   if (result) m.governments.push({ round, president, chancellor, result });
 }
@@ -144,6 +144,44 @@ describe('beliefs', () => {
     const b = beliefs(m, view(5, 0, 'liberal', roles));
     expect([...b.pFascist, ...b.pHitler].every(Number.isFinite)).toBe(true);
     expect(sum(b.pHitler)).toBeCloseTo(1, 6);
+  });
+
+  describe('NEIN votes', () => {
+    const failed = (m: Memory, round: number, president: number, nominee: number, nein: number[]): void => {
+      const votes = Array.from({ length: m.n }, (_, s) => !nein.includes(s));
+      m.elections.push({ round, president, nominee, votes, passed: false });
+    };
+
+    it('a repeated blocker of Liberal governments is more suspicious than a JA voter', () => {
+      const m = newMemory(0, 7);
+      m.known.set(1, 'liberal');
+      failed(m, 1, 0, 1, [5]);
+      failed(m, 2, 1, 0, [5]);
+      const b = beliefs(m, view(7, 0, 'liberal'));
+      expect(b.pFascist[5]).toBeGreaterThan(b.pFascist[6]);
+    });
+
+    it('a NEIN on a government known to be Liberal raises suspicion above the prior', () => {
+      const m = newMemory(0, 7);
+      m.known.set(1, 'liberal');
+      failed(m, 1, 0, 1, [4]);
+      const b = beliefs(m, view(7, 0, 'liberal'));
+      // Seats 0 and 1 are known Liberal, so the prior for the other five is 3/5.
+      expect(b.pFascist[4]).toBeGreaterThan(3 / 5 + 0.05);
+    });
+
+    it('a NEIN cast in the Hitler zone has no effect', () => {
+      const build = (nein: number[]): Memory => {
+        const m = newMemory(0, 7);
+        for (let i = 0; i < 3; i++) gov(m, i + 1, 1 + (i % 2), 3 + (i % 2), 'F', [0, 1, 2, 3, 4, 5, 6]);
+        failed(m, 4, 1, 2, nein);
+        return m;
+      };
+      const v = view(7, 0, 'liberal');
+      const a = beliefs(build([5]), v);
+      const b = beliefs(build([]), v);
+      a.pFascist.forEach((x, s) => expect(Math.abs(x - b.pFascist[s])).toBeLessThan(1e-9));
+    });
   });
 
   it('is fast at 10 players', () => {

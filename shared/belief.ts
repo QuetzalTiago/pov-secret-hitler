@@ -10,6 +10,10 @@ export const FASCIST_PLAYS_F = 0.85;
 export const LIBERAL_ERROR = 0.01;
 /** Weak signal: a Liberal votes JA on a government that went on to enact Fascist (Fascist team: 1). */
 export const JA_ON_F_LIBERAL = 0.8;
+/** Weak signal: a Liberal votes NEIN on a government whose President and nominee are both Liberal (Fascist: 1). */
+export const NEIN_CLEAN_LIBERAL = 0.5;
+/** Weak signal: a Fascist-team voter votes NEIN on a government containing a Fascist-team player. */
+export const NEIN_TEAM_FASCIST = 0.3;
 /** Weak signal: a Fascist-team President nominates a Fascist-team Chancellor. */
 export const NOMINATE_TEAMMATE = 1.3;
 /** Weak signal: a Fascist-team President executes a Fascist-team player. */
@@ -39,6 +43,9 @@ interface Soft {
   nomC: Int32Array;
   exeP: Int32Array;
   exeC: Int32Array;
+  neinP: Int32Array; // per election with NEIN voters below the Hitler zone: president
+  neinC: Int32Array; // nominee
+  neinMask: Int32Array; // NEIN voters, excluding president and nominee
   hitlerForbid: number; // public not-Hitler constraints (zone, executed)
 }
 
@@ -107,8 +114,9 @@ interface Step {
  * policies were on the board at each passed election. Memory has no global order between chaos policies and
  * governments, so chaos is placed where the tracker reaches CHAOS_AT.
  */
-function timeline(m: Memory): Step[] {
+function timeline(m: Memory): { steps: Step[]; fAt: number[] } {
   const steps: Step[] = [];
+  const fAt: number[] = []; // Fascist policies on the board at each election, failed ones included
   const used = new Set<number>();
   let f = 0;
   let l = 0;
@@ -123,6 +131,7 @@ function timeline(m: Memory): Step[] {
     }
   };
   m.elections.forEach((e, i) => {
+    fAt[i] = f;
     if (!e.passed) return fail();
     const gov = m.governments.findIndex((g, gi) => !used.has(gi) && g.round === e.round && g.president === e.president && g.chancellor === e.nominee);
     const step: Step = { election: i, gov, fAtElection: f, poolF: 0, poolL: 0 };
@@ -141,15 +150,29 @@ function timeline(m: Memory): Step[] {
     }
     steps.push(step);
   });
-  return steps;
+  return { steps, fAt };
 }
 
-function buildSoft(m: Memory, self: boolean, steps: Step[]): Soft {
+function buildSoft(m: Memory, self: boolean, steps: Step[], fAt: number[]): Soft {
   const gp: number[] = [];
   const gc: number[] = [];
   const tabs: number[] = [];
   const libVote = new Float64Array(m.n).fill(1);
   let zone = 0;
+  const neinP: number[] = [];
+  const neinC: number[] = [];
+  const neinMask: number[] = [];
+  m.elections.forEach((e, i) => {
+    if (fAt[i] >= HITLER_ZONE) return;
+    let mask = 0;
+    e.votes.forEach((v, seat) => {
+      if (v === false && seat !== e.president && seat !== e.nominee) mask |= 1 << seat;
+    });
+    if (!mask) return;
+    neinP.push(e.president);
+    neinC.push(e.nominee);
+    neinMask.push(mask);
+  });
   for (const s of steps) {
     const e = m.elections[s.election];
     if (s.fAtElection >= HITLER_ZONE) zone |= 1 << e.nominee;
@@ -199,6 +222,9 @@ function buildSoft(m: Memory, self: boolean, steps: Step[]): Soft {
     gp: Int32Array.from(gp),
     gc: Int32Array.from(gc),
     libVote,
+    neinP: Int32Array.from(neinP),
+    neinC: Int32Array.from(neinC),
+    neinMask: Int32Array.from(neinMask),
     nomP: Int32Array.from(m.elections.map((e) => e.president)),
     nomC: Int32Array.from(m.elections.map((e) => e.nominee)),
     exeP: Int32Array.from(m.executions.map((x) => x.by)),
@@ -232,6 +258,9 @@ function buildHard(m: Memory, v: GameView, self: boolean): Hard {
   return h;
 }
 
+const NEIN_LIB_POW = Array.from({ length: 32 }, (_, i) => NEIN_CLEAN_LIBERAL ** i);
+const NEIN_FAS_POW = Array.from({ length: 32 }, (_, i) => NEIN_TEAM_FASCIST ** i);
+
 function run(n: number, k: number, hard: Hard, soft: Soft | null, hitlerForbidPublic: number): Beliefs | null {
   const pf = new Float64Array(n);
   const ph = new Float64Array(n);
@@ -259,6 +288,12 @@ function run(n: number, k: number, hard: Hard, soft: Soft | null, hitlerForbidPu
           for (let e = 0; e < soft.exeP.length; e++) {
             if ((team >> soft.exeP[e]) & (team >> soft.exeC[e]) & 1) w *= EXECUTE_TEAMMATE;
           }
+          for (let e = 0; e < soft.neinMask.length; e++) {
+            const govT = ((team >> soft.neinP[e]) | (team >> soft.neinC[e])) & 1;
+            let c = 0;
+            for (let y = soft.neinMask[e] & (govT ? team : ~team); y; y &= y - 1) c++;
+            w *= govT ? NEIN_FAS_POW[c] : NEIN_LIB_POW[c];
+          }
           for (let s = 0; s < n; s++) if (!((team >> s) & 1)) w *= soft.libVote[s];
         }
         if (w <= 0) continue;
@@ -282,7 +317,8 @@ export function beliefs(m: Memory, v: GameView, opts?: { observer?: 'self' | 'li
   const self = (opts?.observer ?? 'self') === 'self';
   const over = v.phase === 'gameOver';
   const hard = buildHard(m, v, self);
-  const soft = buildSoft(m, self, timeline(m));
+  const { steps, fAt } = timeline(m);
+  const soft = buildSoft(m, self, steps, fAt);
   // Once the game is over the roles are public and the zone/execution constraints no longer apply.
   const full = run(n, k, hard, soft, over ? 0 : soft.hitlerForbid);
   if (full) return full;
