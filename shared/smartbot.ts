@@ -28,11 +28,11 @@ export type Strategy = 'old' | 'new';
 
 export type { BotLevel };
 
-/** Difficulty: which strategy scores the options and how much noise blurs the pick (0 = always the best). Sharp is also far stricter about electing a possible Hitler Chancellor in the zone. */
+/** Difficulty: which strategy scores the options and how much noise blurs the pick (0 = always the best). Sharp is also far stricter about electing a possible Hitler Chancellor in the zone, and about governments likelier to hold a Fascist than the table average. */
 export const LEVELS: Record<BotLevel, { strategy: Strategy; noise: number; lib?: Partial<typeof LIB> }> = {
   casual: { strategy: 'old', noise: 1.5 },
   normal: { strategy: 'new', noise: 0.6 },
-  sharp: { strategy: 'new', noise: 0, lib: { voteHitler: 200, nomHitler: 200 } },
+  sharp: { strategy: 'new', noise: 0, lib: { voteHitler: 200, nomHitler: 200, voteBad: 30 } },
 };
 
 /** Tunable weights for the belief-based Liberal strategy. */
