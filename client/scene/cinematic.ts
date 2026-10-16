@@ -64,7 +64,7 @@ export function stageTint(level: number): { color: number; emissive: [number, nu
   return tint;
 }
 
-export const CONFETTI = { count: 140, life: 4.2, top: 3.3, size: [0.055, 0.08] as const };
+export const CONFETTI = { count: 140, top: 3.3, size: [0.055, 0.08] as const };
 
 export interface ConfettiPiece {
   x: number;
@@ -173,7 +173,8 @@ export class Confetti {
   }
 
   start(winner: 'liberal' | 'fascist', seed: number, rx: number, rz: number): void {
-    this.pieces = confettiPieces(CONFETTI.count, seed, rx, rz);
+    // In spawn order: update() packs the spawned pieces from slot 0, so each keeps the slot (and colour) set here.
+    this.pieces = confettiPieces(CONFETTI.count, seed, rx, rz).sort((a, b) => a.delay - b.delay);
     this.rx = rx;
     this.rz = rz;
     const tints = TINTS[winner];

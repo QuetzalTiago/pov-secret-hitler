@@ -137,6 +137,19 @@ describe('Confetti', () => {
     const col = new THREE.Color();
     c.mesh.getColorAt(0, col);
     expect([0x3f7fb5, 0xd8cfb8]).toContain(col.getHex());
+    // Every drawn slot keeps the colour of the piece drawn in it, also while later pieces are still spawning.
+    const fresh = new Confetti();
+    fresh.start('fascist', 11, rx, rz);
+    const pieces = confettiPieces(CONFETTI.count, 11, rx, rz).sort((a, b) => a.delay - b.delay);
+    const hex = [0xb3362c, 0x1c1a18];
+    fresh.update(0.6);
+    expect(fresh.mesh.count).toBeGreaterThan(0);
+    expect(fresh.mesh.count).toBeLessThan(CONFETTI.count);
+    for (let i = 0; i < fresh.mesh.count; i++) {
+      fresh.mesh.getColorAt(i, col);
+      expect(col.getHex()).toBe(hex[pieces[i].tint]);
+    }
+    fresh.dispose();
     c.stop();
     expect(c.mesh.visible).toBe(false);
     expect(c.mesh.count).toBe(0);
