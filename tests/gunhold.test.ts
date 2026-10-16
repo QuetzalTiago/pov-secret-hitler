@@ -5,7 +5,7 @@ import { GUN_GRIP, GUN_SCALE } from '../client/scene/gun';
 import { fistOnGun } from '../client/scene/gunhold';
 
 const HAND = 1.2;
-const BACK_FACE = 0.025; // the cylinder's back face, gun-local z
+const BACK_FACE = 0.025; // the front of the trigger guard area, gun-local z
 
 // Thumb vertices: the fingers and palm stay within |x| 0.04 of the fist's axis, only the thumb limb reaches past
 // x 0.041 (its centreline is at 0.04 with radius ~0.0105), measured on the unrotated geometry; rotateY keeps vertex order.

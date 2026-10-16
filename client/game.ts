@@ -18,7 +18,7 @@ import { createCharacter, type Patron } from './scene/characters';
 import { seedOf } from './scene/looks';
 import { GUN_MUZZLE, GUN_SCALE } from './scene/gun';
 import { disposeObject } from './scene/dispose';
-import { ActingRings, Board, CARD_H, CARD_W, Card, Envelope, Pile, Placard, ballotCard, policyCard, revolver } from './scene/props';
+import { ActingRings, Board, CARD_H, CARD_W, Card, Envelope, Pile, Placard, ballotCard, policyCard, pistol } from './scene/props';
 import { COLORS, ballotFace, bloodAtlas, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
 import { slowmoScale, tweens } from './scene/tween';
 import { fanLayer } from './scene/handfan';
@@ -92,9 +92,9 @@ export class Game {
   private voteCards = new Map<number, { card: Card; mover: Mover; shown: boolean }>();
   private vetoToken: THREE.Mesh;
   private vetoMover: Mover;
-  private gun = revolver();
+  private gun = pistol();
   private gunMover: Mover;
-  private gunSnapFrames = 0; // frames the revolver is pinned to the shooter's hand after a shot
+  private gunSnapFrames = 0; // frames the pistol is pinned to the shooter's hand after a shot
   private invCard: Card;
   private invMover: Mover;
   private reveals = new Map<number, { card: Card; mover: Mover }>();
@@ -1510,7 +1510,7 @@ export class Game {
     this.vetoMover.visible = vetoLegal;
     (this.vetoToken.material as THREE.MeshStandardMaterial[])[2].emissiveIntensity = hovered === 'veto' ? 0.9 : acting('veto') ? 0.3 + 0.5 * wave : 0.3;
 
-    // Revolver.
+    // Pistol.
     const gunRest = this.gunRest.set(this.board.w / 2 + 0.1, TABLE_Y + 0.02, this.board.h / 2 + 0.08);
     const shooting = this.shot && now < this.shot.until ? this.shot : null;
     if (this.shot && !shooting) this.shot = null;

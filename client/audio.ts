@@ -242,7 +242,7 @@ export const sfx = {
     // Losers get a falling tail.
     if (youWon === false) [392, 370, 311, 247].forEach((f, i) => tone({ freq: f, dur: 0.5, gain: 0.1, type: 'triangle', delay: 3.2 + i * 0.18, wet: 0.5 }));
   },
-  /** Revolver shot: supersonic crack, chest-thumping boom, the room ringing, then the brass casing. */
+  /** Pistol shot: supersonic crack, chest-thumping boom, the room ringing, then the brass casing. */
   gunshot() {
     noise({ dur: 0.05, freq: 5000, type: 'highpass', gain: 2.2, attack: 0.0008, wet: 0.6 }); // crack
     noise({ dur: 0.7, freq: 2400, type: 'lowpass', sweepTo: 140, gain: 1.8, attack: 0.002, wet: 1.0 }); // blast
@@ -484,7 +484,7 @@ export function setMusicOn(on: boolean) {
   }
 }
 
-/** Night dims the music; a drawn revolver muffles and quiets it. */
+/** Night dims the music; a drawn pistol muffles and quiets it. */
 export function setMusicMood(night: boolean, danger: boolean) {
   if (!ctx || !musicGain || !musicFilter || !musicOn) return;
   const key = `${night}:${danger}`;

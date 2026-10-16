@@ -488,7 +488,7 @@ export class RiggedCharacter implements Patron {
     this.aimTarget = target ? this.aimV.copy(target) : null;
   }
 
-  /** World pose of the revolver's origin, placed so its grip is in the fist: the barrel (-Z) runs along the arm, the top (+Y) is up.
+  /** World pose of the pistol's origin, placed so its grip is in the fist: the barrel (-Z) runs along the arm, the top (+Y) is up.
    * Returns objects owned by this character, overwritten on the next call; copy what you keep. */
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion } {
     this.armR.mid.updateWorldMatrix(true, false);
@@ -760,7 +760,7 @@ export class RiggedCharacter implements Patron {
     this.armPose(arm, elbow.normalize(), toHand, 1, null);
   }
 
-  /** Right arm: extends straight at the target (the revolver's, or a pointing finger's), or lifts for the fist reaction. */
+  /** Right arm: extends straight at the target (the pistol's, or a pointing finger's), or lifts for the fist reaction. */
   private updateAim(dt: number) {
     this.aimAmount += ((this.aimTarget && !this.dead ? 1 : 0) - this.aimAmount) * (1 - Math.exp(-5 * dt));
     this.recoilKick = Math.max(0, this.recoilKick - dt * 4);

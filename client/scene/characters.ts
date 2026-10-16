@@ -111,7 +111,7 @@ export interface Patron {
   /** 0..1: 1 while hovered, a soft pulse while the seat is your move. */
   setHighlight(v: number): void;
   setAim(target: THREE.Vector3 | null, mode?: 'gun' | 'point', snap?: boolean): void;
-  /** World pose of the held revolver; the returned objects are reused (overwritten on the next call), so copy what you keep. */
+  /** World pose of the held pistol; the returned objects are reused (overwritten on the next call), so copy what you keep. */
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion };
   setHandsUp(on: boolean): void;
   die(): void;
@@ -373,7 +373,7 @@ export class Character implements Patron {
   private handsUpAmount = 0;
   private handsUpQ = new THREE.Quaternion();
   private aimArm = new THREE.Group();
-  /** Where the revolver's grip sits while aiming (world position read by the game each frame). */
+  /** Where the pistol's grip sits while aiming (world position read by the game each frame). */
   handAnchor = new THREE.Object3D();
   private aimTarget: THREE.Vector3 | null = null;
   private aimAmount = 0;
@@ -476,7 +476,7 @@ export class Character implements Patron {
   /** The point the arm actually tracks: eases toward aimTarget so the arm swings instead of snapping. */
   private smoothAim = new THREE.Vector3();
 
-  /** World pose for a revolver held in the aiming hand (the revolver model points along -Z).
+  /** World pose for a pistol held in the aiming hand (the pistol model points along -Z).
    * Returns objects owned by this character, overwritten on the next call; copy what you keep. */
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion } {
     this.handAnchor.getWorldPosition(this.gunOut.pos);

@@ -772,7 +772,7 @@ export class World {
   }
 
   /**
-   * Raises your right arm from below the view: onto the revolver's grip (`gun`), or pointing at a
+   * Raises your right arm from below the view: onto the pistol's grip (`gun`), or pointing at a
    * world position (`point`). Null puts the arm back on the table.
    */
   setOwnArm(pose: { gun: THREE.Object3D } | { point: THREE.Vector3 } | null) {
@@ -829,7 +829,7 @@ export class World {
     if (!('gun' in pose)) hand.position.copy(grip);
   }
 
-  /** Surrender: both hands rise into view, palms forward (the revolver is aimed at you). Call after setOwnArm. */
+  /** Surrender: both hands rise into view, palms forward (the pistol is aimed at you). Call after setOwnArm. */
   setOwnHandsUp(on: boolean) {
     this.handsUpTarget = on ? 1 : 0;
     this.applyHandsUpVisibility();

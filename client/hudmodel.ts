@@ -362,10 +362,10 @@ export function hudModel(v: GameView, room: RoomView, opts: HudOpts): HudModel {
     case 'execute':
       if (mine) {
         title = tr({ en: 'Execute a player', es: 'Ejecuta a un jugador' });
-        detail = tr({ en: 'Aim the revolver and click your target.', es: 'Apunta el revólver y haz clic en tu objetivo.' });
+        detail = tr({ en: 'Aim the pistol and click your target.', es: 'Apunta la pistola y haz clic en tu objetivo.' });
         verb = 'shoot';
       } else {
-        title = tr({ en: `President ${pres} has the revolver`, es: `El Presidente ${pres} tiene el revólver` });
+        title = tr({ en: `President ${pres} has the pistol`, es: `El Presidente ${pres} tiene la pistola` });
         detail = tr({
           en: 'Choosing whom to shoot. If it is Hitler, the Liberals win.',
           es: 'Eligiendo a quién disparar. Si es Hitler, ganan los Liberales.',

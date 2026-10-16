@@ -288,7 +288,7 @@ describe('RiggedCharacter styles and disposal', () => {
 describe('RiggedCharacter motion', () => {
   const TARGET = new THREE.Vector3(0.3, 1.25, 2);
 
-  it.each(['gun', 'point'] as const)('extends the right arm toward the target and points the revolver along it (%s)', (mode) => {
+  it.each(['gun', 'point'] as const)('extends the right arm toward the target and points the pistol along it (%s)', (mode) => {
     const c = build(1);
     c.update(1 / 60, 0);
     const rest = bonePos(c, 'PalmR');
@@ -298,7 +298,7 @@ describe('RiggedCharacter motion', () => {
     const { pos, quat } = c.gunPose();
     const barrel = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
     expect(barrel.dot(TARGET.clone().sub(pos).normalize())).toBeGreaterThanOrEqual(0.9);
-    // The top of the revolver stays up.
+    // The top of the pistol stays up.
     expect(new THREE.Vector3(0, 1, 0).applyQuaternion(quat).y).toBeGreaterThan(0.8);
     c.setAim(null);
     run(c, 1.5, t);
@@ -306,7 +306,7 @@ describe('RiggedCharacter motion', () => {
     expect(bonePos(c, 'PalmR').distanceTo(rest)).toBeLessThan(0.03);
   });
 
-  it('holds the revolver by the grip, thumb up, barrel past the fist', () => {
+  it('holds the pistol by the grip, thumb up, barrel past the fist', () => {
     const c = build(1);
     c.setAim(TARGET);
     run(c, 1.5);

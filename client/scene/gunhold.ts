@@ -25,7 +25,7 @@ const HOLD = GUN_GRIP.clone().multiplyScalar(GUN_SCALE); // gun space, scaled
 const v = new THREE.Vector3();
 
 /**
- * The right fist wrapped around the revolver's grip, given the gun's world position and orientation:
+ * The right fist wrapped around the pistol's grip, given the gun's world position and orientation:
  * the fist is rolled so its thumb lies along the top of the grip and slid so its finger loop surrounds GUN_GRIP.
  * `handScale` is the fist mesh's scale.
  */

@@ -20,8 +20,8 @@ describe('eventCopy', () => {
     expect(copy({ k: 'power', power: 'peek', president: 1 })).toEqual({ text: 'Policy peek: the President looks at the top three policies.', kind: 'power' });
     expect(copy({ k: 'power', power: 'investigate', president: 1 })?.text).toBe('Investigate loyalty: the President inspects a party card.');
     expect(copy({ k: 'power', power: 'special', president: 1 })?.text).toBe('Special election: the President picks the next President.');
-    expect(copy({ k: 'power', power: 'execute', president: 1 })?.text).toBe('Execution: the President picks up the revolver.');
-    expect(powerCopy('execute')).toBe('Execution: the President picks up the revolver.');
+    expect(copy({ k: 'power', power: 'execute', president: 1 })?.text).toBe('Execution: the President picks up the pistol.');
+    expect(powerCopy('execute')).toBe('Execution: the President picks up the pistol.');
   });
 
   it('enacted, chaos and not', () => {
@@ -102,7 +102,7 @@ describe('eventCopy in Spanish', () => {
     expect(powerCopy('peek')).toBe('Ver leyes: el Presidente mira las tres leyes de arriba.');
     expect(powerCopy('investigate')).toBe('Investigar lealtad: el Presidente inspecciona un carné de partido.');
     expect(powerCopy('special')).toBe('Elección especial: el Presidente elige al próximo Presidente.');
-    expect(powerCopy('execute')).toBe('Ejecución: el Presidente toma el revólver.');
+    expect(powerCopy('execute')).toBe('Ejecución: el Presidente toma la pistola.');
   });
 
   it('nominated, to you and to someone else', () => {
@@ -121,6 +121,6 @@ describe('eventCopy in Spanish', () => {
   it('switching back to English returns English', () => {
     setLang('en');
     expect(copy({ k: 'enacted', policy: 'F', chaos: false })?.text).toBe('Fascist policy enacted.');
-    expect(powerCopy('execute')).toBe('Execution: the President picks up the revolver.');
+    expect(powerCopy('execute')).toBe('Execution: the President picks up the pistol.');
   });
 });

@@ -19,8 +19,8 @@ const POWER_TEXT: Record<Power, { en: string; es: string }> = {
     es: 'Elección especial: el Presidente elige al próximo Presidente.',
   },
   execute: {
-    en: 'Execution: the President picks up the revolver.',
-    es: 'Ejecución: el Presidente toma el revólver.',
+    en: 'Execution: the President picks up the pistol.',
+    es: 'Ejecución: el Presidente toma la pistola.',
   },
 };
 

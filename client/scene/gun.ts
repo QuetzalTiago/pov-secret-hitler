@@ -3,20 +3,18 @@ import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeParts } from './patron';
 
-// Pure geometry for the revolver (no materials, no scene): two merged, non-indexed, smooth-normal geometries in
-// the gun's local frame. Points along -Z, barrel axis at y 0.03, muzzle at z -0.185, cylinder centred on z 0,
-// grip below/behind. The caller owns and disposes both.
+// Pure geometry for the Mauser C96 "Broomhandle" pistol (no materials, no scene): two merged, non-indexed,
+// smooth-normal geometries in the gun's local frame. Points along -Z, barrel axis at y 0.03, muzzle at z -0.185,
+// box magazine ahead of the trigger guard, ring hammer at the back, grooved wooden broomhandle grip below/behind.
+// The caller owns and disposes both.
 
 const BARREL_Y = 0.03;
-/** The revolver's scale in the scene (props.ts revolver()); the points below are unscaled, gun-local. */
+/** The pistol's scale in the scene (props.ts pistol()); the points below are unscaled, gun-local. */
 export const GUN_SCALE = 1.4;
-/** Where the closed hand holds the grip: inside the plow handle, below the frame and behind the trigger guard. */
+/** Where the closed hand holds the grip: inside the broomhandle, below the receiver and behind the trigger guard. */
 export const GUN_GRIP = new THREE.Vector3(0, -0.025, 0.072);
 /** The muzzle, on the bore axis at the barrel's front face. */
 export const GUN_MUZZLE = new THREE.Vector3(0, BARREL_Y, -0.185);
-const CYL_Y = 0.0145; // the top chamber lines up with the bore
-const CYL_R = 0.026;
-const CYL_HALF = 0.025;
 
 /** Weld seams and re-derive smooth normals. */
 function smooth(g: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -55,91 +53,73 @@ function plate(shape: THREE.Shape, depth: number, bevel: number): THREE.BufferGe
   return smooth(g);
 }
 
-/** Barrel with a recessed muzzle and front sight, plus the ejector-rod shroud underneath. */
+/** Thin round barrel with a recessed muzzle and a wider chamber section, plus the front sight blade. */
 function barrelGeometry(): THREE.BufferGeometry {
   const barrel: [number, number][] = [
-    [0, -0.176], [0.006, -0.176], [0.006, -0.185], [0.0095, -0.185], [0.0112, -0.1835], [0.0112, -0.17],
-    [0.0108, -0.1], [0.0115, -0.06], [0.0135, -0.045], [0.0135, -0.026], [0, -0.026],
-  ];
-  const shroud: [number, number][] = [
-    [0, -0.152], [0.0045, -0.152], [0.0066, -0.149], [0.0066, -0.141], [0.0056, -0.139], [0.0056, -0.026], [0, -0.026],
+    [0, -0.176], [0.004, -0.176], [0.004, -0.185], [0.0075, -0.185], [0.0075, -0.07], [0.0095, -0.07], [0.0095, -0.04], [0, -0.04],
   ];
   return mergeParts([
     smooth(lathe(barrel, 16, BARREL_Y)),
-    box(0.003, 0.007, 0.01, BARREL_Y + 0.0138, -0.175, 0.0012),
-    smooth(lathe(shroud, 14, BARREL_Y - 0.0165)),
+    box(0.003, 0.007, 0.01, BARREL_Y + 0.0105, -0.178, 0.001),
   ]);
 }
 
-/** Fluted cylinder: a lathe whose wall is pushed in at six flutes between the chambers, plus chamber-mouth rings. */
-function cylinderGeometry(): THREE.BufferGeometry {
-  const profile: [number, number][] = [[0, -CYL_HALF], [0.0215, -CYL_HALF], [0.0245, -0.0235], [CYL_R, -0.021]];
-  for (let z = -0.015; z <= 0.0151; z += 0.005) profile.push([CYL_R, z]);
-  profile.push([CYL_R, 0.021], [0.0245, 0.0235], [0.0215, CYL_HALF], [0, CYL_HALF]);
-  const body = lathe(profile, 60, CYL_Y);
-  const pos = body.getAttribute('position');
-  const step = Math.PI / 3;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const yr = pos.getY(i) - CYL_Y;
-    const r = Math.hypot(x, yr);
-    if (r < 0.024) continue;
-    const a = Math.atan2(x, yr) + Math.PI; // chambers sit at multiples of 60 deg, flutes halfway between
-    const m = (((a - step / 2) % step) + step) % step;
-    const flute = Math.min(m, step - m);
-    const fade = THREE.MathUtils.smoothstep(0.02 - Math.abs(pos.getZ(i)), 0, 0.006);
-    const k = 1 - (0.0042 * fade * Math.exp(-((flute / 0.2) ** 2))) / r;
-    pos.setXY(i, x * k, CYL_Y + yr * k);
-  }
-  const parts = [smooth(body)];
-  for (let c = 0; c < 6; c++) {
-    const a = c * step;
-    parts.push(smooth(lathe([[0.0055, -0.02], [0.0055, -0.0262], [0.0086, -0.0262], [0.0086, -0.024], [0, -0.024]], 12, 0)
-      .translate(Math.sin(a) * 0.0155, CYL_Y + Math.cos(a) * 0.0155, 0)));
-  }
-  return mergeParts(parts);
+/** The box magazine ahead of the trigger guard: body, floorplate and a raised milled panel on each side. */
+function magazineGeometry(): THREE.BufferGeometry {
+  return mergeParts([
+    box(0.026, 0.049, 0.048, -0.0105, -0.028),
+    box(0.028, 0.006, 0.052, -0.036, -0.028, 0.002),
+    box(0.002, 0.03, 0.034, -0.012, -0.028, 0.0008).translate(0.0135, 0, 0),
+    box(0.002, 0.03, 0.034, -0.012, -0.028, 0.0008).translate(-0.0135, 0, 0),
+  ]);
 }
 
-/** Hammer with a spur at the back top, in (z, y). */
-function hammerGeometry(): THREE.BufferGeometry {
-  const s = new THREE.Shape();
-  s.moveTo(0.07, 0.046);
-  s.quadraticCurveTo(0.072, 0.062, 0.084, 0.068);
-  s.quadraticCurveTo(0.094, 0.071, 0.102, 0.064);
-  s.quadraticCurveTo(0.094, 0.058, 0.09, 0.046);
-  s.closePath();
-  return plate(s, 0.005, 0.0012);
+/** Ring hammer at the back of the receiver: a torus whose ring lies in the y-z plane. */
+function ring(radius: number, tube: number, y: number, z: number): THREE.BufferGeometry {
+  return smooth(new THREE.TorusGeometry(radius, tube, 8, 20).rotateY(Math.PI / 2).translate(0, y, z));
 }
 
-/** Plow-handle grip profile in (z, y); the butt angles back and flares. */
+/** Broomhandle grip profile in (z, y): slim, sloping back to a rounded butt. */
 function gripShape(): THREE.Shape {
   const s = new THREE.Shape();
-  s.moveTo(0.036, 0.025);
-  s.quadraticCurveTo(0.046, -0.045, 0.064, -0.083);
-  s.quadraticCurveTo(0.082, -0.092, 0.1, -0.08);
-  s.bezierCurveTo(0.106, -0.05, 0.098, -0.005, 0.088, 0.032);
-  s.closePath();
+  s.moveTo(0.045, 0.012);
+  s.lineTo(0.09, 0.012);
+  s.bezierCurveTo(0.098, -0.02, 0.106, -0.055, 0.112, -0.074);
+  s.quadraticCurveTo(0.114, -0.085, 0.104, -0.085);
+  s.lineTo(0.076, -0.085);
+  s.quadraticCurveTo(0.066, -0.085, 0.066, -0.074);
+  s.bezierCurveTo(0.058, -0.05, 0.05, -0.02, 0.045, 0.012);
   return s;
 }
 
-export function revolverGeometry(): { metal: THREE.BufferGeometry; grip: THREE.BufferGeometry } {
-  const backstrap = smooth(new THREE.TubeGeometry(
-    new THREE.CubicBezierCurve3(
-      new THREE.Vector3(0, -0.079, 0.101), new THREE.Vector3(0, -0.05, 0.107),
-      new THREE.Vector3(0, -0.005, 0.099), new THREE.Vector3(0, 0.032, 0.089),
-    ), 16, 0.0042, 8, false));
-  const heel = smooth(new THREE.SphereGeometry(0.0042, 8, 6).translate(0, -0.079, 0.101));
+/** The wooden grip with horizontal grooves cut into its flanks (x pulled inward on a cosine in y). */
+function gripGeometry(): THREE.BufferGeometry {
+  const half = 0.011;
+  const g = plate(new THREE.Shape(gripShape().getSpacedPoints(96)), 0.014, 0.004);
+  const pos = g.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    if (Math.abs(x) <= half * 0.6 || y < -0.075 || y > 0) continue;
+    const edge = THREE.MathUtils.smoothstep(Math.min(y + 0.075, -y), 0, 0.004);
+    const cut = 0.05 * edge * (0.5 - 0.5 * Math.cos((y * Math.PI * 2) / 0.009));
+    pos.setX(i, x * (1 - cut));
+  }
+  g.computeVertexNormals();
+  return mergeParts([g]);
+}
+
+export function pistolGeometry(): { metal: THREE.BufferGeometry; grip: THREE.BufferGeometry } {
   const metal = mergeParts([
     barrelGeometry(),
-    cylinderGeometry(),
-    box(0.024, 0.046, 0.062, 0.03, 0.056), // frame body, its front face is the recoil shield
-    box(0.014, 0.011, 0.052, 0.0465, 0.004, 0.0035), // top strap over the cylinder
-    tube([[0.04, 0.014], [0.031, 0.004], [0.027, -0.009], [0.032, -0.022], [0.044, -0.029], [0.053, -0.026]], 0.0035, 32, 8), // trigger guard
-    tube([[0.04, 0.008], [0.038, -0.004], [0.035, -0.014], [0.034, -0.02]], 0.0022, 8, 6), // trigger
-    hammerGeometry(),
-    backstrap,
-    heel,
+    box(0.022, 0.034, 0.135, 0.029, 0.0225), // receiver, z -0.045..0.09: covers the whole grip top
+    box(0.012, 0.007, 0.037, 0.049, 0.0535, 0.002), // bolt
+    box(0.014, 0.007, 0.03, 0.0495, -0.03, 0.002), // tangent rear sight block
+    magazineGeometry(),
+    tube([[-0.002, 0.012], [0.004, -0.016], [0.02, -0.026], [0.038, -0.02], [0.045, 0.0], [0.046, 0.012]], 0.0032, 32, 8), // trigger guard
+    tube([[0.014, 0.01], [0.016, -0.001], [0.018, -0.012]], 0.0018, 8, 6), // trigger
+    ring(0.008, 0.0025, 0.05, 0.094), // hammer, cocked behind the receiver's back face
+    ring(0.006, 0.0016, -0.092, 0.104), // lanyard ring
   ]);
-  const grip = mergeParts([plate(gripShape(), 0.014, 0.004)]);
-  return { metal, grip };
+  return { metal, grip: gripGeometry() };
 }

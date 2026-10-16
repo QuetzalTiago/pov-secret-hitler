@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import {
   BOARD_ASPECT, BOARD_SLOTS, ballotFace, boardTexture, cardBack, envelopeTexture, placardTexture, policyFace, ringTexture,
 } from './textures';
-import { GUN_SCALE, revolverGeometry } from './gun';
+import { GUN_SCALE, pistolGeometry } from './gun';
 import { ease, tween, type Tween } from './tween';
 import { TABLE_Y } from './world';
 import { PRINT_TINT } from './lighting';
@@ -242,13 +242,13 @@ export class Pile {
   }
 }
 
-/** A detailed six-shooter (fluted cylinder, sights, ejector shroud, trigger guard, plow grip) in two meshes: metal + grip. Points along -Z. */
-export function revolver(): THREE.Group {
+/** A Mauser C96 "Broomhandle" (box magazine ahead of the trigger guard, ring hammer, grooved wooden grip) in two meshes: metal + grip. Points along -Z. */
+export function pistol(): THREE.Group {
   const g = new THREE.Group();
-  const { metal, grip } = revolverGeometry();
+  const { metal, grip } = pistolGeometry();
   g.add(
-    new THREE.Mesh(metal, new THREE.MeshStandardMaterial({ color: 0x3a3c40, metalness: 0.85, roughness: 0.32 })),
-    new THREE.Mesh(grip, new THREE.MeshStandardMaterial({ color: 0x45260f, roughness: 0.6 })),
+    new THREE.Mesh(metal, new THREE.MeshStandardMaterial({ color: 0x2b2d33, metalness: 0.85, roughness: 0.35 })),
+    new THREE.Mesh(grip, new THREE.MeshStandardMaterial({ color: 0x4a2a12, roughness: 0.6 })),
   );
   g.traverse((o) => (o.castShadow = true));
   g.scale.setScalar(GUN_SCALE);
