@@ -66,3 +66,24 @@ Task **FLT-0001 "Graphics and animation polish"** (branch `gfx-polish`). Todos, 
 | #125 | Execution drama: muzzle sprite, smoke, punch-in, fall | #120, #124 |
 | #126 | Game-over cinematic: dolly, team lighting, staggered reveal, instanced confetti | #120, #122, #123 |
 | #127 | Perf and visual regression gate | #121-#126 |
+
+## Perf gate (#127)
+
+Baseline is the #91 table in `docs/spikes/code-review-2026-10.md`. #121 and #122 were measured in their commits (67f0f5b, a92a46d) with `npx tsx scripts/perf.ts --players 5,10 --gpu`. The "now" column is pending a human run of the same command on an idle machine (agents may not run perf.ts; see CLAUDE.md).
+
+| players | scene | draw calls #91 | after #121 | after #122 (fx on) | now | programs #91 | after #122 | now | frame ms after #122 | now |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 5 | lobby | 443 | 441 | 456 | pending | 8 | 19 | pending | 16.7 | pending |
+| 5 | night | 371 | 368 | 382 | pending | 8 | 19 | pending | 16.7 | pending |
+| 5 | vote | 422 | 416 | 431 | pending | 8 | 19 | pending | 16.7 | pending |
+| 10 | lobby | 595 | 595 | 605 | pending | 8 | 19 | pending | 19.2 | pending |
+| 10 | night | 568 | 571 | 577 | pending | 8 | 19 | pending | 23.8 | pending |
+| 10 | vote | 682 | 675 | 685 | pending | 8 | 19 | pending | 22.7 | pending |
+
+Static audit of #123-#126 (read in the code at bfa666a):
+
+- **Lobby, night and vote: expected change of 0 draw calls.** Card motion only tweens existing meshes. Blinks, mouth and reactions only write scales to existing meshes. Merged hands replaced the box hands, so they don't add draw calls. Nothing added scales with player count, and no lights were added.
+- **Execution:** one muzzle-flash sprite and six smoke-puff sprites are created hidden (`client/scene/world.ts`). They cost up to 7 transparent draws for about 1.5 s per shot, and nothing when idle.
+- **Game over:** the confetti is one InstancedMesh (1 draw, no shadow), hidden until the ceremony starts. It adds one program variant (instanced + instanceColor + DoubleSide), which may hitch once when the confetti starts at 0.7 s. `Confetti.update` writes 140 matrices per frame until the game leaves gameOver. It could stop once every piece has landed; that is cheap and only happens at game over, so it was left as is.
+- **Outside this issue:** the waiter's bulb SpotLight (#231, a558545) is a second SpotLight. It is fixed at construction, so the light count still never changes at runtime and causes no recompiles. The default patron is now the rigged character, so the procedural hands (about 1.7k triangles per flat hand) are only on the `?chars=old` fallback.
+- **e2e screenshots:** the Playwright e2e suite was removed in #143, so there is nothing to refresh. Visual checks happen in the live game.
