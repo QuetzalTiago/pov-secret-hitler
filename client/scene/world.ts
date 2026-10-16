@@ -20,6 +20,7 @@ import { buildBackBar, chairModel, lampModel, stoolModel } from './roomprops';
 import { CigaretteSmoke } from './smoke';
 import { WAITER_SPOT, Waiter } from './waiter';
 import { ease } from './tween';
+import { dollyPose } from './cinematic';
 import { BASE_PITCH, PITCH_MAX, PITCH_MIN, YAW_LIMIT, lookAngles, lookStep } from './look';
 import { pointingArm, type PointingArm } from './pointarm';
 import { fistOnGun, type FistOnGun } from './gunhold';
@@ -377,6 +378,9 @@ export class World {
   freezeLook = false;
   /** Holds the view at rest, wherever it is (no look keys or glances), on the home screen and in the lobby. */
   stillView = true;
+  /** Game-over cinematic progress 0..1 (eased; the game tweens it): the camera lifts from your seat to a high view. */
+  cine = 0;
+  private cinePose = { pos: new THREE.Vector3(), pitch: 0, yaw: 0 };
 
   requestLock() {
     if (!this.lockAllowed || this.locked) return;
@@ -964,7 +968,7 @@ export class World {
       this.targetYaw = this.yaw;
       this.targetPitch = this.pitch;
     }
-    if (this.stillView) {
+    if (this.stillView || this.cine > 0) {
       this.glanceUntil = 0;
       this.targetYaw = this.yaw;
       this.targetPitch = this.pitch;
@@ -974,7 +978,7 @@ export class World {
       this.targetYaw = this.glancePrev.yaw;
       this.targetPitch = this.glancePrev.pitch;
     }
-    const frozen = this.freezeLook || this.stillView;
+    const frozen = this.freezeLook || this.stillView || this.cine > 0;
     const h = frozen ? 0 : (+this.keys.has('a') || +this.keys.has('ArrowLeft')) - (+this.keys.has('d') || +this.keys.has('ArrowRight'));
     const v = frozen ? 0 : (+this.keys.has('w') || +this.keys.has('ArrowUp')) - (+this.keys.has('s') || +this.keys.has('ArrowDown'));
     if (h) this.targetYaw = clampLook(this.targetYaw + h * KEY_LOOK * dt, -YAW_LIMIT, YAW_LIMIT);
@@ -988,11 +992,19 @@ export class World {
     const basePitch = BASE_PITCH;
     this.shake = Math.max(0, this.shake - dt * 1.6);
     const sh = this.shake * this.shake * 0.06;
-    const camX = eye.x;
-    const camY = eye.y + (frozen ? 0 : Math.sin(t * 0.9) * 0.004);
-    const camZ = eye.z;
-    const camPitch = basePitch + this.pitch;
-    const camYaw = baseYaw + this.yaw;
+    let camX = eye.x;
+    let camY = eye.y + (frozen ? 0 : Math.sin(t * 0.9) * 0.004);
+    let camZ = eye.z;
+    let camPitch = basePitch + this.pitch;
+    let camYaw = baseYaw + this.yaw;
+    if (this.cine > 0) {
+      const cp = dollyPose(this.cine, this.layout, this.cinePose);
+      camX = cp.pos.x;
+      camY = cp.pos.y;
+      camZ = cp.pos.z;
+      camPitch = cp.pitch + this.pitch * (1 - this.cine);
+      camYaw = cp.yaw + this.yaw * (1 - this.cine);
+    }
     const fov = 68;
     if (fov !== this.camera.fov) {
       this.camera.fov = fov;

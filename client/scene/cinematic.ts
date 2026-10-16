@@ -50,11 +50,18 @@ export function stageLevel(party: 'liberal' | 'fascist' | null, winner: 'liberal
   return party === winner ? 1 : -1;
 }
 
-/** Material multiplier for a patron at stage `level` (-1..1): losers dim, winners glow warm. */
+const tint: { color: number; emissive: [number, number, number] } = { color: 1, emissive: [0, 0, 0] };
+
+/** Material multiplier for a patron at stage `level` (-1..1): losers dim, winners glow warm.
+ * Patrons call it every frame, so it returns one shared object, overwritten on the next call. */
 export function stageTint(level: number): { color: number; emissive: [number, number, number] } {
   level = clamp(level, -1, 1);
-  if (level < 0) return { color: 1 + 0.6 * level, emissive: [0, 0, 0] };
-  return { color: 1, emissive: [0.22 * level, 0.15 * level, 0.06 * level] };
+  const w = Math.max(0, level);
+  tint.color = level < 0 ? 1 + 0.6 * level : 1;
+  tint.emissive[0] = 0.22 * w;
+  tint.emissive[1] = 0.15 * w;
+  tint.emissive[2] = 0.06 * w;
+  return tint;
 }
 
 export const CONFETTI = { count: 140, life: 4.2, top: 3.3, size: [0.055, 0.08] as const };

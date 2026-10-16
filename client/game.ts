@@ -21,7 +21,8 @@ import { disposeObject } from './scene/dispose';
 import { ActingRings, Board, CARD_H, CARD_W, Card, Envelope, Pile, Placard, ballotCard, policyCard, pistol } from './scene/props';
 import { COLORS, ballotFace, bloodAtlas, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
 import { DEAL, dealFlight, flipTo, revealDelay, slam, stamp } from './scene/cardmotion';
-import { slowmoScale, tweens, type Tween } from './scene/tween';
+import { ease, slowmoScale, tween, tweens, type Tween } from './scene/tween';
+import { CINE, Confetti, revealAt, revealEndsAt, stageLevel } from './scene/cinematic';
 import { fanLayer } from './scene/handfan';
 import { Mover, TABLE_Y, type World } from './scene/world';
 import { tr } from './i18n';
@@ -136,6 +137,10 @@ export class Game {
   /** Last seat the policies were passed to; the view may already have cleared its chancellor on 'enacted'. */
   private lastChancellor: number | null = null;
   private ceremony = false;
+  /** The game-over cinematic (camera up, role reveals, confetti) is running or holding. */
+  private cinematic = false;
+  private cineTweens: Tween[] = [];
+  private confetti = new Confetti();
   /** Pending presentation timeouts (vote sfx, enact banner), cancelled by reset(). */
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private ceremonyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -296,6 +301,7 @@ export class Game {
     this.invCard = new Card(membershipCard('?', 'liberal'), cardBack('MEMBERSHIP'), 1.25);
     scene.add(this.invCard.mesh);
     scene.add(this.rings.mesh);
+    scene.add(this.confetti.mesh);
     this.invMover = world.track(new Mover(this.invCard.mesh));
 
     this.tileMovers = [...this.board.liberalTiles, ...this.board.fascistTiles].map((t) => world.track(new Mover(t)));
@@ -383,6 +389,7 @@ export class Game {
     this.refreshInteractables();
     this.refreshHud();
     if (v?.phase !== 'gameOver' && this.ceremony) this.cancelVictory();
+    if (v?.phase !== 'gameOver') this.endCinematic();
     this.syncGameOverPanel();
     this.ui.setChatEnabled(this.chatEnabled());
     if (this.turnCue.update(v)) {
@@ -496,22 +503,72 @@ export class Game {
 
   private startVictory(winner: Party, banner: VictoryBanner, mine: Party | null) {
     if (!this.ceremony) return;
-    this.rolesHeld = false;
-    this.revealedSeats.clear();
-    if (this.room) this.syncCharacters();
-    this.refreshHud();
     sfx.victory(winner, mine === null ? null : mine === winner);
     duckMusic(6);
     this.world.addShake(0.7);
-    for (const p of this.view?.players ?? []) {
-      if (!p.alive || !p.role) continue;
-      const party = partyOf(p.role);
-      this.chars.get(p.seat)?.react(party === winner ? 'fist' : 'thumbsDown', 0.1 * p.seat);
+    this.cinematic = true;
+    for (const t of this.cineTweens) t.cancel();
+    this.cineTweens = [];
+    tweens.cancelTarget(this.world);
+    this.cineTweens.push(tween(this.world, { cine: 1 }, { dur: CINE.dolly, ease: ease.inOutCubic }));
+    const players = this.view?.players ?? [];
+    const n = players.length;
+    const me = this.room?.you ?? 0;
+    for (const p of players) {
+      this.cineAt(revealAt(p.seat, me, n), () => {
+        this.heldRoles[p.seat] = p.role ?? null;
+        this.revealedSeats.add(p.seat);
+        const party = p.role ? partyOf(p.role) : null;
+        const patron = this.chars.get(p.seat);
+        patron?.setStage(stageLevel(party, winner));
+        if (p.alive && party) patron?.react(party === winner ? 'fist' : 'thumbsDown');
+        if (this.room) this.syncCharacters();
+      });
     }
-    this.ui.victory(banner, () => {
-      this.ceremony = false;
-      this.syncGameOverPanel();
+    this.cineAt(revealEndsAt(n) + 0.05, () => {
+      this.rolesHeld = false;
+      this.revealedSeats.clear();
+      if (this.room) this.syncCharacters();
+      this.refreshHud();
     });
+    this.cineAt(CINE.confettiAt, () => {
+      const L = this.world.layout;
+      let seed = 0;
+      for (const ch of this.room?.code ?? '') seed = (Math.imul(seed, 31) + ch.charCodeAt(0)) | 0;
+      this.confetti.start(winner, seed ^ (Date.now() & 0xffff), L.rx, L.rz);
+    });
+    this.cineAt(CINE.dolly + 0.2, () => {
+      if (!this.ceremony) return;
+      this.ui.victory(banner, () => {
+        this.ceremony = false;
+        this.syncGameOverPanel();
+      });
+    });
+  }
+
+  /** Runs `fn` `seconds` into the cinematic (a delayed no-op tween, so slow-mo and cancel apply); skipped once it has ended. */
+  private cineAt(seconds: number, fn: () => void) {
+    this.cineTweens.push(
+      tween({ k: 0 }, { k: 1 }, {
+        dur: 0,
+        delay: seconds,
+        onDone: () => {
+          if (this.cinematic) fn();
+        },
+      }),
+    );
+  }
+
+  /** Camera back down, patrons back to normal, confetti gone. */
+  private endCinematic() {
+    if (!this.cinematic) return;
+    this.cinematic = false;
+    for (const t of this.cineTweens) t.cancel();
+    this.cineTweens = [];
+    this.confetti.stop();
+    for (const c of this.chars.values()) c.setStage(0);
+    tweens.cancelTarget(this.world);
+    tween(this.world, { cine: 0 }, { dur: CINE.back, ease: ease.inOutCubic });
   }
 
   private cancelVictory() {
@@ -521,6 +578,7 @@ export class Game {
     this.ceremony = false;
     this.rolesHeld = false;
     this.revealedSeats.clear();
+    this.endCinematic();
     if (this.room) this.syncCharacters();
     this.refreshHud();
   }
@@ -1845,6 +1903,7 @@ export class Game {
   update(dt: number) {
     this.now += dt;
     tweens.update(dt);
+    this.confetti.update(dt);
     this.blood.update(dt);
     this.drainBeats();
     if (this.inFlight && this.now - this.inFlight.at > 5) this.actionRejected();

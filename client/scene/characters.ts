@@ -10,6 +10,7 @@ import { getAssets } from './assets';
 import { lookFor } from './looks';
 import { RiggedCharacter } from './rigged';
 import { glossy } from './world';
+import { stageTint } from './cinematic';
 import { handGeometry } from './hands';
 import {
   aimArmGeometry,
@@ -110,6 +111,8 @@ export interface Patron {
   lookAt(target: THREE.Vector3 | null): void;
   /** 0..1: 1 while hovered, a soft pulse while the seat is your move. */
   setHighlight(v: number): void;
+  /** -1..1: winners (+) glow warm, losers (-) dim, 0 normal (game-over cinematic). */
+  setStage(level: number): void;
   setAim(target: THREE.Vector3 | null, mode?: 'gun' | 'point', snap?: boolean): void;
   /** World pose of the held pistol; the returned objects are reused (overwritten on the next call), so copy what you keep. */
   gunPose(): { pos: THREE.Vector3; quat: THREE.Quaternion };
@@ -160,6 +163,8 @@ export class Character implements Patron {
   dead = false;
   highlight = 0;
   private highlightTarget = 0;
+  private stageTarget = 0;
+  private stage = 0;
   hitMeshes: THREE.Object3D[] = [];
   private eyes: THREE.Mesh[] = [];
   private mouth!: THREE.Mesh;
@@ -364,6 +369,10 @@ export class Character implements Patron {
 
   setHighlight(v: number) {
     this.highlightTarget = Math.min(1, Math.max(0, v));
+  }
+
+  setStage(level: number) {
+    this.stageTarget = Math.min(1, Math.max(-1, level));
   }
 
   private restArm: THREE.Mesh[] = [];
@@ -684,12 +693,14 @@ export class Character implements Patron {
 
     // Highlight / death tint.
     this.highlight += (this.highlightTarget - this.highlight) * (1 - Math.exp(-12 * dt));
+    this.stage += (this.stageTarget - this.stage) * (1 - Math.exp(-3 * dt));
+    const tint = stageTint(this.stage);
     this.badges.update(dt, now, this.dead);
     const h = this.highlight;
     const g = this.badges.glowAmt;
     this.mats.forEach((m, i) => {
-      m.color.copy(this.baseColors[i]).multiplyScalar(1 - dk * 0.55);
-      m.emissive.setRGB(h * 0.35 + g * 0.45, h * 0.25 + g * 0.05, h * 0.08 + g * 0.03);
+      m.color.copy(this.baseColors[i]).multiplyScalar((1 - dk * 0.55) * tint.color);
+      m.emissive.setRGB(h * 0.35 + g * 0.45 + tint.emissive[0], h * 0.25 + g * 0.05 + tint.emissive[1], h * 0.08 + g * 0.03 + tint.emissive[2]);
     });
   }
 

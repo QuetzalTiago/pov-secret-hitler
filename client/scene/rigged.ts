@@ -6,6 +6,7 @@ import { getAssets, type CharacterTemplate, type Outfit } from './assets';
 import { PatronBadges } from './badges';
 import { paintBlood, type BloodPart } from './blood';
 import { type Patron } from './characters';
+import { stageTint } from './cinematic';
 import { disposeObject } from './dispose';
 import { DEATH_DUR, REACTION_DUR, SMOKE_DUR, deathPose, isSmoker, mouthOpen, nextDragDelay, reactionPose, smokePose, type DeathPose, type Reaction, type ReactionPose, type SmokePose } from './life';
 import { GUN_GRIP, GUN_SCALE } from './gun';
@@ -212,6 +213,8 @@ export class RiggedCharacter implements Patron {
   private badges: PatronBadges;
   private phase = Math.random() * 10;
   private highlightTarget = 0;
+  private stageTarget = 0;
+  private stage = 0;
   /** Seconds since the shot (DEATH_DUR = fully dead); null while alive. */
   private deathT: number | null = null;
   // Motion inputs; the animation pass reads these.
@@ -479,6 +482,10 @@ export class RiggedCharacter implements Patron {
 
   setHighlight(v: number) {
     this.highlightTarget = Math.min(1, Math.max(0, v));
+  }
+
+  setStage(level: number) {
+    this.stageTarget = Math.min(1, Math.max(-1, level));
   }
 
   setAim(target: THREE.Vector3 | null, mode: 'gun' | 'point' = 'gun', snap = false) {
@@ -902,12 +909,14 @@ export class RiggedCharacter implements Patron {
 
     // Highlight / death tint, as on the procedural patron.
     this.highlight += (this.highlightTarget - this.highlight) * (1 - Math.exp(-12 * dt));
+    this.stage += (this.stageTarget - this.stage) * (1 - Math.exp(-3 * dt));
+    const tint = stageTint(this.stage);
     this.badges.update(dt, now, this.dead);
     const h = this.highlight;
     const g = this.badges.glowAmt;
     for (const m of this.mats) {
-      m.color.setScalar(1 - dk * 0.55);
-      m.emissive.setRGB(h * 0.35 + g * 0.45, h * 0.25 + g * 0.05, h * 0.08 + g * 0.03);
+      m.color.setScalar((1 - dk * 0.55) * tint.color);
+      m.emissive.setRGB(h * 0.35 + g * 0.45 + tint.emissive[0], h * 0.25 + g * 0.05 + tint.emissive[1], h * 0.08 + g * 0.03 + tint.emissive[2]);
     }
   }
 
