@@ -4,7 +4,8 @@ import {
   BOARD_ASPECT, BOARD_SLOTS, ballotFace, boardTexture, cardBack, envelopeTexture, placardTexture, policyFace, ringTexture,
 } from './textures';
 import { GUN_SCALE, pistolGeometry } from './gun';
-import { ease, tween, type Tween } from './tween';
+import { Tweens, ease, tween, tweens, type Tween } from './tween';
+import { pileMotion } from './cardmotion';
 import { TABLE_Y } from './world';
 import { PRINT_TINT } from './lighting';
 
@@ -223,7 +224,11 @@ export class Board {
 export class Pile {
   group = new THREE.Group();
   private stack: THREE.Mesh;
-  constructor(label: string, public at: THREE.Vector3) {
+  /** Animated count the stack height is drawn from. */
+  private shown = { n: 0 };
+  private target: number | null = null;
+  private motion: Tween | null = null;
+  constructor(label: string, public at: THREE.Vector3, private tw: Tweens = tweens) {
     const edge = new THREE.MeshStandardMaterial({ color: 0x9c8763, roughness: 0.9 });
     const top = new THREE.MeshStandardMaterial({ map: cardBack(label), roughness: 0.7 });
     this.stack = new THREE.Mesh(new THREE.BoxGeometry(CARD_W, 1, CARD_H), [edge, edge, top, edge, edge, edge]);
@@ -231,11 +236,35 @@ export class Pile {
     this.group.add(this.stack);
     this.group.position.copy(at);
   }
+  /** Called every frame with the current count; the height animates when it changes (the first call snaps). */
   setCount(n: number) {
-    const h = Math.max(0.0001, n * 0.0028);
+    if (this.target === null) {
+      this.target = n;
+      this.shown.n = n;
+      this.apply();
+      return;
+    }
+    if (n === this.target) return;
+    const m = pileMotion(this.target, n);
+    this.target = n;
+    this.motion?.cancel();
+    this.motion = null;
+    if (!m) return;
+    this.motion = this.tw.tween(this.shown, { n }, { ...m, onUpdate: () => this.apply() });
+  }
+  /** Jump to the current count without animating (for resets). */
+  snap() {
+    this.motion?.cancel();
+    this.motion = null;
+    if (this.target === null) return;
+    this.shown.n = this.target;
+    this.apply();
+  }
+  private apply() {
+    const h = Math.max(0.0001, this.shown.n * 0.0028);
     this.stack.scale.y = h;
     this.stack.position.y = h / 2;
-    this.stack.visible = n > 0;
+    this.stack.visible = this.shown.n > 0.01;
   }
   topPosition(out = new THREE.Vector3()): THREE.Vector3 {
     return out.copy(this.group.position).setY(this.group.position.y + this.stack.scale.y + 0.004);

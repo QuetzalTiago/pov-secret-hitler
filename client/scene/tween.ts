@@ -16,6 +16,10 @@ export const ease = {
     t = clamp01(t);
     return 1 - (1 - t) * (1 - t);
   },
+  inCubic: (t: number) => {
+    t = clamp01(t);
+    return t * t * t;
+  },
   inOutCubic: (t: number) => {
     t = clamp01(t);
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -48,6 +52,8 @@ export interface TweenOpts {
   onUpdate?: (k: number) => void;
   onDone?: () => void;
   hold?: Holdable;
+  /** Take `hold` when the tween is created rather than when its delay ends, so the object stays put while it waits. */
+  holdFromStart?: boolean;
 }
 
 export interface Tween {
@@ -81,6 +87,7 @@ abstract class Item implements Tween {
   constructor(readonly target: object, private opts: TweenOpts, private owner: Tweens) {
     this.delay = opts.delay ?? 0;
     this.ease = opts.ease ?? ease.outQuad;
+    if (opts.hold && opts.holdFromStart) opts.hold.hold++;
   }
 
   protected abstract capture(): void;
@@ -95,7 +102,7 @@ abstract class Item implements Tween {
       dt = -this.delay;
       this.started = true;
       this.capture();
-      if (this.opts.hold) this.opts.hold.hold++;
+      if (this.opts.hold && !this.opts.holdFromStart) this.opts.hold.hold++;
     }
     this.elapsed += dt;
     const { dur, onUpdate } = this.opts;
@@ -119,7 +126,7 @@ abstract class Item implements Tween {
   private release() {
     this.done = true;
     this.owner.count--;
-    if (this.started && this.opts.hold) this.opts.hold.hold--;
+    if (this.opts.hold && (this.started || this.opts.holdFromStart)) this.opts.hold.hold--;
   }
 
   cancel() {

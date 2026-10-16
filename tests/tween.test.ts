@@ -210,3 +210,43 @@ describe('Mover hold', () => {
     expect(obj.position.x).toBeGreaterThan(0);
   });
 });
+
+describe('holdFromStart', () => {
+  it('holds from creation through the delay and releases on finish', () => {
+    const tw = new Tweens();
+    const h = { hold: 0 };
+    const o = { x: 0 };
+    tw.tween(o, { x: 1 }, { dur: 1, delay: 0.5, hold: h, holdFromStart: true });
+    expect(h.hold).toBe(1);
+    tw.update(0.4);
+    expect(h.hold).toBe(1);
+    tw.update(0.3);
+    expect(h.hold).toBe(1);
+    tw.update(1);
+    expect(h.hold).toBe(0);
+  });
+
+  it('cancel before start and after start both release once', () => {
+    const tw = new Tweens();
+    const h = { hold: 0 };
+    const o = { x: 0 };
+    const a = tw.tween(o, { x: 1 }, { dur: 1, delay: 1, hold: h, holdFromStart: true });
+    a.cancel();
+    a.cancel();
+    expect(h.hold).toBe(0);
+    const b = tw.tween(o, { x: 1 }, { dur: 1, delay: 0.1, hold: h, holdFromStart: true });
+    tw.update(0.2);
+    expect(h.hold).toBe(1);
+    b.cancel();
+    expect(h.hold).toBe(0);
+  });
+
+  it('without it the hold waits for the delay to end', () => {
+    const tw = new Tweens();
+    const h = { hold: 0 };
+    tw.tween({ x: 0 }, { x: 1 }, { dur: 1, delay: 0.5, hold: h });
+    expect(h.hold).toBe(0);
+    tw.update(0.4);
+    expect(h.hold).toBe(0);
+  });
+});
