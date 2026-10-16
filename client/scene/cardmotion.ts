@@ -135,7 +135,8 @@ export function stamp(
     out.copy(mover.pos).y += STAMP.lift;
     return out;
   };
-  return tw.sequence([
+  let flash: Tween | null = null;
+  const seq = tw.sequence([
     () => tw.tween({ k: 0 }, { k: 1 }, {
       dur: STAMP.fly, ease: ease.inOutCubic, hold: mover,
       onUpdate: (e) => {
@@ -164,7 +165,7 @@ export function stamp(
       },
     }),
     () => {
-      tw.tween({ k: 0 }, { k: 1 }, {
+      flash = tw.tween({ k: 0 }, { k: 1 }, {
         dur: STAMP.flash, ease: ease.linear,
         onUpdate: (e) => opts.onFlash?.(1 - e),
         onDone: opts.onDone,
@@ -172,4 +173,14 @@ export function stamp(
       return settle(obj, mover, STAMP.settle, tw);
     },
   ]);
+  // The flash outlives the sequence, so the handle covers both.
+  return {
+    get done() {
+      return seq.done && (flash === null || flash.done);
+    },
+    cancel() {
+      seq.cancel();
+      flash?.cancel();
+    },
+  };
 }

@@ -6,6 +6,7 @@ vi.mock('../client/scene/textures', async (orig) => ({
   cardBack: () => new THREE.Texture(),
 }));
 
+import { ENACT_BANNER_DELAY_MS } from '../client/enact';
 import {
   DEAL, FLIP, SLAM, STAMP, dealFlight, flipTo, pileMotion, revealDelay, revealOrder, slam, stamp, stampImpactAt,
 } from '../client/scene/cardmotion';
@@ -47,6 +48,12 @@ describe('helpers', () => {
 
   it('stampImpactAt sums fly, hover and drop', () => {
     expect(stampImpactAt()).toBe(STAMP.fly + STAMP.hover + STAMP.drop);
+  });
+
+  it('stampImpactAt lands just before the enact banner', () => {
+    const gap = ENACT_BANNER_DELAY_MS / 1000 - stampImpactAt();
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThan(0.05);
   });
 });
 
@@ -144,6 +151,29 @@ describe('stamp', () => {
     expect(mover.hold).toBe(1);
     h.cancel();
     expect(mover.hold).toBe(0);
+  });
+
+  it('cancelling right after impact stops the flash and onDone', () => {
+    const { obj, mover, tw } = setup();
+    let flashes = 0;
+    let done = 0;
+    let hits = 0;
+    const h = stamp(obj, mover, {
+      onImpact: () => { hits++; },
+      onFlash: () => { flashes++; },
+      onDone: () => { done++; },
+    }, tw);
+    run(tw, stampImpactAt() + 2 * DT);
+    expect(hits).toBe(1);
+    expect(h.done).toBe(false);
+    const seen = flashes;
+    h.cancel();
+    expect(h.done).toBe(true);
+    expect(mover.hold).toBe(0);
+    run(tw, 1);
+    expect(done).toBe(0);
+    expect(flashes).toBe(seen);
+    expect(tw.active).toBe(0);
   });
 });
 

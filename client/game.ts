@@ -6,7 +6,7 @@ import { partyOf } from '../shared/rules';
 import { actingSeats, legalFromView, type GameView } from '../shared/view';
 import { BeatQueue, VOTE_REVEAL_MS, scheduleBatch, type Beat } from './beats';
 import { duckMusic, setMusicMood, sfx, voice } from './audio';
-import { ENACT_BANNER_DELAY_MS, ceremonyEndsAt } from './enact';
+import { ceremonyEndsAt } from './enact';
 import { eventCopy, powerCopy } from './eventcopy';
 import { actionLabel, cardConfirmCopy, edgeMarker, guideTarget, hudModel, idlePulse, nextMark, roleShown, screenBlood, type Mark, type ScreenBlood } from './hudmodel';
 import { sleeveBlood } from './screenblood';
@@ -20,7 +20,8 @@ import { GUN_MUZZLE, GUN_SCALE } from './scene/gun';
 import { disposeObject } from './scene/dispose';
 import { ActingRings, Board, CARD_H, CARD_W, Card, Envelope, Pile, Placard, ballotCard, policyCard, pistol } from './scene/props';
 import { COLORS, ballotFace, bloodAtlas, cardBack, labelTexture, membershipCard, policyFace, roleCard } from './scene/textures';
-import { slowmoScale, tweens } from './scene/tween';
+import { DEAL, dealFlight, flipTo, revealDelay, slam, stamp } from './scene/cardmotion';
+import { slowmoScale, tweens, type Tween } from './scene/tween';
 import { fanLayer } from './scene/handfan';
 import { Mover, TABLE_Y, type World } from './scene/world';
 import { tr } from './i18n';
@@ -37,6 +38,7 @@ interface PoolCard {
   holder: number;
   face: Policy | null; // visible face for this client, null = show back
   boardSlot: THREE.Vector3 | null;
+  motion: Tween | null; // the flight or stamp currently owning the card
 }
 
 const AXIS_X = new THREE.Vector3(1, 0, 0);
@@ -61,7 +63,7 @@ const QB = new THREE.Quaternion();
 const QC = new THREE.Quaternion();
 const QOUT = new THREE.Quaternion();
 const DISCARD_LIFT = new THREE.Vector3(0, 0.02, 0);
-const BOARD_LIFT = new THREE.Vector3(0, 0.03, 0);
+const BOARD_LIFT = new THREE.Vector3(0, 0.005, 0);
 
 export class Game {
   room: RoomView | null = null;
@@ -89,7 +91,7 @@ export class Game {
   private neinMover: Mover;
   private rings = new ActingRings();
   private turnCue = new TurnCue();
-  private voteCards = new Map<number, { card: Card; mover: Mover; shown: boolean }>();
+  private voteCards = new Map<number, { card: Card; mover: Mover; shown: boolean; motion: Tween | null }>();
   private vetoToken: THREE.Mesh;
   private vetoMover: Mover;
   private gun = pistol();
@@ -124,6 +126,12 @@ export class Game {
   /** The ballot an in-flight unvote took back, restored if the server refuses it. */
   private takenBackVote: boolean | null = null;
   private reveal: { votes: (boolean | null)[]; until: number } | null = null;
+  /** Card flights and stamps in progress; clearTable() cancels them. */
+  private cardMotion: Tween[] = [];
+  /** Your ballot's slam or reveal flip. */
+  private ballotMotion: Tween | null = null;
+  /** The board tile hidden until the card stamping onto its slot lands. */
+  private stampPending: { kind: 'liberal' | 'fascist'; index: number } | null = null;
   private pendingIndex: number | null = null;
   /** Last seat the policies were passed to; the view may already have cleared its chancellor on 'enacted'. */
   private lastChancellor: number | null = null;
@@ -265,7 +273,7 @@ export class Game {
       scene.add(card.mesh);
       const mover = world.track(new Mover(card.mesh));
       mover.hideOnArrive = true;
-      this.pool.push({ card, mover, where: 'pile', holder: -1, face: null, boardSlot: null });
+      this.pool.push({ card, mover, where: 'pile', holder: -1, face: null, boardSlot: null, motion: null });
     }
 
     this.ja = ballotCard(true);
@@ -559,6 +567,10 @@ export class Game {
     this.tokenMover.set(this.board.slot('tracker', 0).setY(0.014));
     this.board.liberalTiles.concat(this.board.fascistTiles).forEach((t) => (t.visible = false));
     this.pool.forEach((p) => (p.where = 'pile'));
+    for (const t of this.cardMotion) t.cancel();
+    this.cardMotion = [];
+    this.ballotMotion = null;
+    this.stampPending = null;
     this.ceremonyUntil = -Infinity;
     this.deferredPower = null;
     this.myVote = null;
@@ -642,6 +654,13 @@ export class Game {
       fn();
     }, ms);
     this.timers.add(t);
+  }
+
+  /** Remember a card tween so clearTable() can cancel it. */
+  private track(t: Tween): Tween {
+    this.cardMotion = this.cardMotion.filter((m) => !m.done);
+    this.cardMotion.push(t);
+    return t;
   }
 
   private smokeTip = new THREE.Vector3();
@@ -771,12 +790,13 @@ export class Game {
       case 'votes': {
         this.reveal = { votes: e.votes, until: this.now + VOTE_REVEAL_MS / 1000 };
         this.voteCards.forEach((vc) => (vc.shown = false));
+        this.revealFlips(e.votes, me);
         this.later(() => sfx.flip(), 150);
         // One shout for the table, decided by the group: JA! if the government passed, NEIN! if it failed.
         this.later(() => voice.vote(e.passed), 300);
         this.say(e);
         e.votes.forEach((vote, i) => {
-          if (vote !== null) this.chars.get(i)?.react(vote ? 'thumbsUp' : 'thumbsDown', 0.35 + 0.08 * i);
+          if (vote !== null) this.chars.get(i)?.react(vote ? 'thumbsUp' : 'thumbsDown', revealDelay(i, me ?? 0, e.votes.length) + 0.25);
         });
         break;
       }
@@ -815,16 +835,7 @@ export class Game {
         break;
       case 'drawn':
         sfx.draw();
-        this.pool.forEach((p) => {
-          p.where = 'held';
-          p.holder = e.seat;
-          p.face = null;
-          p.mover.hideOnArrive = false;
-          p.card.mesh.position.copy(this.drawPile.topPosition());
-          p.card.mesh.quaternion.copy(new THREE.Quaternion());
-          p.card.mesh.visible = true;
-        });
-        if (e.seat === me) this.dropIntoHand();
+        this.dealTo(e.seat);
         break;
       case 'presDiscarded': {
         sfx.toss();
@@ -839,9 +850,13 @@ export class Game {
         this.lastChancellor = e.to;
         sfx.slide();
         if (e.to === me) this.dropIntoHand();
-        this.pool.filter((p) => p.where === 'held').forEach((p) => {
+        this.pool.filter((p) => p.where === 'held').forEach((p, i) => {
           p.holder = e.to;
           p.face = null;
+          if (e.to !== me) {
+            p.motion?.cancel();
+            p.motion = this.track(dealFlight(p.card.mesh, p.mover, p.card.mesh.position.clone(), i * 0.06));
+          }
         });
         break;
       case 'chancDiscarded': {
@@ -862,19 +877,35 @@ export class Game {
           card.card.mesh.position.copy(this.drawPile.topPosition());
           card.card.mesh.visible = true;
         }
-        if (card) {
-          card.face = e.policy;
-          card.card.setFace(policyFace(e.policy));
-          card.boardSlot = this.board.slot(e.policy === 'L' ? 'liberal' : 'fascist', Math.max(0, count - 1)).add(this.board.group.position);
-          this.sendTo(card, 'board');
-        }
-        this.ceremonyUntil = ceremonyEndsAt(this.now);
-        this.later(() => {
+        const kind = e.policy === 'L' ? 'liberal' : 'fascist';
+        const banner = () => {
           sfx.enact(e.policy);
           duckMusic(2.5);
           this.world.addShake(0.5);
           this.ui.enact(e.policy, count, !!e.chaos);
-        }, ENACT_BANNER_DELAY_MS);
+        };
+        if (card) {
+          const c = card;
+          c.face = e.policy;
+          c.card.setFace(policyFace(e.policy));
+          c.boardSlot = this.board.slot(kind, Math.max(0, count - 1)).add(this.board.group.position);
+          this.sendTo(c, 'board');
+          c.mover.hideOnArrive = false;
+          c.card.mesh.visible = true;
+          this.stampPending = { kind, index: count - 1 };
+          c.motion?.cancel();
+          c.motion = this.track(stamp(c.card.mesh, c.mover, {
+            onImpact: banner,
+            onFlash: (v) => c.card.setGlow(1.4 * v),
+            onDone: () => {
+              c.card.setGlow(0);
+              c.card.mesh.visible = false;
+              c.mover.hideOnArrive = true;
+              this.revealTile(kind, count - 1);
+            },
+          }));
+        } else banner();
+        this.ceremonyUntil = ceremonyEndsAt(this.now);
         this.say(e);
         if (!e.chaos && this.lastChancellor !== null) this.chars.get(this.lastChancellor)?.react('fist', 0);
         break;
@@ -961,16 +992,61 @@ export class Game {
     if (power === 'execute') sfx.cock();
     if (power === 'peek') {
       sfx.draw();
-      this.pool.forEach((p) => {
-        p.where = 'held';
-        p.holder = president;
-        p.face = null;
-        p.mover.hideOnArrive = false;
-        p.card.mesh.position.copy(this.drawPile.topPosition());
-        p.card.mesh.visible = true;
-      });
-      if (president === this.room?.you) this.dropIntoHand();
+      this.dealTo(president);
     }
+  }
+
+  /** The pool cards fly from the draw pile to `holder`; yours drop into your hand instead. */
+  private dealTo(holder: number) {
+    const mine = holder === this.room?.you;
+    this.pool.forEach((p, i) => {
+      p.where = 'held';
+      p.holder = holder;
+      p.face = null;
+      p.mover.hideOnArrive = false;
+      p.card.mesh.visible = true;
+      if (mine) return;
+      p.card.mesh.quaternion.copy(FLIP_X_Q);
+      p.motion?.cancel();
+      p.motion = this.track(dealFlight(p.card.mesh, p.mover, this.drawPile.topPosition(), i * DEAL.gap));
+    });
+    if (mine) this.dropIntoHand();
+  }
+
+  /** Staggered reveal: every cast ballot flips face up, your own seat first. */
+  private revealFlips(votes: (boolean | null)[], me: number | undefined) {
+    const n = votes.length;
+    this.ballotMotion?.cancel();
+    this.ballotMotion = null;
+    votes.forEach((vote, seat) => {
+      if (vote === null) return;
+      const delay = revealDelay(seat, me ?? 0, n);
+      if (seat === me) {
+        const [ballot, mover] = vote ? [this.ja, this.jaMover] : [this.nein, this.neinMover];
+        this.ballotMotion = this.track(flipTo(ballot.mesh, mover, delay));
+        return;
+      }
+      const vc = this.voteCards.get(seat);
+      if (!vc) return;
+      vc.motion?.cancel();
+      vc.card.mesh.visible = true;
+      vc.motion = this.track(flipTo(vc.card.mesh, vc.mover, delay));
+    });
+  }
+
+  /** Show the board tile exactly on its slot once the stamped card hands over to it. */
+  private revealTile(kind: 'liberal' | 'fascist', index: number) {
+    const pending = this.stampPending;
+    if (pending?.kind === kind && pending.index === index) this.stampPending = null;
+    const tile = (kind === 'liberal' ? this.board.liberalTiles : this.board.fascistTiles)[index];
+    const mover = this.tileMovers[(kind === 'liberal' ? 0 : 5) + index];
+    if (!tile || !mover) return;
+    const slot = this.board.slot(kind, index);
+    tile.position.copy(slot);
+    tile.visible = true;
+    mover.set(slot, IDENTITY_Q);
+    mover.visible = true;
+    mover.scale = this.board.tileScale;
   }
 
   /** Your own cards arrive from above the view and settle into your hand, rather than rising from the table. */
@@ -1031,7 +1107,12 @@ export class Game {
       tiles.forEach((t, i) => {
         const m = this.tileMovers[offset + i];
         const slot = this.board.slot(kind, i);
-        if (i < count) {
+        const pending = this.stampPending;
+        if (pending && pending.kind === kind && pending.index === i) {
+          // The stamping card stands in for this tile until it lands.
+          m.visible = false;
+          t.visible = false;
+        } else if (i < count) {
           if (!t.visible) {
             t.visible = true;
             t.position.copy(slot).add(new THREE.Vector3(0, instant ? 0 : 0.5, 0));
@@ -1073,12 +1154,15 @@ export class Game {
     if (a.type === 'vote') {
       this.myVote = a.ja;
       this.takenBackVote = null;
-      sfx.slap();
-      this.world.addShake(0.3);
+      this.ballotMotion?.cancel();
+      const [ballot, mover] = a.ja ? [this.ja, this.jaMover] : [this.nein, this.neinMover];
+      this.ballotMotion = this.track(slam(ballot.mesh, mover, { onImpact: () => { sfx.slap(); this.world.addShake(0.3); } }));
     }
     if (a.type === 'unvote') {
       this.takenBackVote = this.myVote;
       this.myVote = null;
+      this.ballotMotion?.cancel();
+      this.ballotMotion = null;
       sfx.flip();
     }
     const key = this.flightKey();
@@ -1419,6 +1503,8 @@ export class Game {
       p.mover.hideOnArrive = false;
       p.mover.visible = true;
     });
+    // A board card is drawn at the tile's size so the swap to the tile is seamless.
+    const boardScale = (0.105 / CARD_W) * this.board.tileScale;
     for (const p of this.pool) {
       if (p.where === 'discard') {
         p.mover.set(this.discardPile.topPosition(this.topV).add(DISCARD_LIFT), FLIP_X_Q, 6);
@@ -1428,6 +1514,7 @@ export class Game {
         p.mover.set(this.drawPile.topPosition(this.topV), FLIP_X_Q, 8);
         p.mover.hideOnArrive = true;
       }
+      p.mover.scale = p.where === 'board' ? boardScale : 1;
       if (p.where !== 'held' && p.where !== 'board') p.card.setGlow(0);
     }
 
@@ -1469,7 +1556,7 @@ export class Game {
           card.mesh.visible = false;
           this.world.scene.add(card.mesh);
           const mover = this.world.track(new Mover(card.mesh));
-          vc = { card, mover, shown: false };
+          vc = { card, mover, shown: false, motion: null };
           this.voteCards.set(p.seat, vc);
         }
         const slot = playedSlot(p.seat, this.slotV);
@@ -1482,17 +1569,22 @@ export class Game {
           vc.mover.visible = true;
           vc.mover.hideOnArrive = false;
         } else if (v.phase === 'vote' && p.hasVoted) {
-          if (!vc.shown) {
-            vc.shown = true;
-            vc.card.mesh.visible = true;
-            vc.card.mesh.position.copy(slot);
-            vc.card.mesh.position.y += 0.3;
-            vc.card.mesh.scale.setScalar(1);
-          }
-          vc.mover.set(slot, mul(QOUT, Q('y', L.yaw(p.seat), QA), FLIP_X_Q), 16);
+          const q = mul(QOUT, Q('y', L.yaw(p.seat), QA), FLIP_X_Q);
+          vc.mover.set(slot, q, 16);
           vc.mover.scale = 1;
           vc.mover.visible = true;
           vc.mover.hideOnArrive = false;
+          if (!vc.shown) {
+            // The ballot starts raised in front of its voter and slams onto the slot.
+            vc.shown = true;
+            const mesh = vc.card.mesh;
+            mesh.position.copy(L.front(p.seat, 0.05, 0.02, 0.9, this.frontV)).y += 0.2;
+            mesh.quaternion.copy(q);
+            mesh.scale.setScalar(1);
+            mesh.visible = true;
+            vc.motion?.cancel();
+            vc.motion = this.track(slam(mesh, vc.mover, {}));
+          }
         } else {
           vc.shown = false;
           vc.mover.set(this.tmpV.copy(slot).setY(TABLE_Y - 0.05), mul(QOUT, Q('y', L.yaw(p.seat), QA), FLIP_X_Q), 8);
