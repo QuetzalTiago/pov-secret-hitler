@@ -5,15 +5,15 @@ import type { Memory } from './tracker';
 import type { GameView } from './view';
 
 /** A Fascist-team player (Hitler too) holding a choice discards L as President / enacts F as Chancellor. */
-export const FASCIST_PLAYS_F = 0.85;
+export const FASCIST_PLAYS_F = 0.5;
 /** A Liberal holding a choice plays the F-favouring option anyway (misclick, bluff, bot noise). */
 export const LIBERAL_ERROR = 0.01;
 /** Weak signal: a Liberal votes JA on a government that went on to enact Fascist (Fascist team: 1). */
-export const JA_ON_F_LIBERAL = 0.8;
+export const JA_ON_F_LIBERAL = 0.95;
 /** Weak signal: a Liberal votes NEIN on a government whose President and nominee are both Liberal (Fascist: 1). */
-export const NEIN_CLEAN_LIBERAL = 0.5;
+export const NEIN_CLEAN_LIBERAL = 0.35;
 /** Weak signal: a Fascist-team voter votes NEIN on a government containing a Fascist-team player. */
-export const NEIN_TEAM_FASCIST = 0.3;
+export const NEIN_TEAM_FASCIST = 0.5;
 /** Weak signal: a Fascist-team President nominates a Fascist-team Chancellor. */
 export const NOMINATE_TEAMMATE = 1.3;
 /** Weak signal: a Fascist-team President executes a Fascist-team player. */

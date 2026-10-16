@@ -40,7 +40,7 @@ export const LIB = {
   nomFas: 4, // nominate / special election: penalty per P(Fascist)
   nomHitler: 12, // in the zone: penalty per P(Hitler)
   nomSafe: 0.5, // in the zone: bonus for a confirmed non-Hitler
-  voteBase: 1, // ja baseline
+  voteBase: 2, // ja baseline
   voteTracker: 0.8, // ja bonus per failed election
   voteBad: 5, // ja penalty per excess P(government has a Fascist)
   voteHitler: 15, // in the zone: ja penalty per P(Hitler chancellor)
@@ -51,6 +51,17 @@ export const LIB = {
   vetoFas: 4, // veto agree: penalty per P(Fascist) of the Chancellor
   vetoLiberal: -5, // veto agree: I passed a Liberal, so the Chancellor lied
 };
+
+/** Liberal JA score for the current government: block governments likelier to hold a Fascist than the table average. */
+function libVoteScore(v: GameView, pF: number[], pH: number[], w: typeof LIB): number {
+  const p = v.president;
+  const c = v.nominee!;
+  const others = v.players.filter((x) => x.alive && x.seat !== v.you).map((x) => pF[x.seat]);
+  const avg = others.reduce((a, b) => a + b, 0) / Math.max(1, others.length);
+  const bad = 1 - (1 - pF[p]) * (1 - pF[c]);
+  const baseline = 1 - (1 - avg) ** 2;
+  return w.voteBase + w.voteTracker * v.tracker - w.voteBad * (bad - baseline) - (v.fascist >= 3 ? w.voteHitler * pH[c] : 0);
+}
 
 /** Overwrites the Liberal option scores with ones derived from the belief model. */
 function scoreLiberal(d: Decision, v: GameView, m: Memory, w: typeof LIB): void {
@@ -72,16 +83,9 @@ function scoreLiberal(d: Decision, v: GameView, m: Memory, w: typeof LIB): void 
     case 'execute':
       target((s) => w.exeHitler * pH[s] + w.exeFas * pF[s]);
       break;
-    case 'vote': {
-      const p = v.president;
-      const c = v.nominee!;
-      const others = v.players.filter((x) => x.alive && x.seat !== v.you).map((x) => pF[x.seat]);
-      const avg = others.reduce((a, b) => a + b, 0) / Math.max(1, others.length);
-      const bad = 1 - (1 - pF[p]) * (1 - pF[c]);
-      const baseline = 1 - (1 - avg) ** 2;
-      d.options.ja.score = w.voteBase + w.voteTracker * v.tracker - w.voteBad * (bad - baseline) - (zone ? w.voteHitler * pH[c] : 0);
+    case 'vote':
+      d.options.ja.score = libVoteScore(v, pF, pH, w);
       break;
-    }
     case 'vetoResponse':
       d.options.agree.score = m.passed.some((x) => x.round === v.round && x.gave.includes('L')) ? w.vetoLiberal : 1 - w.vetoFas * pF[v.chancellor!];
       break;
@@ -90,8 +94,8 @@ function scoreLiberal(d: Decision, v: GameView, m: Memory, w: typeof LIB): void 
 
 /** Tunable weights for the belief-based Fascist / Hitler strategy. */
 export const FAS = {
-  coverP: 0.5, // play cover cards once the table's P(Fascist) of me is above this
-  proofP: 0.24, // Chancellor holding an L (provable F): cover once the table's P(Fascist) of me is above this
+  coverP: 0.55, // play cover cards once the table's P(Fascist) of me is above this
+  proofP: 0.15, // Chancellor holding an L (provable F): cover once the table's P(Fascist) of me is above this
   loneAdd: 0.26, // both thresholds rise by this when the Fascist is alone with Hitler (5-6p): exposure is cheap
   playGap: 3, // card play: preferred option over the other
   vetoScore: 1, // cover (b) veto: between enact F (0) and enact L (playGap)
@@ -99,6 +103,7 @@ export const FAS = {
   voteHitler: 20, // ja for Hitler as nominee in the zone
   voteJa: 2, // ja for a Liberal government that is not safe to block
   voteNein: 1.5, // nein margin for a Liberal government that is safe to block
+  neinP: 0.8, // block (nein) only while the table's P(Fascist) of me is below this: a NEIN from a suspect costs more
   nomBig: 8, // zone: nominate a clean-looking Hitler
   nomHitler: 12, // zone: penalty per table P(Hitler) of Hitler
   nomTeam: -3, // teammate base: below believable Liberals, so Fascists nominate cover
@@ -152,7 +157,11 @@ function scoreFascist(d: Decision, v: GameView, m: Memory): void {
     case 'vote': {
       const p = v.president;
       const c = v.nominee!;
-      const safe = v.tracker < 2;
+      if (clean) {
+        d.options.ja.score = libVoteScore(v, pF, pH, LIB); // Hitler votes like a Liberal until the zone
+        break;
+      }
+      const safe = v.tracker < 2 && pF[me] < FAS.neinP + add; // block only while the table still sees me as clean
       d.options.ja.score = zone && c === hitler ? FAS.voteHitler : team(p) || team(c) ? FAS.voteTeam : safe ? -FAS.voteNein : FAS.voteJa;
       break;
     }

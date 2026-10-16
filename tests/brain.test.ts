@@ -358,6 +358,27 @@ describe('table talk', () => {
   });
 });
 
+describe('Fascist votes (new strategy)', () => {
+  /** 7 players: P0 President nominates the Liberal P1; Hitler is P4, Fascists P5 and P6. */
+  const jaScore = (seat: number) => {
+    const s = act(setup(7, { president: 0, roles: roles(7, 4, [5, 6]) }), 0, { type: 'nominate', target: 1 });
+    const m = newMemory(seat, 7);
+    if (seat !== 4) {
+      m.known.set(4, 'fascist');
+      m.known.set(seat === 5 ? 6 : 5, 'fascist');
+    }
+    return buildDecision(viewFor(s, seat), legalActions(s, seat), m, name, { strategy: 'new' }).options.ja.score;
+  };
+
+  it('a Fascist blocks a Liberal government while the table still sees them as clean', () => {
+    expect(jaScore(5)).toBeLessThan(0);
+  });
+
+  it('Hitler votes like a Liberal before the zone', () => {
+    expect(jaScore(4)).toBeGreaterThan(0);
+  });
+});
+
 describe('bot levels', () => {
   const seeded = (seed: number) => {
     let x = seed;

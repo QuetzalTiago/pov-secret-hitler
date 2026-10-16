@@ -101,3 +101,42 @@ The follow-up is Fleet task **FLT-0005**, "Smarter bots" (branch `smarter-bots`)
 | E | **Built-in strategy primary, Jev as tie-break** in `server/brain.ts`; the belief summary goes into Jev's state. | C, D |
 | F | **Talk matches play:** chat accusations and reads use beliefs (`server/botchat.ts`, `server/bottalk.ts`, the room's mood tick). | C |
 | G | **Difficulty per room** (Casual / Normal / Sharp): protocol, room config, store and the lobby selector. Shares the lobby slot with FLT-0004's host pace option. | C, D, E |
+
+## #206 NEIN votes
+
+The belief model now reads NEIN votes (`NEIN_CLEAN_LIBERAL`, `NEIN_TEAM_FASCIST`), and the Fascist vote rules follow:
+
+- **Fascists block only while they look safe.** A Fascist votes NEIN on a government with no teammate while `tracker < 2` *and* the table's P(Fascist) of them is below `FAS.neinP + loneAdd`. Otherwise JA, as before. Teammate and zone-Hitler votes are unchanged.
+- **Hitler before the zone votes like a Liberal.** Same formula as the Liberals (`libVoteScore`, shared by both), fed with the table's beliefs of Hitler. In the zone he votes as a Fascist again.
+
+Re-tuning (new vs new, 400 games per count, Liberal win % at 5/6/7/8/9/10 players):
+
+| Step | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|
+| Before the NEIN factor | 54 | 57 | 58 | 53 | 57 | 51 |
+| After the NEIN factor, not re-tuned | 60 | 62 | 48 | 41 | 50 | 37 |
+| New vote rules, not re-tuned | 64 | 65 | 69 | 68 | 66 | 65 |
+| **Final, 400 games** | 54 | 58 | 56 | 58 | 54 | 52 |
+| **Final, 1000 games** | 54 | 58 | 57 | 58 | 50 | 49 |
+| Final, new Liberals vs old Fascists (400) | 91 | 90 | 69 | 78 | 62 | 74 |
+| old vs old (400, unchanged) | 78 | 83 | 57 | 70 | 49 | 67 |
+
+Weights changed:
+
+| Weight | Was | Now |
+|---|---|---|
+| `FAS.neinP` | (new) | 0.8 |
+| `FAS.coverP` | 0.5 | 0.55 |
+| `FAS.proofP` | 0.24 | 0.15 |
+| `LIB.voteBase` | 1 | 2 |
+| `FASCIST_PLAYS_F` | 0.85 | 0.5 |
+| `JA_ON_F_LIBERAL` | 0.8 | 0.95 |
+| `NEIN_CLEAN_LIBERAL` | 0.5 | 0.35 |
+| `NEIN_TEAM_FASCIST` | 0.3 | 0.5 |
+
+What the tuning showed:
+
+- Both new rules hurt the Fascists a lot. Blocking every Liberal government is a strong play, and Hitler voting like a Liberal passes more Liberal governments. Together they moved the Liberals to 64-69%.
+- `FAS.coverP` has a cliff at 0.5: with 7 or 9 players the table's prior P(Fascist) is exactly 0.5, so a lower value covers from the first round. Keep it above the prior.
+- `LIB.voteBase` above 2 balances new vs new, but then the old Fascists beat the new Liberals at 9 players (the Liberals say JA to too many Fascist governments). At 2 the new Fascists still beat the old ones at every count.
+- At 6 players the Liberal win rate barely reacts to any Fascist weight; `FASCIST_PLAYS_F`, `NEIN_*` and `voteBase` were the levers that moved it.
