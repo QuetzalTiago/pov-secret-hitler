@@ -157,6 +157,10 @@ Rooms are stored in `data/rooms.db` (git-ignored) when running `npm start` or `n
 Contributions are welcome! Read [CONTRIBUTING.md](CONTRIBUTING.md) to get started, and please follow the
 [Code of Conduct](CODE_OF_CONDUCT.md). Security issues: see [SECURITY.md](SECURITY.md).
 
+## Authors
+
+Made by Tiago Romero and Claude (Anthropic), co-authors. Contributions welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Credits & license
 
 **Secret Hitler** was created by Mike Boxleiter, Tommy Maranges and Max Temkin, with illustrations by Mac

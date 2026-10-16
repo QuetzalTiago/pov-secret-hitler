@@ -8,6 +8,7 @@ import { portraitUrl, sealUrl } from './art';
 import { getMusicVolume, getSfxVolume, isMuted, setMusicVolume, setMuted, setSfxVolume } from './audio';
 import { nearBottom } from './chatscroll';
 import { ENACT_BANNER_MS, enactBanner } from './enact';
+import { sendFeedback } from './feedback';
 import { fullscreenSupported, isFullscreen, isFullscreenKey, toggleFullscreen } from './fullscreen';
 import { lang, tr } from './i18n';
 import { loadRecord, recordGame, recordLine, saveRecord } from './record';
@@ -188,6 +189,40 @@ export class UI {
     $('redeal').onclick = () => h.redeal();
     $('gameover-leave').onclick = () => h.leave();
     for (const id of ['credits-btn', 'home-credits']) $(id).onclick = () => this.openDialog('credits');
+    const fbText = $<HTMLTextAreaElement>('feedback-text');
+    const fbContact = $<HTMLInputElement>('feedback-contact');
+    const fbStatus = $('feedback-status');
+    const fbSend = $<HTMLButtonElement>('feedback-send');
+    for (const id of ['feedback-btn', 'home-feedback'])
+      $(id).onclick = () => {
+        fbStatus.textContent = '';
+        this.openDialog('feedback');
+        fbText.focus();
+      };
+    const submitFeedback = async () => {
+      if (fbSend.disabled) return;
+      fbSend.disabled = true;
+      const res = await sendFeedback(fbText.value, fbContact.value, lang());
+      fbSend.disabled = false;
+      if (res === 'ok') {
+        fbText.value = '';
+        fbContact.value = '';
+        fbStatus.textContent = tr({ en: 'Thanks! Your feedback was sent.', es: '¡Gracias! Tus comentarios se enviaron.' });
+      } else if (res === 'invalid') fbStatus.textContent = tr({ en: 'Write something first (up to 2000 characters).', es: 'Escribe algo primero (hasta 2000 caracteres).' });
+      else if (res === 'rate') fbStatus.textContent = tr({ en: 'Too many messages. Try again later.', es: 'Demasiados mensajes. Inténtalo más tarde.' });
+      else fbStatus.textContent = tr({ en: 'Could not send. Try again, or open an issue on GitHub.', es: 'No se pudo enviar. Inténtalo de nuevo o abre un issue en GitHub.' });
+    };
+    fbSend.onclick = () => void submitFeedback();
+    fbText.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        void submitFeedback();
+      }
+    });
+    $('feedback-close').onclick = () => {
+      $('feedback').classList.add('hidden');
+      fbStatus.textContent = '';
+    };
     $('credits-close').onclick = () => $('credits').classList.add('hidden');
     $('rules-btn').onclick = () => this.openDialog('rules');
     // Settings popover: the toggles keep it open so their label change is visible; any other row closes it.
@@ -282,7 +317,7 @@ export class UI {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && document.activeElement !== input && !$('hud').classList.contains('hidden')) {
         // Enter on a dialog button activates it natively.
-        if ((document.activeElement as HTMLElement | null)?.closest('#confirm-leave, #rules, #credits')) return;
+        if ((document.activeElement as HTMLElement | null)?.closest('#confirm-leave, #rules, #credits, #feedback')) return;
         if (input.disabled) return;
         e.preventDefault();
         input.focus();
@@ -291,6 +326,7 @@ export class UI {
         lobbyInput.blur();
         setSettings(false);
         $('credits').classList.add('hidden');
+        $('feedback').classList.add('hidden');
         $('rules').classList.add('hidden');
         $('confirm-leave').classList.add('hidden');
       }
