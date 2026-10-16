@@ -548,6 +548,8 @@ export class Game {
   actionRejected() {
     if (!this.inFlight) return;
     this.settle();
+    this.ballotMotion?.cancel(); // a refused vote doesn't land its slam
+    this.ballotMotion = null;
     this.myVote = this.takenBackVote;
     this.takenBackVote = null;
     this.pendingIndex = null;
@@ -849,7 +851,14 @@ export class Game {
       case 'passedToChancellor':
         this.lastChancellor = e.to;
         sfx.slide();
-        if (e.to === me) this.dropIntoHand();
+        if (e.to === me) {
+          // A deal flight still owning a card would overwrite the drop into your hand.
+          for (const p of this.pool) {
+            p.motion?.cancel();
+            p.motion = null;
+          }
+          this.dropIntoHand();
+        }
         this.pool.filter((p) => p.where === 'held').forEach((p, i) => {
           p.holder = e.to;
           p.face = null;
