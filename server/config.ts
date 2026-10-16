@@ -33,6 +33,11 @@ export const config = {
   createsPerMinute: num(process.env.SH_CREATES_PER_MIN, 5),
   /** Open lobby-stage rooms one IP may have created at a time. */
   maxLobbiesPerIp: num(process.env.SH_MAX_LOBBIES_PER_IP, 3),
+  /** JSONL file the POST /feedback route appends to (relative to cwd; data/ is gitignored). */
+  feedbackPath: process.env.SH_FEEDBACK_PATH ?? 'data/feedback.jsonl',
+  /** Feedback messages allowed per IP: the burst size, refilled evenly over an hour. */
+  feedbackBurst: num(process.env.SH_FEEDBACK_BURST, 3),
+  feedbackPerHour: num(process.env.SH_FEEDBACK_PER_HOUR, 12),
   roomIdleMs: 30 * 60_000,
   /** SQLite file for room persistence. In-memory by default (tests, dev scripts); the real server sets a file. */
   dbPath: process.env.SH_DB_PATH ?? ':memory:',

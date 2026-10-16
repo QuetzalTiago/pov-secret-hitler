@@ -1,6 +1,7 @@
 // HTTP + WebSocket server. Serves the built client and the game socket on one loopback port.
-import express from 'express';
-import { existsSync } from 'node:fs';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import { existsSync, mkdirSync } from 'node:fs';
+import { appendFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -36,6 +37,26 @@ function sameOrigin(req: IncomingMessage): boolean {
   } catch {
     return false;
   }
+}
+
+// Control chars except \n and \t.
+const CONTROL_CHARS = /[\u0000-\u0008\u000B-\u001F\u007F]/g;
+
+export function parseFeedback(body: unknown): { text: string; contact?: string; lang?: 'en' | 'es' } | null {
+  if (typeof body !== 'object' || body === null) return null;
+  const b = body as Record<string, unknown>;
+  if (typeof b.text !== 'string') return null;
+  const text = b.text.replace(CONTROL_CHARS, '').trim();
+  if (text.length < 1 || text.length > 2000) return null;
+  const out: { text: string; contact?: string; lang?: 'en' | 'es' } = { text };
+  if (b.contact !== undefined) {
+    if (typeof b.contact !== 'string') return null;
+    const contact = b.contact.replace(CONTROL_CHARS, '').trim();
+    if (contact.length > 120) return null;
+    if (contact) out.contact = contact;
+  }
+  if (b.lang === 'en' || b.lang === 'es') out.lang = b.lang;
+  return out;
 }
 
 const CSP = [
@@ -76,6 +97,8 @@ export function startServer(port = config.port): Promise<RunningServer> {
     }
   }
   if (rooms.size) console.log(`[store] restored ${rooms.size} room(s) from ${config.dbPath}`);
+  const feedbackBuckets = new Map<string, TokenBucket>();
+  let feedbackDirReady = false;
   const perIp = new Map<string, number>();
   let connections = 0;
   let nextId = 1;
@@ -89,6 +112,39 @@ export function startServer(port = config.port): Promise<RunningServer> {
     res.setHeader('Content-Security-Policy', CSP);
     next();
   });
+  app.post(
+    '/feedback',
+    express.json({ limit: '8kb' }),
+    async (req: Request, res: Response) => {
+      if (!sameOrigin(req)) return void res.status(403).json({ error: 'Forbidden' });
+      const ip = clientIp(req);
+      let bucket = feedbackBuckets.get(ip);
+      if (!bucket) {
+        if (feedbackBuckets.size > 1000) for (const [k, b] of feedbackBuckets) if (b.full()) feedbackBuckets.delete(k);
+        feedbackBuckets.set(ip, (bucket = new TokenBucket(config.feedbackBurst, config.feedbackPerHour / 3600)));
+      }
+      if (!bucket.take()) return void res.status(429).json({ error: 'Too many messages. Try again later.' });
+      const parsed = parseFeedback(req.body);
+      if (!parsed) return void res.status(400).json({ error: 'Feedback must be 1-2000 characters.' });
+      try {
+        if (!feedbackDirReady) {
+          mkdirSync(dirname(config.feedbackPath), { recursive: true });
+          feedbackDirReady = true;
+        }
+        await appendFile(config.feedbackPath, JSON.stringify({ at: new Date().toISOString(), ...parsed }) + '\n');
+      } catch (e) {
+        console.error('[feedback] write failed:', (e as Error).message);
+        return void res.status(500).json({ error: 'Could not save feedback.' });
+      }
+      console.log('[feedback] received', parsed.text.length, 'chars');
+      res.sendStatus(204);
+    },
+    // Unparseable or oversized JSON bodies: answer JSON, never an HTML stack trace.
+    (err: { type?: string }, _req: Request, res: Response, _next: NextFunction) => {
+      if (err.type === 'entity.too.large') res.status(413).json({ error: 'Feedback is too long.' });
+      else res.status(400).json({ error: 'Feedback must be 1-2000 characters.' });
+    },
+  );
   app.get('/healthz', (_req, res) => {
     res.json({ ok: true, rooms: rooms.size, connections });
   });
